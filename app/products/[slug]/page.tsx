@@ -2,12 +2,21 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useEffect } from "react";
 import { getProductBySlug } from "@/lib/products";
+import { useAdminProductStore } from "@/lib/adminProductStore";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
 import { toast } from "sonner";
 
 export default function ProductPage() {
+  const { loadFromDatabase } = useAdminProductStore();
+
+  // Load latest published data from Postgres so price/stock changes appear without rebuild
+  useEffect(() => {
+    loadFromDatabase();
+  }, [loadFromDatabase]);
+
   const params = useParams<{ slug: string }>();
   const product = getProductBySlug(params.slug);
 
@@ -73,9 +82,15 @@ export default function ProductPage() {
 
             <div className="text-4xl font-medium tracking-tighter mt-4">${product.price}</div>
 
-            <div className="mt-2 text-sm text-white/60">
-              In stock • {product.inStock} available
-            </div>
+            {product.inStock > 0 ? (
+              <div className="mt-2 text-sm text-emerald-400">
+                In stock • {product.inStock} available
+              </div>
+            ) : (
+              <div className="mt-2 text-sm text-red-400 font-medium">
+                Currently out of stock
+              </div>
+            )}
 
             <div className="flex items-center gap-2 mt-3">
               <div className="text-yellow-400">★★★★★</div>
@@ -119,9 +134,10 @@ export default function ProductPage() {
                   useCartStore.getState().addItem(product);
                   toast.success(`Added ${product.name} to cart`);
                 }}
-                className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors"
+                disabled={product.inStock === 0}
+                className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors disabled:bg-white/50 disabled:text-black/50 disabled:cursor-not-allowed"
               >
-                Add to Cart
+                {product.inStock > 0 ? "Add to Cart" : "Out of Stock"}
               </button>
               <button 
                 onClick={() => {

@@ -1,0 +1,26 @@
+{
+  "_comment": "This file stores published product overrides from the admin panel. Commit this file to persist changes across deploys.",
+  "overrides": {
+    "haba-fresca": {
+      "inStock": 0
+    },
+    "zanahorias-arcoiris": {
+      "inStock": 0
+    },
+    "iphone-15-pro-titanium": {
+      "inStock": 5,
+      "price": 999,
+      "description": "Titanium design. A17 Pro chip. The most advanced iPhone ever. Pro camera system with 5x Telephoto. Excelent",
+      "brand": "Apple",
+      "category": "Smartphones",
+      "images": [
+        "/images/products/iphone-16-pro-titanium.jpg",
+        "/images/products/peak-design-45l.jpg",
+        "/images/products/anker-prime-powerbank.jpg"
+      ],
+      "rating": 4.9,
+      "reviewCount": 2843,
+      "bestseller": true
+    }
+  }
+}

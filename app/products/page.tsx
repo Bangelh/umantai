@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { products, categories, brands, Product } from "@/lib/products";
+import { getAvailableProducts, categories, brands, Product, getAllProducts } from "@/lib/products";
+import { useAdminProductStore } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
@@ -10,6 +11,14 @@ import { toast } from "sonner";
 import { FilterDrawer } from "../components/FilterDrawer";
 
 export default function ProductsPage() {
+  const { loadFromDatabase } = useAdminProductStore();
+
+  // Automatically load the latest published overrides from Vercel Postgres
+  // This makes published admin changes appear on the public site without a rebuild
+  useEffect(() => {
+    loadFromDatabase();
+  }, [loadFromDatabase]);
+
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [activeSubcategories, setActiveSubcategories] = useState<string[]>([]);
   const [activeBrands, setActiveBrands] = useState<string[]>([]);
@@ -25,16 +34,18 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<"featured" | "price-low" | "price-high" | "rating">("featured");
 
-  // Count how many products are in each subcategory
+  const availableProducts = getAvailableProducts();
+
+  // Count how many *in-stock* products are in each subcategory (for accurate badges)
   const subcategoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    products.forEach((product) => {
+    availableProducts.forEach((product) => {
       if (product.subcategory) {
         counts[product.subcategory] = (counts[product.subcategory] || 0) + 1;
       }
     });
     return counts;
-  }, []);
+  }, [availableProducts]);
 
   const activeFilterCount = useMemo(() => {
     let count = activeCategories.length + activeSubcategories.length + activeBrands.length;
@@ -44,7 +55,7 @@ export default function ProductsPage() {
     return count;
   }, [activeCategories, activeSubcategories, activeBrands, minPrice, maxPrice, searchQuery]);
 
-  const filteredProducts = products
+  const filteredProducts = availableProducts
     .filter((product) => {
       const matchesCategory =
         activeCategories.length === 0 || activeCategories.includes(product.category);

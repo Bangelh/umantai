@@ -4,10 +4,10 @@ export interface Product {
   brand: string;
   price: number;
   category: string;           // Main category (e.g. "Whole Foods", "Smartphones")
-  subcategory?: string;       // Specific subcategory (e.g. "Fresa, Arándano, Aguaymanto y Otros Berries")
+  subcategory?: string;       // Specific subcategory (exact match from wholeFoodsCategories)
   description: string;
   specs: string[];
-  inStock: number;
+  inStock: number;            // Fictitious stock units. Items with 0 are hidden from listings.
   rating: number;
   reviewCount: number;
   bestseller?: boolean;
@@ -16,7 +16,8 @@ export interface Product {
   storage?: string[];
 }
 
-export const products: Product[] = [
+// Raw product data (source of truth - do not import directly in most places)
+export const baseProductsData: Product[] = [
   {
     slug: "iphone-15-pro-titanium",
     name: "iPhone 15 Pro",
@@ -143,61 +144,181 @@ export const products: Product[] = [
     reviewCount: 589,
     images: ["/images/products/anker-prime-powerbank.jpg"],
   },
+  // ==================== WHOLE FOODS - FRUTAS & VERDURAS ====================
+  // Using exact subcategory names from lib/categories.ts
+  // Most items have ~80-120 fictitious stock. Items with 0 are hidden from the site.
+
+  // FRUTAS
   {
-    slug: "blue-bottle-subscription",
-    name: "Blue Bottle Coffee — Single Origin Subscription",
-    brand: "Blue Bottle",
-    price: 68,
+    slug: "naranjas-valencianas",
+    name: "Naranjas Valencianas",
+    brand: "Umantai Orchards",
+    price: 4.8,
     category: "Whole Foods",
-    subcategory: "Jugos Naturales",
-    description: "Monthly subscription of exceptional single-origin coffee, roasted to order.",
-    specs: ["12oz bags", "Monthly delivery", "Rotating origins", "Carbon negative"],
-    inStock: 999,
+    subcategory: "Naranja, Mandarina y Otros Cítricos",
+    description: "Dulces y jugosas naranjas de la región de Valencia. Perfectas para zumo o consumo fresco.",
+    specs: ["5kg caja", "Cultivo sostenible", "Alta en vitamina C", "Sin cera"],
+    inStock: 0, // Hidden per request (example of 0 stock)
+    rating: 4.7,
+    reviewCount: 89,
+    images: ["/images/products/naranjas-valencianas.jpg"],
+  },
+  {
+    slug: "paltas-hass-premium",
+    name: "Paltas Hass Premium",
+    brand: "Umantai Orchards",
+    price: 7.9,
+    category: "Whole Foods",
+    subcategory: "Paltas",
+    description: "Paltas Hass de piel rugosa, cremosas y perfectas para guacamole o tostadas.",
+    specs: ["Bandeja de 4 unidades", "Maduración controlada", "Origen Perú", "Ricas en grasas saludables"],
+    inStock: 112,
     rating: 4.9,
-    reviewCount: 1243,
-    images: ["/images/products/blue-bottle-subscription.jpg"],
+    reviewCount: 312,
+    bestseller: true,
+    images: ["/images/products/paltas-hass-premium.jpg"],
   },
   {
-    slug: "patagonia-provisions-salmon",
-    name: "Patagonia Provisions Smoked Salmon",
-    brand: "Patagonia",
-    price: 34,
+    slug: "berries-mixtos-organicos",
+    name: "Mix de Berries Orgánicos",
+    brand: "Umantai Orchards",
+    price: 9.5,
     category: "Whole Foods",
-    subcategory: "Legumbres", // Temporary - ideally we'd have a "Proteínas" group
-    description: "Wild-caught, regeneratively sourced smoked salmon from Alaska.",
-    specs: ["6oz portions", "Regenerative", "Wild Alaskan", "No additives"],
-    inStock: 234,
+    subcategory: "Fresa, Arándano, Aguaymanto y Otros Berries",
+    description: "Fresas, arándanos y aguaymanto orgánicos. Listos para smoothies, postres o consumo directo.",
+    specs: ["500g bandeja", "Certificado orgánico", "Sin pesticidas", "Congelables"],
+    inStock: 87,
     rating: 4.8,
-    reviewCount: 287,
-    images: ["/images/products/patagonia-provisions-salmon.jpg"],
+    reviewCount: 204,
+    images: ["/images/products/berries-mixtos-organicos.jpg"],
   },
   {
-    slug: "amazon-fresh-whole-bean-ethiopia",
-    name: "Amazon Fresh — Ethiopia Yirgacheffe Whole Bean",
-    brand: "Amazon Foods",
-    price: 18.99,
+    slug: "platano-organico",
+    name: "Plátano Orgánico",
+    brand: "Umantai Orchards",
+    price: 3.2,
     category: "Whole Foods",
-    subcategory: "Jugos Naturales",
-    description: "Bright, floral single-origin coffee from the Yirgacheffe region.",
-    specs: ["12oz bag", "Whole bean", "Medium roast", "Direct trade"],
-    inStock: 412,
-    rating: 4.4,
-    reviewCount: 156,
-    images: ["/images/products/amazon-fresh-whole-bean-ethiopia.jpg"],
-  },
-  {
-    slug: "amazon-fresh-extra-virgin-olive-oil",
-    name: "Amazon Fresh — Extra Virgin Olive Oil",
-    brand: "Amazon Foods",
-    price: 24.5,
-    category: "Whole Foods",
-    subcategory: "Aceites y Condimentos", // We'll expand this category later
-    description: "Cold-pressed extra virgin olive oil from small farms in Tuscany.",
-    specs: ["500ml bottle", "Cold pressed", "First harvest", "Protected designation"],
-    inStock: 289,
+    subcategory: "Plátano y Uva",
+    description: "Plátanos maduros, dulces y energéticos. Ideales para smoothies o como snack natural.",
+    specs: ["Racimo de 6-7 unidades", "Cultivo orgánico", "Alta en potasio", "Empaque biodegradable"],
+    inStock: 145,
     rating: 4.6,
-    reviewCount: 203,
-    images: ["/images/products/amazon-fresh-extra-virgin-olive-oil.jpg"],
+    reviewCount: 78,
+    images: ["/images/products/platano-organico.jpg"],
+  },
+  {
+    slug: "mango-kent",
+    name: "Mango Kent",
+    brand: "Umantai Orchards",
+    price: 5.4,
+    category: "Whole Foods",
+    subcategory: "Melocotón, Durazno y Mango",
+    description: "Mangos Kent jugosos y dulces, perfectos para ensaladas, postres o comer frescos.",
+    specs: ["2kg bolsa", "Punto óptimo de madurez", "Sin conservantes", "Origen Piura"],
+    inStock: 63,
+    rating: 4.8,
+    reviewCount: 134,
+    images: ["/images/products/mango-kent.jpg"],
+  },
+
+  // VERDURAS
+  {
+    slug: "tomates-cherry-organicos",
+    name: "Tomates Cherry Orgánicos",
+    brand: "Umantai Gardens",
+    price: 4.2,
+    category: "Whole Foods",
+    subcategory: "Tomate, Pepino y Pimiento",
+    description: "Tomates cherry dulces y explosivos en sabor. Ideales para ensaladas y snacks.",
+    specs: ["500g bandeja", "Cultivo hidropónico", "Sin pesticidas", "Listos para consumir"],
+    inStock: 98,
+    rating: 4.7,
+    reviewCount: 156,
+    images: ["/images/products/tomates-cherry-organicos.jpg"],
+  },
+  {
+    slug: "espinaca-fresca",
+    name: "Espinaca Fresca Baby",
+    brand: "Umantai Gardens",
+    price: 3.8,
+    category: "Whole Foods",
+    subcategory: "Lechuga, Espinaca y Hojas Verdes",
+    description: "Hojas de espinaca baby tiernas y nutritivas. Perfecta para ensaladas y salteados.",
+    specs: ["250g bolsa", "Lavada y lista para usar", "Alta en hierro y vitaminas", "Empaque compostable"],
+    inStock: 120,
+    rating: 4.5,
+    reviewCount: 67,
+    images: ["/images/products/espinaca-fresca.jpg"],
+  },
+  {
+    slug: "brocoli-organico",
+    name: "Brócoli Orgánico",
+    brand: "Umantai Gardens",
+    price: 4.6,
+    category: "Whole Foods",
+    subcategory: "Brócoli, Coliflor, Alcachofa y Col",
+    description: "Brócoli fresco y compacto. Excelente fuente de fibra y antioxidantes.",
+    specs: ["Unidad ~500g", "Cultivo orgánico", "Sin OGM", "Ideal al vapor o salteado"],
+    inStock: 74,
+    rating: 4.6,
+    reviewCount: 92,
+    images: ["/images/products/brocoli-organico.jpg"],
+  },
+  {
+    slug: "zanahorias-arcoiris",
+    name: "Zanahorias Arcoíris",
+    brand: "Umantai Gardens",
+    price: 3.9,
+    category: "Whole Foods",
+    subcategory: "Zanahoria, Beterraga, Rabanito y Otras Raíces",
+    description: "Zanahorias de colores (naranja, morada, amarilla). Dulces y crujientes.",
+    specs: ["500g bolsa", "Variedad de colores", "Ricas en betacarotenos", "Sin lavar"],
+    inStock: 105,
+    rating: 4.8,
+    reviewCount: 118,
+    images: ["/images/products/zanahorias-arcoiris.jpg"],
+  },
+  {
+    slug: "haba-fresca",
+    name: "Haba Fresca",
+    brand: "Umantai Gardens",
+    price: 5.1,
+    category: "Whole Foods",
+    subcategory: "Arveja, Vainita, Haba y Otras Legumbres",
+    description: "Habas frescas de temporada, tiernas y llenas de proteína vegetal.",
+    specs: ["500g bolsa", "De temporada", "Peladas a mano", "Ideal para guisos y ensaladas"],
+    inStock: 0, // Hidden per request (Haba example)
+    rating: 4.4,
+    reviewCount: 31,
+    images: ["/images/products/haba-fresca.jpg"],
+  },
+  {
+    slug: "verduras-orientales-mix",
+    name: "Mix Verduras Orientales",
+    brand: "Umantai Gardens",
+    price: 6.8,
+    category: "Whole Foods",
+    subcategory: "Verduras Orientales",
+    description: "Selección de verduras orientales frescas: bok choy, pak choi, brotes y más.",
+    specs: ["400g bandeja", "Lista para saltear", "Sabor auténtico asiático", "Cultivo controlado"],
+    inStock: 0, // Hidden per request (Verduras Orientales example)
+    rating: 4.3,
+    reviewCount: 44,
+    images: ["/images/products/verduras-orientales-mix.jpg"],
+  },
+  {
+    slug: "lechuga-romana-crujiente",
+    name: "Lechuga Romana Crujiente",
+    brand: "Umantai Gardens",
+    price: 2.9,
+    category: "Whole Foods",
+    subcategory: "Lechuga, Espinaca y Hojas Verdes",
+    description: "Lechuga romana fresca y crujiente. Base perfecta para ensaladas César.",
+    specs: ["Unidad grande", "Hidropónica", "Sin tierra", "Larga vida útil"],
+    inStock: 89,
+    rating: 4.5,
+    reviewCount: 53,
+    images: ["/images/products/lechuga-romana-crujiente.jpg"],
   },
   {
     slug: "apple-watch-ultra-2",
@@ -242,12 +363,21 @@ export const products: Product[] = [
 
 export { mainCategories as categories } from "./categories";
 
-export const brands = ["Apple", "Samsung", "Dyson", "Oura", "Bose", "Peak Design", "Google", "Anker", "Blue Bottle", "Patagonia", "Whoop", "Sonos"];
+export const brands = [
+  "Apple", "Samsung", "Dyson", "Oura", "Bose", "Peak Design", "Google", "Anker", 
+  "Blue Bottle", "Patagonia", "Whoop", "Sonos", "Umantai Orchards", "Umantai Gardens"
+];
 
-export function getProductBySlug(slug: string): Product | undefined {
-  return products.find((p) => p.slug === slug);
-}
+// =====================================================
+// Admin-aware exports (recommended for most of the app)
+// These automatically include any price/stock changes made in /admin
+// =====================================================
+export {
+  getAllProducts,
+  getAvailableProducts,
+  getProductBySlug,
+  getBestsellers,
+} from './adminProductStore';
 
-export function getBestsellers(limit = 5): Product[] {
-  return products.filter((p) => p.bestseller).slice(0, limit);
-}
+// Raw base data (used by admin panel to show original values)
+export { baseProductsData as baseProducts };

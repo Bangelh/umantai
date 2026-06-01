@@ -1,7 +1,18 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect } from "react";
 import { getBestsellers, categories } from "@/lib/products";
+import { useAdminProductStore } from "@/lib/adminProductStore";
 
 export default function UmantaiHome() {
+  const { loadFromDatabase } = useAdminProductStore();
+
+  // Load latest published product data from Vercel Postgres
+  useEffect(() => {
+    loadFromDatabase();
+  }, [loadFromDatabase]);
+
   const bestsellers = getBestsellers(4);
 
   return (
@@ -67,7 +78,7 @@ export default function UmantaiHome() {
             >
               <div className="text-2xl font-semibold tracking-tight mb-2">{cat}</div>
               <div className="text-white/60 text-sm mb-6">
-                {cat === "Whole Foods" && "18 products"}
+                {cat === "Whole Foods" && "12+ fresh items"}
                 {cat === "Smartphones" && "12 products"}
                 {cat === "Wearables" && "14 products"}
                 {cat === "Smart Home" && "9 products"}
