@@ -1,26 +1,188 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  font-family: var(--font-geist-sans);
+}
+
+/* Premium dark aesthetic matching Umantai */
+@theme inline {
+  --color-background: #0a0a0a;
+  --color-foreground: #ededed;
+}
+
+/* Custom styles for Umantai */
+.product-card {
+  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), 
+              box-shadow 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+.filter-checkbox {
+  accent-color: #ffffff;
+}
+
+.kiosk-screen {
+  font-family: var(--font-geist-mono);
+  letter-spacing: -0.02em;
+}
+
+/* Shopping List Print Styles */
+@media print {
+  /* Extremely compact print mode for 30+ items per page */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 0.5in 0.6in;
+    
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-size: 8pt;
+      color: #555;
+    }
+  }
+
+  body {
+    background: white !important;
+    color: #000 !important;
+    font-size: 9pt !important;
+    line-height: 1.15 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide the normal interactive list entirely during print */
+  .max-w-4xl.mx-auto.px-8.py-12 {
+    padding: 0 !important;
+  }
+
+  /* Hide the main visual list (the one with cards and inputs) */
+  .space-y-8 {
+    display: none !important;
+  }
+
+  /* Also hide the on-screen totals and header for the normal view */
+  .flex.items-center.justify-between.mb-8,
+  .mt-8.pt-6.border-t {
+    display: none !important;
+  }
+
+  /* Category headers - very small and tight */
+  h3 {
+    font-size: 10pt !important;
+    font-weight: 600 !important;
+    margin: 6px 0 2px 0 !important;
+    padding-bottom: 1px !important;
+    border-bottom: 0.5px solid #333 !important;
+    color: #000 !important;
+  }
+
+  /* Each item - ultra dense single or two line format */
+  .flex.items-start.gap-4.p-4 {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 1px 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    font-size: 8.5pt !important;
+    line-height: 1.1 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Brand + Name */
+  .font-medium {
+    font-size: 8.5pt !important;
+    font-weight: 500 !important;
+    margin-right: 4px;
+  }
+
+  .text-sm.text-white\/60 {
+    font-size: 7.5pt !important;
+    color: #444 !important;
+    margin-right: 6px;
+  }
+
+  /* Price and quantity - compact */
+  .font-mono {
+    font-size: 8pt !important;
+    white-space: nowrap;
+  }
+
+  /* Hide all inputs and interactive stuff in print */
+  input,
+  button:not(.print\:visible) {
+    display: none !important;
+  }
+
+  /* Compact header for print */
+  .text-5xl {
+    font-size: 14pt !important;
+    margin-bottom: 2px !important;
+  }
+
+  .uppercase.tracking-\[3px\] {
+    font-size: 7pt !important;
+  }
+
+  /* Totals at bottom */
+  .text-lg,
+  .text-xl {
+    font-size: 9pt !important;
+    margin-top: 4px !important;
+  }
+
+  /* Remove big spacing */
+  .space-y-8 > * + * {
+    margin-top: 4px !important;
+  }
+
+  .mt-8,
+  .pt-6 {
+    margin-top: 6px !important;
+    padding-top: 4px !important;
+  }
+
+  /* Final footer */
+  .hidden.print\:block {
+    font-size: 7pt !important;
+    margin-top: 8px !important;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Floating WhatsApp Button */
+.wa-float {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  background: #25D366;
+  padding: 8px;
+  transition: transform 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wa-float:hover {
+  transform: scale(1.1);
+}
+
+@media (max-width: 768px) {
+  .wa-float {
+    bottom: 15px;
+    right: 15px;
+  }
 }
