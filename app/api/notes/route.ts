@@ -7,7 +7,7 @@ export async function GET() {
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.' 
+        error: 'Supabase is not configured. Please set BANGELH_NEXT_PUBLIC_SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and BANGELH_SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_ROLE_KEY).' 
       },
       { status: 503 }
     );
