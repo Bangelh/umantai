@@ -87,16 +87,21 @@ export function FloatingWhatsApp({
       {/* Main Floating Button */}
       <button
         onClick={toggleMenu}
-        className="wa-float"
+        className="wa-float flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-all hover:scale-105 hover:bg-[#20bd5a] active:scale-95"
         aria-label="Contact us via WhatsApp"
       >
-        <img
-          src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg"
-          alt="WhatsApp"
-          width={52}
-          height={52}
-          style={{ borderRadius: "50%", display: "block" }}
-        />
+        {/* Local WhatsApp icon (inline SVG for reliability & no external requests) */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="30"
+          height="30"
+          viewBox="0 0 24 24"
+          fill="white"
+          aria-hidden="true"
+        >
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.198-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.67-1.612-.92-2.206-.247-.593-.5-.51-.67-.51-.172 0-.37-.01-.567-.01-.197 0-.52.074-.793.372-.272.298-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+          <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.832-1.438A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18c-1.476 0-2.886-.4-4.1-1.1l-.3-.2-2.9.85.85-2.85-.2-.3A7.96 7.96 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z" />
+        </svg>
       </button>
     </div>
   );

@@ -29,6 +29,24 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Deployment
+
+### Vercel (Recommended)
+- Framework Preset: **Next.js**
+- Build Command: `npm run build`
+- Output Directory: (leave blank)
+
+### Cloudflare Pages (using OpenNext)
+- Build Command: `npm run build:cloudflare`
+- Build Output Directory: `.open-next`
+
+**Important**: If you see the error `Could not find compiled Open Next config, did you run the build command?`, it almost always means the build command in Cloudflare Pages is still set to `npm run build` instead of `npm run build:cloudflare`.
+
+### Local testing with Cloudflare
+```bash
+npm run preview
+```
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

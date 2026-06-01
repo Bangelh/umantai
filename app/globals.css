@@ -160,29 +160,7 @@ body {
   }
 }
 
-/* Floating WhatsApp Button */
+/* Floating WhatsApp Button (styles now primarily in component via Tailwind for consistency) */
 .wa-float {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 999999;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  border-radius: 50%;
-  background: #25D366;
-  padding: 8px;
-  transition: transform 0.3s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.wa-float:hover {
-  transform: scale(1.1);
-}
-
-@media (max-width: 768px) {
-  .wa-float {
-    bottom: 15px;
-    right: 15px;
-  }
+  /* Legacy fallback - component uses Tailwind classes primarily */
 }

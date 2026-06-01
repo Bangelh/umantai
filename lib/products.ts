@@ -3,7 +3,8 @@ export interface Product {
   name: string;
   brand: string;
   price: number;
-  category: string;
+  category: string;           // Main category (e.g. "Whole Foods", "Smartphones")
+  subcategory?: string;       // Specific subcategory (e.g. "Fresa, Arándano, Aguaymanto y Otros Berries")
   description: string;
   specs: string[];
   inStock: number;
@@ -148,6 +149,7 @@ export const products: Product[] = [
     brand: "Blue Bottle",
     price: 68,
     category: "Whole Foods",
+    subcategory: "Jugos Naturales",
     description: "Monthly subscription of exceptional single-origin coffee, roasted to order.",
     specs: ["12oz bags", "Monthly delivery", "Rotating origins", "Carbon negative"],
     inStock: 999,
@@ -161,6 +163,7 @@ export const products: Product[] = [
     brand: "Patagonia",
     price: 34,
     category: "Whole Foods",
+    subcategory: "Legumbres", // Temporary - ideally we'd have a "Proteínas" group
     description: "Wild-caught, regeneratively sourced smoked salmon from Alaska.",
     specs: ["6oz portions", "Regenerative", "Wild Alaskan", "No additives"],
     inStock: 234,
@@ -174,6 +177,7 @@ export const products: Product[] = [
     brand: "Amazon Foods",
     price: 18.99,
     category: "Whole Foods",
+    subcategory: "Jugos Naturales",
     description: "Bright, floral single-origin coffee from the Yirgacheffe region.",
     specs: ["12oz bag", "Whole bean", "Medium roast", "Direct trade"],
     inStock: 412,
@@ -187,6 +191,7 @@ export const products: Product[] = [
     brand: "Amazon Foods",
     price: 24.5,
     category: "Whole Foods",
+    subcategory: "Aceites y Condimentos", // We'll expand this category later
     description: "Cold-pressed extra virgin olive oil from small farms in Tuscany.",
     specs: ["500ml bottle", "Cold pressed", "First harvest", "Protected designation"],
     inStock: 289,
@@ -235,7 +240,7 @@ export const products: Product[] = [
   },
 ];
 
-export const categories = ["Whole Foods", "Amazon Foods", "Smartphones", "Smart Home", "Wearables", "Accessories"];
+export { mainCategories as categories } from "./categories";
 
 export const brands = ["Apple", "Samsung", "Dyson", "Oura", "Bose", "Peak Design", "Google", "Anker", "Blue Bottle", "Patagonia", "Whoop", "Sonos"];
 
