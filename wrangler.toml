@@ -1,0 +1,25 @@
+name = "umantai"
+
+# Use a recent compatibility date for best performance and features
+compatibility_date = "2025-10-01"
+
+# nodejs_compat_v2 provides better Node.js compatibility (recommended for Next.js 16+)
+compatibility_flags = ["nodejs_compat_v2"]
+
+# OpenNext outputs the built worker + assets here
+pages_build_output_dir = ".open-next"
+
+# ──────────────────────────────────────────────────────────────
+# Optional: Improved Caching (recommended for production)
+# ──────────────────────────────────────────────────────────────
+#
+# For better ISR / revalidation performance, you can bind an R2 bucket.
+# 1. Create an R2 bucket in the Cloudflare dashboard (e.g. "umantai-cache")
+# 2. Uncomment the section below and update the bucket name.
+#
+# [[r2_buckets]]
+# binding = "NEXT_CACHE_R2_BUCKET"
+# bucket_name = "umantai-cache"   # ← change to your actual R2 bucket name
+#
+# After adding the R2 bucket, OpenNext will automatically use it for caching
+# when you redeploy.
