@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 interface FilterDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -8,23 +10,38 @@ interface FilterDrawerProps {
 }
 
 export function FilterDrawer({ isOpen, onClose, children }: FilterDrawerProps) {
-  if (!isOpen) return null;
+  // Lock body scroll when drawer is open on mobile
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
 
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/70 z-[60] lg:hidden" 
-        onClick={onClose} 
+      <div
+        className={`fixed inset-0 bg-black/70 z-[60] lg:hidden transition-opacity duration-300 ${
+          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={onClose}
       />
 
       {/* Slide-in Drawer from Right */}
-      <div className="fixed top-0 right-0 bottom-0 w-[82%] max-w-[340px] bg-neutral-950 z-[70] lg:hidden flex flex-col transform transition-transform duration-300 shadow-2xl">
+      <div
+        className={`fixed top-0 right-0 bottom-0 w-[82%] max-w-[340px] bg-neutral-950 z-[70] lg:hidden flex flex-col transform transition-transform duration-300 shadow-2xl ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 h-14 border-b border-white/10 bg-neutral-900">
           <span className="font-semibold text-lg">Filters</span>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="text-3xl leading-none text-white/70 active:text-white"
           >
             ×
@@ -42,7 +59,7 @@ export function FilterDrawer({ isOpen, onClose, children }: FilterDrawerProps) {
             onClick={onClose}
             className="w-full py-3.5 bg-white text-black rounded-2xl font-medium active:bg-white/90"
           >
-            Apply Filters
+            Done
           </button>
         </div>
       </div>

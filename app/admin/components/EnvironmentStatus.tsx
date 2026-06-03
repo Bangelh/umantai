@@ -37,9 +37,10 @@ export function EnvironmentStatus() {
 
   const supabaseConfigured = useServer ? serverStatus!.supabase.urlConfigured : !!clientEnv.supabase.url;
   const dbConfigured = useServer ? serverStatus!.database.configured : !!clientEnv.database.url;
+  const isPooled = useServer ? serverStatus!.database.isPooled : /pooler|pooler\.supabase/i.test(clientEnv.database.url || '');
   const dbStatus = useServer
-    ? (serverStatus!.database.isNonPooling ? 'Non-pooling (preferred)' : 'Pooled connection')
-    : (clientEnv.database.nonPoolingUrl ? 'Non-pooling (preferred)' : 'Pooled connection');
+    ? (serverStatus!.database.isNonPooling && !serverStatus!.database.isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured')
+    : (clientEnv.database.nonPoolingUrl && !isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured');
   const whatsappConfigured = useServer ? serverStatus!.whatsapp.salesConfigured : !!clientEnv.whatsapp.salesPhone;
   const vercelEnv = useServer ? serverStatus!.vercel : clientEnv.vercel;
 
@@ -66,10 +67,14 @@ export function EnvironmentStatus() {
           <div className="text-[10px] text-white/40 mt-1">
             {dbStatus}
             {useServer && serverStatus!.database.resolvedFrom && ` (from ${serverStatus!.database.resolvedFrom})`}
+            {isPooled && <span className="text-red-400 ml-1">⚠️ contains pooler</span>}
           </div>
         )}
         {!dbConfigured && (
           <div className="text-[10px] text-white/40 mt-1">Run <code>vercel env pull</code> locally or set <code>POSTGRES_URL_NON_POOLING</code> (and <code>UMANTAI_URL_POSTGRES_URL_NON_POOLING</code>) in Vercel dashboard for the primary project.</div>
+        )}
+        {dbConfigured && isPooled && (
+          <div className="text-[9px] text-red-400 mt-1">Use the DIRECT (non-pooled) connection string from Supabase → "Direct connection".</div>
         )}
       </div>
 

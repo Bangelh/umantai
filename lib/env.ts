@@ -152,11 +152,17 @@ function validateEnvironment() {
     // Only warn in development to avoid noisy build logs on Vercel production deploys.
     // For production, ensure you set the non-pooled DIRECT connection string in Vercel env vars.
     const dbUrl = envConfig.database.url || '';
-    if (process.env.NODE_ENV === 'development' && dbUrl && /pooler|pooler\.supabase/i.test(dbUrl)) {
+    const isPooled = /pooler|pooler\.supabase/i.test(dbUrl);
+    if (process.env.NODE_ENV === 'development' && dbUrl && isPooled) {
       console.warn('⚠️  Database URL appears to be a pooled connection (contains "pooler").');
       console.warn('   For local development and Neon serverless driver reliability, use the DIRECT (non-pooled) connection string.');
       console.warn('   Update POSTGRES_URL_NON_POOLING (and UMANTAI_URL_POSTGRES_URL_NON_POOLING if using prefixed) in .env.local');
-      console.warn('   Get it from Supabase Dashboard → Database → Connect → "Direct connection".');
+      console.warn('   Get it from Supabase Dashboard → Database → Connect → "Direct connection" (NOT the pooled one).');
+      console.warn('   Even if you set it under the NON_POOLING var name, the value must be the direct string.');
+    }
+    if (isPooled) {
+      // Also surface in the debug info
+      (envConfig as any).database.isPooled = true;
     }
   }
 }
@@ -246,6 +252,7 @@ export interface EnvDebugInfo {
     configured: boolean;
     resolvedFrom: 'POSTGRES_URL_NON_POOLING' | 'POSTGRES_URL' | 'DATABASE_URL' | 'POSTGRES_PRISMA_URL' | 'none';
     isNonPooling: boolean;
+    isPooled: boolean; // true if the actual URL string contains pooler (even if under NON_POOLING name)
     urlMasked: string;
     urlLength: number;
   };
@@ -316,6 +323,7 @@ export function getEnvDebugInfo(): EnvDebugInfo {
       configured: !!envConfig.database.url,
       resolvedFrom: dbRes.resolvedFrom,
       isNonPooling: dbRes.isNonPooling,
+      isPooled: /pooler|pooler\.supabase/i.test(dbRes.url || ''),
       urlMasked: dbMasked,
       urlLength: dbRes.url ? dbRes.url.length : 0,
     },
