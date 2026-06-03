@@ -1,17 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "regions": ["iad1"],
+  "regions": [
+    "iad1"
+  ],
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "devCommand": "npm run dev",
   "functions": {
     "app/api/**/*": {
-      "memory": 1024,
       "maxDuration": 30
     },
     "app/(payload)/api/**/*": {
-      "memory": 1024,
       "maxDuration": 30
     }
   },
