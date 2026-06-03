@@ -5,6 +5,7 @@ import Link from "next/link";
 import { baseProducts } from "@/lib/products";
 import { useAdminProductStore, ProductOverride } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
+import { EnvironmentStatus } from "./components/EnvironmentStatus";
 
 // Types
 type Section = "products" | "brands" | "categories" | "stock";
@@ -109,11 +110,11 @@ function EditModal({ product, onClose }: EditModalProps) {
         body: JSON.stringify(updatePayload),
       });
     } catch (error) {
-      console.error("Failed to persist category change to database", error);
+      console.error("Failed to persist product edit (rename/stock/category) to database", error);
       alert(
-        "Category change saved locally but failed to save to database.\n\n" +
+        "Edit saved locally (preview) but failed to save to database.\n\n" +
         "Tip: For local development, use POSTGRES_URL_NON_POOLING in .env.local " +
-        "(run `vercel env pull .env.local` to get the latest vars)."
+        "(run `vercel env pull .env.local` to get the latest vars). Then use Publish or Migrate."
       );
     }
 
@@ -360,12 +361,51 @@ function CategoriesManager() {
 
   const loadTree = async () => {
     setLoading(true);
-    const res = await fetch('/api/categories/tree?format=tree');
+    // Use DB-backed endpoint so renames + adds via PATCH/POST are immediately visible in the editor UI.
+    // Falls back gracefully if DB empty (user can seed below).
+    const res = await fetch('/api/categories?format=tree');
     const data = await res.json();
     if (data.success) {
-      setTree(data.data.children || []); // We show Frutas + Verduras
+      setTree(data.data || []); // DB format=tree returns roots array directly (Frutas/Verduras groups)
+    } else {
+      // If DB not ready or error, try the static tree as last resort (for display only)
+      try {
+        const res2 = await fetch('/api/categories/tree');
+        const data2 = await res2.json();
+        if (data2.success) setTree(data2.data?.children || []);
+      } catch {}
     }
     setLoading(false);
+  };
+
+  const seedCategoriesFromStatic = async () => {
+    if (!confirm('Initialize DB categories from the static Whole Foods list?\n\nThis will create top-level groups (Frutas, Verduras) + all subcategories. Existing DB categories will remain (duplicates may error).')) return;
+
+    const groups = wholeFoodsCategories.subcategories || [];
+    for (const group of groups) {
+      // Create group as top-level (parent_id null)
+      const groupRes = await fetch('/api/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: group.name }),
+      });
+      const groupData = await groupRes.json().catch(() => ({}));
+      const parentId = groupData?.data?.id;
+      if (!parentId) {
+        console.warn('Failed to create group', group.name, groupData);
+        continue;
+      }
+      // Create subs under it
+      for (const sub of (group.subcategories || [])) {
+        await fetch('/api/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: sub.name, parent_id: parentId }),
+        }).catch(() => {});
+      }
+    }
+    await loadTree();
+    alert('Seeded categories from static list. You can now Rename items and they will persist + reflect here.');
   };
 
   // Simple filter for category tree
@@ -554,7 +594,7 @@ function CategoriesManager() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <h2 className="text-2xl font-semibold">Categories Tree Editor</h2>
         
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             value={categorySearch}
@@ -563,6 +603,13 @@ function CategoriesManager() {
             className="bg-neutral-950 border border-white/20 rounded-xl px-4 py-2 text-sm w-64"
           />
           <button onClick={loadTree} className="text-sm px-4 py-2 border border-white/20 rounded-xl">Refresh</button>
+          <button 
+            onClick={seedCategoriesFromStatic} 
+            className="text-sm px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 rounded-xl"
+            title="One-time: populate the categories table from the built-in Whole Foods list so rename/save works immediately"
+          >
+            Seed from static
+          </button>
         </div>
       </div>
 
@@ -589,7 +636,7 @@ function CategoriesManager() {
       </div>
 
       <p className="mt-6 text-xs text-white/50">
-        Click <strong>Rename</strong> to edit names. Use <strong>+ Add Sub</strong> to create new items. Delete only works on leaf nodes.
+        Click <strong>Rename</strong> to edit names (persisted to DB + live in this tree after refresh). Use <strong>Seed from static</strong> first if tree is empty. <strong>+ Add Sub</strong> to create new items. Delete only works on leaf nodes.
       </p>
     </div>
   );
@@ -728,6 +775,8 @@ export default function AdminPage() {
   const [publishMessage, setPublishMessage] = useState("");
   const [migrationStatus, setMigrationStatus] = useState<"idle" | "migrating" | "success" | "error">("idle");
   const [migrationMessage, setMigrationMessage] = useState("");
+  const [setupStatus, setSetupStatus] = useState<"idle" | "running" | "success" | "error">("idle");
+  const [setupMessage, setSetupMessage] = useState("");
 
   // Command bar - typing switches sections
   const handleGlobalSearch = (value: string) => {
@@ -793,6 +842,25 @@ export default function AdminPage() {
     setTimeout(() => { setMigrationStatus("idle"); setMigrationMessage(""); }, 4000);
   };
 
+  const handleSetupDb = async () => {
+    setSetupStatus("running");
+    setSetupMessage("");
+    try {
+      const res = await fetch("/api/admin/setup-db", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSetupStatus("success");
+        setSetupMessage(data.message || "DB tables created (product_overrides, categories, brands). You can now Seed categories and use Rename/Save.");
+      } else {
+        throw new Error(data.error || data.message || "Setup failed");
+      }
+    } catch (e: any) {
+      setSetupStatus("error");
+      setSetupMessage("Setup failed: " + (e?.message || "Check console. Ensure POSTGRES_URL_NON_POOLING is set."));
+    }
+    setTimeout(() => { setSetupStatus("idle"); setSetupMessage(""); }, 6000);
+  };
+
   // Filtered products for the Products tab
   const filteredProducts = baseProducts.filter(p => 
     !productSearch || 
@@ -842,7 +910,12 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto px-8 py-8">
         <h1 className="text-4xl tracking-tighter font-semibold mb-2">Backend Management</h1>
-        <p className="text-white/60 mb-6">Type in the bar below to switch sections (products, brands, categories, stock)</p>
+        <p className="text-white/60 mb-4">Type in the bar below to switch sections (products, brands, categories, stock). Edit/rename/save persist to Postgres (use Publish or direct edits).</p>
+
+        {/* Live backend connection status (DB, Supabase, WhatsApp, env) */}
+        <div className="mb-6">
+          <EnvironmentStatus />
+        </div>
 
         {/* Command / Global Search Bar */}
         <div className="mb-8">
@@ -876,13 +949,17 @@ export default function AdminPage() {
               <div className="text-sm text-white/60">Changes survive deployments when published here.</div>
             </div>
             <div className="flex flex-wrap gap-3">
+              <button onClick={handleSetupDb} disabled={setupStatus === "running"} className="px-5 py-2 rounded-2xl border border-blue-500/40 text-blue-300 text-sm disabled:opacity-50" title="Create required tables (product_overrides for inventory/overrides, categories, brands) in Postgres. Run once after connecting DB.">Setup DB Tables</button>
               <button onClick={handleMigrate} disabled={!hasLocalChanges || migrationStatus === "migrating"} className="px-5 py-2 rounded-2xl border border-amber-500/40 text-amber-300 text-sm disabled:opacity-50">Migrate local changes to DB</button>
               <button onClick={() => loadFromDatabase()} className="px-5 py-2 rounded-2xl border border-white/20 text-sm">Reload from DB</button>
               <button onClick={handlePublish} disabled={!hasLocalChanges || publishStatus === "publishing"} className="px-8 py-2 rounded-2xl bg-white text-black font-medium disabled:bg-white/60">Publish to Database</button>
             </div>
           </div>
-          {(publishMessage || migrationMessage) && (
-            <div className="mt-4 text-sm text-emerald-300">{publishMessage || migrationMessage}</div>
+          {(publishMessage || migrationMessage || setupMessage) && (
+            <div className="mt-4 text-sm text-emerald-300">{publishMessage || migrationMessage || setupMessage}</div>
+          )}
+          {setupStatus === "error" && setupMessage && (
+            <div className="mt-2 text-sm text-red-400">{setupMessage}</div>
           )}
         </div>
 
@@ -914,15 +991,16 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-white/10">
                   {filteredProducts.map(product => {
                     const ov = overrides[product.slug] || {};
-                    const price = ov.price ?? product.price;
-                    const stock = ov.inStock ?? product.inStock;
+                    const effective = { ...product, ...ov };
+                    const price = effective.price;
+                    const stock = effective.inStock;
                     const modified = Object.keys(ov).length > 0;
 
                     return (
                       <tr key={product.slug}>
                         <td className="py-4 px-6">
-                          <div className="font-medium">{product.name}</div>
-                          <div className="text-xs text-white/50">{product.brand} • {product.subcategory}</div>
+                          <div className="font-medium">{effective.name}</div>
+                          <div className="text-xs text-white/50">{effective.brand} • {effective.subcategory}</div>
                         </td>
                         <td className="py-4 px-6 font-mono">${price}</td>
                         <td className="py-4 px-6"><span className={stock === 0 ? "text-red-400" : ""}>{stock}</span></td>

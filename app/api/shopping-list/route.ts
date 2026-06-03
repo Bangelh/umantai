@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     const msg = error?.message || "";
     if (msg.includes("relation") || msg.includes("does not exist") || (error?.code === '42P01')) {
       return NextResponse.json(
-        { items: [], error: "shopping_list_items table missing. Run the 'Setup Category & Brand Tables' (or full setup) button in /admin." },
+        { items: [], error: "shopping_list_items table missing. Go to /admin → click 'Setup DB Tables' button (creates product_overrides/categories/brands + you may need shopping_list_items migration). Supabase auth also required for server lists." },
         { status: 503 }
       );
     }

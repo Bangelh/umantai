@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { upsertOverride } from '@/lib/db';
+import { upsertOverride, getOverride } from '@/lib/db';
 import { baseProductsData as baseProducts } from '@/lib/products';
 
 interface UpdateProductBody {
+  // Category tree selection (for DB tracking)
   category_id?: number;
   subcategory_id?: number;
   category_path?: string;
-  // We can also allow other fields in the future
+
+  // Full editable product fields (for rename, inventory, etc)
+  name?: string;
   price?: number;
   inStock?: number;
   description?: string;
+  brand?: string;
+  category?: string;
+  subcategory?: string;
   images?: string[];
+  rating?: number;
+  reviewCount?: number;
+  bestseller?: boolean;
 }
 
 export async function PATCH(
@@ -30,7 +39,7 @@ export async function PATCH(
       );
     }
 
-    // Build the override object
+    // Build the override object (support rename + all edit fields + inventory)
     const changes: Record<string, any> = {};
 
     if (body.category_id !== undefined) {
@@ -43,11 +52,17 @@ export async function PATCH(
       changes.category_path = body.category_path;
     }
 
-    // Allow updating other common fields too (for future use)
+    if (body.name !== undefined) changes.name = body.name;
     if (body.price !== undefined) changes.price = body.price;
     if (body.inStock !== undefined) changes.inStock = body.inStock;
     if (body.description !== undefined) changes.description = body.description;
+    if (body.brand !== undefined) changes.brand = body.brand;
+    if (body.category !== undefined) changes.category = body.category;
+    if (body.subcategory !== undefined) changes.subcategory = body.subcategory;
     if (body.images !== undefined) changes.images = body.images;
+    if (body.rating !== undefined) changes.rating = body.rating;
+    if (body.reviewCount !== undefined) changes.reviewCount = body.reviewCount;
+    if (body.bestseller !== undefined) changes.bestseller = body.bestseller;
 
     if (Object.keys(changes).length === 0) {
       return NextResponse.json(
@@ -56,8 +71,12 @@ export async function PATCH(
       );
     }
 
+    // Merge with existing to avoid partial PATCH (e.g. stock update) wiping prior rename/name/brand etc.
+    const existing = await getOverride(slug);
+    const merged = existing ? { ...existing, ...changes } : changes;
+
     // Save to Postgres via the existing override system
-    await upsertOverride(slug, changes);
+    await upsertOverride(slug, merged);
 
     return NextResponse.json({
       success: true,

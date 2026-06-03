@@ -8,11 +8,15 @@ import { sql } from '@/lib/db';
  * You should only need to call this once after creating your Vercel Postgres database.
  */
 async function setupDatabase() {
-  const databaseUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  // Prefer non-pooling (matches lib/db.ts and recent neon migration)
+  const databaseUrl =
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL;
 
   if (!databaseUrl) {
     return NextResponse.json(
-      { error: 'No DATABASE_URL found. Make sure Vercel Postgres is connected.' },
+      { error: 'No Postgres URL found. Set POSTGRES_URL_NON_POOLING (preferred) or POSTGRES_URL / DATABASE_URL. Run `vercel env pull .env.local`.' },
       { status: 400 }
     );
   }

@@ -87,6 +87,25 @@ export async function getAllOverrides(): Promise<Record<string, Record<string, a
 }
 
 /**
+ * Get a single product's override data (or null if none).
+ */
+export async function getOverride(slug: string): Promise<Record<string, any> | null> {
+  const databaseUrl = getDatabaseUrl();
+  if (!databaseUrl) return null;
+
+  try {
+    const result = await sql`
+      SELECT data FROM product_overrides WHERE slug = ${slug} LIMIT 1
+    `;
+    if (result.rows.length === 0) return null;
+    return result.rows[0].data as Record<string, any>;
+  } catch (error) {
+    console.error('[DB] Failed to fetch override for', slug, error);
+    return null;
+  }
+}
+
+/**
  * Upsert (insert or update) a single product override.
  */
 export async function upsertOverride(slug: string, data: Record<string, any>): Promise<void> {

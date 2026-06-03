@@ -1,0 +1,33 @@
+{
+  "name": "Umantai",
+  "short_name": "Umantai",
+  "description": "Premium whole foods and technology. Shop curated collection, manage lists, and use in-store kiosk.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/file.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["shopping", "food", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Shop Collection",
+      "short_name": "Shop",
+      "url": "/products",
+      "icons": [{ "src": "/file.svg", "sizes": "any" }]
+    },
+    {
+      "name": "My Shopping List",
+      "short_name": "List",
+      "url": "/list",
+      "icons": [{ "src": "/file.svg", "sizes": "any" }]
+    }
+  ]
+}
