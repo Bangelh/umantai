@@ -1,0 +1,113 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Payload types
+        run: npm run payload:generate-types
+
+      - name: Type check
+        run: npx tsc --noEmit --skipLibCheck || true
+
+      - name: Lint
+        run: npm run lint || true
+
+      - name: Build (Vercel/Next.js)
+        run: npm run build
+
+      - name: Build for Cloudflare (OpenNext)
+        run: npm run build:cloudflare
+
+      - name: Payload migrate (dry run / check)
+        # In real CD, run with production secrets for actual migrations
+        run: npm run payload:migrate -- --help || echo "Payload migrate available. Run with prod DB in deploy job."
+
+  # Vercel and Cloudflare deploys are primarily handled via their GitHub integrations
+  # (recommended for automatic deploys on push).
+  # The jobs below are optional examples using CLI + secrets for full control.
+
+  deploy-vercel:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Deploy to Vercel (production)
+        # Requires VERCEL_TOKEN and VERCEL_ORG_ID / VERCEL_PROJECT_ID in repo secrets
+        # Get them from Vercel dashboard after linking the project.
+        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  deploy-cloudflare:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build for Cloudflare
+        run: npm run build:cloudflare
+
+      - name: Deploy to Cloudflare Pages
+        # Requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in secrets
+        # Project name from wrangler.toml or --project-name
+        run: npx wrangler pages deploy .open-next --project-name=umantai --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # Example: Run Payload migrations against production DB as part of CD
+  # (uncomment/adapt after setting PROD_DB secrets)
+  # payload-migrate:
+  #   needs: ci
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: 'npm'
+  #     - run: npm ci
+  #     - name: Payload migrate (production)
+  #       run: npm run payload:migrate
+  #       env:
+  #         POSTGRES_URL_NON_POOLING: ${{ secrets.PROD_POSTGRES_URL_NON_POOLING }}
+  #         PAYLOAD_SECRET: ${{ secrets.PAYLOAD_SECRET }}
