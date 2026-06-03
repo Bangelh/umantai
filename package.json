@@ -2,6 +2,7 @@
   "name": "umantai",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,19 +10,26 @@
     "start": "next start",
     "lint": "eslint",
     "preview": "npx wrangler pages dev .open-next",
-    "deploy:cloudflare": "npm run build:cloudflare && npx wrangler pages deploy .open-next"
+    "deploy:cloudflare": "npm run build:cloudflare && npx wrangler pages deploy .open-next",
+    "cms": "next dev",
+    "payload:generate-types": "payload generate:types",
+    "payload:migrate": "payload migrate"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@payloadcms/db-postgres": "^3.85.0",
+    "@payloadcms/next": "^3.85.0",
+    "@payloadcms/richtext-lexical": "^3.85.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
-    "@vercel/postgres": "^0.10.0",
+    "@neondatabase/serverless": "^1.1.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "sharp": "^0.34.5",
     "sonner": "^2.0.7",
     "zustand": "^5.0.14"
   },

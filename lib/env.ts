@@ -149,8 +149,10 @@ function validateEnvironment() {
     console.log(`   WhatsApp: ${envConfig.whatsapp.salesPhone ? 'Configured' : 'Not configured'}`);
 
     // Warn if using a pooled connection string (common source of "fetch failed" / connectivity issues in dev)
+    // Only warn in development to avoid noisy build logs on Vercel production deploys.
+    // For production, ensure you set the non-pooled DIRECT connection string in Vercel env vars.
     const dbUrl = envConfig.database.url || '';
-    if (dbUrl && /pooler|pooler\.supabase/i.test(dbUrl)) {
+    if (process.env.NODE_ENV === 'development' && dbUrl && /pooler|pooler\.supabase/i.test(dbUrl)) {
       console.warn('⚠️  Database URL appears to be a pooled connection (contains "pooler").');
       console.warn('   For local development and Neon serverless driver reliability, use the DIRECT (non-pooled) connection string.');
       console.warn('   Update POSTGRES_URL_NON_POOLING (and UMANTAI_URL_POSTGRES_URL_NON_POOLING if using prefixed) in .env.local');

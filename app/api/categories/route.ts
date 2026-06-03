@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
-import { hasDatabaseConnection, getDatabaseNotConfiguredError } from '@/lib/db';
+import { sql, hasDatabaseConnection, getDatabaseNotConfiguredError } from '@/lib/db';
 
 interface Category {
   id: number;

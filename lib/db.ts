@@ -1,4 +1,4 @@
-import { sql } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 
 // Type for product overrides stored in DB
 export interface ProductOverrideRow {
@@ -9,7 +9,8 @@ export interface ProductOverrideRow {
 
 /**
  * Returns the best available Postgres connection string.
- * Prefers the non-pooling URL for local development (more reliable).
+ * Prefers the non-pooling URL for local development and serverless reliability.
+ * This addresses the "pooled connection" warning on Vercel/Neon.
  */
 function getDatabaseUrl(): string | undefined {
   return (
@@ -18,6 +19,23 @@ function getDatabaseUrl(): string | undefined {
     process.env.DATABASE_URL
   );
 }
+
+/**
+ * Neon SQL client (replacement for deprecated @vercel/postgres).
+ * Returns results in { rows: [...] } shape for minimal code changes in callers.
+ */
+function getSql() {
+  const url = getDatabaseUrl();
+  if (!url) return null;
+  const neonSql = neon(url);
+  // Wrap the tagged template call to return the old { rows } shape
+  return (strings: TemplateStringsArray, ...values: any[]) => {
+    return neonSql(strings, ...values).then((rows: any[]) => ({ rows }));
+  };
+}
+
+const sql = getSql() as any; // local for internal use + re-export
+export { sql }; // for direct import compatibility in routes that still do `import { sql } from ...`
 
 /**
  * Returns true if a Postgres connection string is available.
