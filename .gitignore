@@ -44,3 +44,9 @@ next-env.d.ts
 .open-next/
 .vercel
 .env*
+
+# Grok Build / agent / skills artifacts (do not deploy)
+.grok/
+.agents/
+skills-lock.json
+
