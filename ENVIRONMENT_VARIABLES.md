@@ -28,7 +28,7 @@ This document lists all recommended environment variables for deploying Umantai 
   - `BANGELH_*` / `BANGELH_NEXT_PUBLIC_*` — from Bangelh-linked Supabase integration
   - `UMANTAI_URL_*` / `NEXT_PUBLIC_UMANTAI_URL_*` — injected by umantai Vercel project (e.g. preview URLs like umantai-dh4a-7zlzja1br-umantai.vercel.app)
   - Plus direct (unprefixed) names always work as fallback.
-- Vercel Postgres variables are usually auto-injected when you connect a Postgres database (prefixed variants also resolved).
+- Postgres variables (POSTGRES_URL*, DATABASE_URL etc.) are usually auto-injected when you connect a Postgres database via Vercel Marketplace / Neon or other (prefixed variants also resolved).
 - `SUPABASE_SERVICE_ROLE_KEY` is required for server-side operations (especially the Notes feature due to Row Level Security).
 
 ---
@@ -68,7 +68,7 @@ NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your produ
 NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
 ```
 
-### Vercel Postgres
+### Postgres
 ```env
 # Main connection string (often pooled)
 POSTGRES_URL=postgres://...
@@ -118,7 +118,7 @@ NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your produ
 NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
 ```
 
-### Vercel Postgres
+### Postgres
 ```env
 POSTGRES_URL=postgres://...
 POSTGRES_PRISMA_URL=postgres://...
@@ -158,7 +158,7 @@ NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your produ
 NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
 ```
 
-### Vercel Postgres
+### Postgres
 ```env
 POSTGRES_URL=postgres://...
 POSTGRES_PRISMA_URL=postgres://...

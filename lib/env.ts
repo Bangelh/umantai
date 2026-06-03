@@ -1,8 +1,8 @@
-import { z } from 'zod';
-
 /**
- * Environment variable schema with sensible defaults and validation.
+ * Environment variable configuration with sensible defaults and validation.
  * This provides type safety and clear error messages when variables are missing.
+ * No external deps (e.g. zod) to keep client bundles lean and avoid accidental
+ * transitive-only dependency issues after GitHub org migration (OceanSide26 → Bangelh).
  */
 
 // Supported prefixes from Vercel Supabase/Postgres integrations
@@ -32,45 +32,35 @@ const getPrefixedEnv = (key: string): string | undefined => {
   return undefined;
 };
 
-const envSchema = z.object({
-  // ============================================
-  // Supabase (base names; prefixed variants are resolved via getPrefixedEnv for BANGELH_/UMANTAI_*)
-  // ============================================
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1).optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-
-  // ============================================
-  // WhatsApp
-  // ============================================
-  NEXT_PUBLIC_WHATSAPP_SALES_PHONE: z.string().min(5).optional(),
-  NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE: z.string().min(5).optional(),
-  NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE: z.string().min(1).optional(),
-  NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE: z.string().min(1).optional(),
-
-  // ============================================
-  // Vercel Postgres
-  // ============================================
-  POSTGRES_URL: z.string().optional(),
-  POSTGRES_URL_NON_POOLING: z.string().optional(),
-  POSTGRES_PRISMA_URL: z.string().optional(),
-  DATABASE_URL: z.string().optional(),
-
-  // ============================================
-  // Vercel
-  // ============================================
-  VERCEL_ENV: z.enum(['production', 'preview', 'development']).default('development'),
-  VERCEL_URL: z.string().optional(),
-});
-
-const parsedEnv = envSchema.safeParse(process.env);
-
-if (!parsedEnv.success) {
-  console.error('❌ Invalid environment variables:', parsedEnv.error.format());
-  throw new Error('Invalid environment variables. Check your .env.local file.');
+// Lightweight validation equivalent (avoids zod). Only VERCEL_ENV can cause hard failure here.
+const allowedVercelEnvs = ['production', 'preview', 'development'] as const;
+let VERCEL_ENV: 'production' | 'preview' | 'development' = 'development';
+const rawVercelEnv = process.env.VERCEL_ENV;
+if (rawVercelEnv) {
+  if ((allowedVercelEnvs as readonly string[]).includes(rawVercelEnv)) {
+    VERCEL_ENV = rawVercelEnv as any;
+  } else {
+    const fakeError = { VERCEL_ENV: { _errors: [`Invalid enum value. Expected 'production' | 'preview' | 'development', received '${rawVercelEnv}'`] } };
+    console.error('❌ Invalid environment variables:', fakeError);
+    throw new Error('Invalid environment variables. Check your .env.local file.');
+  }
 }
 
-const env = parsedEnv.data;
+const env = {
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  NEXT_PUBLIC_WHATSAPP_SALES_PHONE: process.env.NEXT_PUBLIC_WHATSAPP_SALES_PHONE,
+  NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE: process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE,
+  NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE: process.env.NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE,
+  NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE: process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE,
+  POSTGRES_URL: process.env.POSTGRES_URL,
+  POSTGRES_URL_NON_POOLING: process.env.POSTGRES_URL_NON_POOLING,
+  POSTGRES_PRISMA_URL: process.env.POSTGRES_PRISMA_URL,
+  DATABASE_URL: process.env.DATABASE_URL,
+  VERCEL_ENV,
+  VERCEL_URL: process.env.VERCEL_URL,
+};
 
 // Export a clean, typed object with sensible naming and fallbacks
 export const envConfig = {
@@ -102,7 +92,7 @@ export const envConfig = {
       'Hello! I need help with my order or account.',
   },
 
-  // Database
+  // Database (Postgres via Neon serverless driver or compatible; supports Vercel/Neon injected vars)
   database: {
     // Prefer non-pooling URL for reliability (especially in development)
     url:
@@ -136,7 +126,7 @@ function validateEnvironment() {
   // Critical for most functionality
   if (!envConfig.supabase.url) missing.push('NEXT_PUBLIC_SUPABASE_URL (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
   if (!envConfig.supabase.anonKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
-  if (!envConfig.database.url) missing.push('POSTGRES_URL or POSTGRES_URL_NON_POOLING or DATABASE_URL (or BANGELH_/UMANTAI_URL_ prefixed variants)');
+  if (!envConfig.database.url) missing.push('POSTGRES_URL or POSTGRES_URL_NON_POOLING or DATABASE_URL (or BANGELH_/UMANTAI_URL_ prefixed variants) — prefer the DIRECT/non-pooled string for POSTGRES_URL_NON_POOLING');
 
   // Critical for admin + notes features
   if (!envConfig.supabase.serviceRoleKey) missing.push('SUPABASE_SERVICE_ROLE_KEY (or BANGELH_/UMANTAI_URL_ variants)');
@@ -157,6 +147,15 @@ function validateEnvironment() {
     console.log(`   Supabase: ${envConfig.supabase.url ? 'Connected' : 'Not configured'} (prefix support: BANGELH_/UMANTAI_URL_*)`);
     console.log(`   Database: ${envConfig.database.url ? 'Connected' : 'Not configured'}`);
     console.log(`   WhatsApp: ${envConfig.whatsapp.salesPhone ? 'Configured' : 'Not configured'}`);
+
+    // Warn if using a pooled connection string (common source of "fetch failed" / connectivity issues in dev)
+    const dbUrl = envConfig.database.url || '';
+    if (dbUrl && /pooler|pooler\.supabase/i.test(dbUrl)) {
+      console.warn('⚠️  Database URL appears to be a pooled connection (contains "pooler").');
+      console.warn('   For local development and Neon serverless driver reliability, use the DIRECT (non-pooled) connection string.');
+      console.warn('   Update POSTGRES_URL_NON_POOLING (and UMANTAI_URL_POSTGRES_URL_NON_POOLING if using prefixed) in .env.local');
+      console.warn('   Get it from Supabase Dashboard → Database → Connect → "Direct connection".');
+    }
   }
 }
 
