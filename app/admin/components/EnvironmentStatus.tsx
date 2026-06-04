@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import { envConfig } from '@/lib/env';
 
 interface ServerStatus {
-  database: { configured: boolean; resolvedFrom?: string; isNonPooling?: boolean; urlMasked?: string };
+  database: { 
+    configured: boolean; 
+    resolvedFrom?: string; 
+    isNonPooling?: boolean; 
+    isPooled?: boolean; 
+    urlMasked?: string 
+  };
   supabase: { urlConfigured: boolean; urlMasked?: string; serviceRoleConfigured?: boolean };
   whatsapp: { salesConfigured: boolean; supportConfigured: boolean };
   vercel: { env: string; url: string; isProduction?: boolean; isPreview?: boolean };
@@ -37,9 +43,11 @@ export function EnvironmentStatus() {
 
   const supabaseConfigured = useServer ? serverStatus!.supabase.urlConfigured : !!clientEnv.supabase.url;
   const dbConfigured = useServer ? serverStatus!.database.configured : !!clientEnv.database.url;
-  const isPooled = useServer ? serverStatus!.database.isPooled : /pooler|pooler\.supabase/i.test(clientEnv.database.url || '');
+  const isPooled = useServer 
+    ? !!serverStatus!.database.isPooled 
+    : /pooler|pooler\.supabase/i.test(clientEnv.database.url || '');
   const dbStatus = useServer
-    ? (serverStatus!.database.isNonPooling && !serverStatus!.database.isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured')
+    ? (serverStatus!.database.isNonPooling && !isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured')
     : (clientEnv.database.nonPoolingUrl && !isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured');
   const whatsappConfigured = useServer ? serverStatus!.whatsapp.salesConfigured : !!clientEnv.whatsapp.salesPhone;
   const vercelEnv = useServer ? serverStatus!.vercel : clientEnv.vercel;

@@ -223,6 +223,9 @@ export default function DebugEnvPage() {
                     {!debugInfo.database.isNonPooling && debugInfo.database.configured && (
                       <div className="text-amber-400 text-xs mt-0.5">Using pooled connection — consider setting POSTGRES_URL_NON_POOLING for better reliability</div>
                     )}
+                    {debugInfo.database.isPooled && (
+                      <div className="text-red-400 text-xs mt-0.5 font-medium">⚠️ URL contains 'pooler' — this is a pooled connection even if resolved from NON_POOLING var. Use the Direct connection string.</div>
+                    )}
                   </div>
 
                   <div>
