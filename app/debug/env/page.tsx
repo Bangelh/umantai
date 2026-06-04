@@ -209,6 +209,9 @@ export default function DebugEnvPage() {
                   <div className={`text-[10px] px-2 py-0.5 rounded ${debugInfo.database.configured ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
                     {debugInfo.database.configured ? 'CONFIGURED' : 'MISSING'}
                   </div>
+                  {debugInfo.database.isPooled && (
+                    <div className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400">POOLER</div>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -227,7 +230,12 @@ export default function DebugEnvPage() {
                       <div className="text-amber-400 text-xs mt-0.5">Using pooled connection — set POSTGRES_URL_NON_POOLING (direct) for better reliability</div>
                     )}
                     {debugInfo.database.isPooled && (
-                      <div className="text-red-400 text-xs mt-0.5 font-medium">⚠️ URL contains 'pooler' — this is a pooled connection. Use the Direct (non-pooled) connection string from Supabase.</div>
+                      <div className="mt-0.5">
+                        <span className="inline-flex items-center gap-1 text-amber-500 text-xs font-medium">
+                          <span>⚠️</span>
+                          <span>Connection pooler detected — use the Direct (non-pooled) connection string from Supabase.</span>
+                        </span>
+                      </div>
                     )}
                   </div>
 

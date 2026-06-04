@@ -72,8 +72,14 @@ export function EnvironmentStatus() {
 
       <div className="border border-white/10 bg-neutral-900 rounded-2xl p-4">
         <div className="text-xs text-white/50 mb-1">DATABASE (Postgres)</div>
-        <div className={`text-sm font-medium ${dbConfigured ? 'text-emerald-400' : 'text-red-400'}`}>
+        <div className={`text-sm font-medium flex items-center gap-2 ${dbConfigured ? 'text-emerald-400' : 'text-red-400'}`}>
           {dbConfigured ? 'Connected' : 'Not configured'}
+          {isPooled && (
+            <span className="inline-flex items-center gap-1 text-amber-500 text-sm font-medium">
+              <span>⚠️</span>
+              <span>Connection pooler detected</span>
+            </span>
+          )}
         </div>
         {dbConfigured && (
           <div className="text-[10px] text-white/40 mt-1">
@@ -83,14 +89,13 @@ export function EnvironmentStatus() {
                 ? ` (from ${serverStatus!.database.resolvedFrom} var)`
                 : ` (from ${serverStatus!.database.resolvedFrom})`
             )}
-            {isPooled && <span className="text-red-400 ml-1"> ⚠️ contains pooler</span>}
           </div>
         )}
         {!dbConfigured && (
           <div className="text-[10px] text-white/40 mt-1">Run <code>vercel env pull</code> locally or set <code>POSTGRES_URL_NON_POOLING</code> (and <code>UMANTAI_URL_POSTGRES_URL_NON_POOLING</code>) in Vercel dashboard for the primary project.</div>
         )}
         {dbConfigured && isPooled && (
-          <div className="text-[9px] text-red-400 mt-1">Use the DIRECT (non-pooled) connection string from Supabase → "Direct connection".</div>
+          <div className="text-[9px] text-amber-400 mt-1">Use the DIRECT (non-pooled) connection string from Supabase → "Direct connection".</div>
         )}
       </div>
 
