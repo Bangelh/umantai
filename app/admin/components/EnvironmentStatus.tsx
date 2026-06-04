@@ -83,7 +83,7 @@ export function EnvironmentStatus() {
                 ? ` (from ${serverStatus!.database.resolvedFrom} var)`
                 : ` (from ${serverStatus!.database.resolvedFrom})`
             )}
-            {isPooled && <span className="text-red-400 ml-1">⚠️ contains pooler</span>}
+            {isPooled && <span className="text-red-400 ml-1"> ⚠️ contains pooler</span>}
           </div>
         )}
         {!dbConfigured && (
