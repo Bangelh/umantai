@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import { getPrefixedEnv } from './env';
 
 // Type for product overrides stored in DB
 export interface ProductOverrideRow {
@@ -13,11 +14,20 @@ export interface ProductOverrideRow {
  * This addresses the "pooled connection" warning on Vercel/Neon.
  */
 function getDatabaseUrl(): string | undefined {
-  return (
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL
-  );
+  // Use prefixed env support (BANGELH_, UMANTAI_URL_, UMANTAI_) for Vercel integrations
+  // and always prefer the non-pooling direct connection.
+  const url =
+    getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+    getPrefixedEnv('POSTGRES_URL') ||
+    getPrefixedEnv('DATABASE_URL');
+
+  // Extra safety: if the *value* in the preferred NON_POOLING slot is still pooled, warn loudly in dev.
+  // The UI (EnvironmentStatus + /debug/env) will also surface this clearly.
+  if (process.env.NODE_ENV === 'development' && url && /pooler|pooler\.supabase/i.test(url)) {
+    console.warn('⚠️ [db] Resolved database URL contains "pooler" (pooled). The NON_POOLING var (or its prefixed equivalent) must be set to Supabase "Direct connection" string, not the pooler one.');
+  }
+
+  return url;
 }
 
 /**

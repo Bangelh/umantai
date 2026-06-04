@@ -16,7 +16,7 @@ const VERCEL_ENV_PREFIXES = ['BANGELH_', 'UMANTAI_URL_', 'UMANTAI_'] as const;
  *   2. <PREFIX>key (e.g. BANGELH_NEXT_PUBLIC_SUPABASE_URL, UMANTAI_URL_POSTGRES_URL)
  *   3. For NEXT_PUBLIC_* keys: NEXT_PUBLIC_<PREFIX>rest (e.g. NEXT_PUBLIC_UMANTAI_URL_SUPABASE_URL)
  */
-const getPrefixedEnv = (key: string): string | undefined => {
+export const getPrefixedEnv = (key: string): string | undefined => {
   if (process.env[key]) return process.env[key];
 
   for (const prefix of VERCEL_ENV_PREFIXES) {
@@ -95,13 +95,20 @@ export const envConfig = {
   // Database (Postgres via Neon serverless driver or compatible; supports Vercel/Neon injected vars)
   database: {
     // Prefer non-pooling URL for reliability (especially in development)
+    // Uses getPrefixedEnv so BANGELH_/UMANTAI_URL_* etc from Vercel integrations are picked up
     url:
-      env.POSTGRES_URL_NON_POOLING ||
-      env.POSTGRES_URL ||
-      env.DATABASE_URL ||
+      getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+      getPrefixedEnv('POSTGRES_URL') ||
+      getPrefixedEnv('DATABASE_URL') ||
       '',
-    prismaUrl: env.POSTGRES_PRISMA_URL || env.POSTGRES_URL || '',
-    nonPoolingUrl: env.POSTGRES_URL_NON_POOLING || env.POSTGRES_URL || '',
+    prismaUrl:
+      getPrefixedEnv('POSTGRES_PRISMA_URL') ||
+      getPrefixedEnv('POSTGRES_URL') ||
+      '',
+    nonPoolingUrl:
+      getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+      getPrefixedEnv('POSTGRES_URL') ||
+      '',
   },
 
   // Vercel runtime info
@@ -220,10 +227,15 @@ function resolveDatabaseSource() {
     { key: 'POSTGRES_PRISMA_URL' as const, val: getPrefixedEnv('POSTGRES_PRISMA_URL') },
   ];
   const found = candidates.find((c) => !!c.val);
+  const url = found?.val || '';
+  const isPooledValue = /pooler|pooler\.supabase/i.test(url);
+  const intendedNonPooling = found?.key === 'POSTGRES_URL_NON_POOLING';
   return {
     resolvedFrom: found ? found.key : ('none' as const),
-    url: found?.val || '',
-    isNonPooling: found?.key === 'POSTGRES_URL_NON_POOLING',
+    url,
+    isNonPooling: intendedNonPooling, // picked the *named* non-pooling var (may still have pooled *value*)
+    isPooled: isPooledValue,
+    effectiveIsNonPooling: intendedNonPooling && !isPooledValue,
   };
 }
 
@@ -251,8 +263,9 @@ export interface EnvDebugInfo {
   database: {
     configured: boolean;
     resolvedFrom: 'POSTGRES_URL_NON_POOLING' | 'POSTGRES_URL' | 'DATABASE_URL' | 'POSTGRES_PRISMA_URL' | 'none';
-    isNonPooling: boolean;
-    isPooled: boolean; // true if the actual URL string contains pooler (even if under NON_POOLING name)
+    isNonPooling: boolean; // resolved from the NON_POOLING *var name* (may still be a pooled *value*)
+    isPooled: boolean; // ALWAYS derived from actual URL value containing "pooler" (hostname or string)
+    effectiveIsNonPooling: boolean; // true only if resolved from NON_POOLING var AND the value is NOT pooled
     urlMasked: string;
     urlLength: number;
   };
@@ -323,7 +336,8 @@ export function getEnvDebugInfo(): EnvDebugInfo {
       configured: !!envConfig.database.url,
       resolvedFrom: dbRes.resolvedFrom,
       isNonPooling: dbRes.isNonPooling,
-      isPooled: /pooler|pooler\.supabase/i.test(dbRes.url || ''),
+      isPooled: dbRes.isPooled,
+      effectiveIsNonPooling: dbRes.effectiveIsNonPooling,
       urlMasked: dbMasked,
       urlLength: dbRes.url ? dbRes.url.length : 0,
     },

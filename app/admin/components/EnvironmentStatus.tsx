@@ -9,6 +9,7 @@ interface ServerStatus {
     resolvedFrom?: string; 
     isNonPooling?: boolean; 
     isPooled?: boolean; 
+    effectiveIsNonPooling?: boolean;
     urlMasked?: string 
   };
   supabase: { urlConfigured: boolean; urlMasked?: string; serviceRoleConfigured?: boolean };
@@ -46,9 +47,12 @@ export function EnvironmentStatus() {
   const isPooled = useServer 
     ? !!serverStatus!.database.isPooled 
     : /pooler|pooler\.supabase/i.test(clientEnv.database.url || '');
-  const dbStatus = useServer
-    ? (serverStatus!.database.isNonPooling && !isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured')
-    : (clientEnv.database.nonPoolingUrl && !isPooled ? 'Non-pooling (preferred)' : 'Pooled / misconfigured');
+  // dbStatus is short label; the (from XXX) + ⚠️ are appended in JSX for the bad case.
+  // Always base "is actually direct" on value (isPooled), not just var name.
+  const effectiveNonPool = useServer
+    ? (serverStatus!.database.effectiveIsNonPooling ?? (serverStatus!.database.isNonPooling && !isPooled))
+    : (clientEnv.database.nonPoolingUrl && !isPooled);
+  const dbStatus = effectiveNonPool ? 'Non-pooling (preferred)' : 'Pooled';
   const whatsappConfigured = useServer ? serverStatus!.whatsapp.salesConfigured : !!clientEnv.whatsapp.salesPhone;
   const vercelEnv = useServer ? serverStatus!.vercel : clientEnv.vercel;
 
@@ -74,7 +78,11 @@ export function EnvironmentStatus() {
         {dbConfigured && (
           <div className="text-[10px] text-white/40 mt-1">
             {dbStatus}
-            {useServer && serverStatus!.database.resolvedFrom && ` (from ${serverStatus!.database.resolvedFrom})`}
+            {useServer && serverStatus!.database.resolvedFrom && (
+              serverStatus!.database.isNonPooling && isPooled
+                ? ` (from ${serverStatus!.database.resolvedFrom} var)`
+                : ` (from ${serverStatus!.database.resolvedFrom})`
+            )}
             {isPooled && <span className="text-red-400 ml-1">⚠️ contains pooler</span>}
           </div>
         )}

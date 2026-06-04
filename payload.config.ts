@@ -4,13 +4,15 @@ import { postgresAdapter } from '@payloadcms/db-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { getPrefixedEnv } from './lib/env'
 
 // Use the existing project's DB connection preference (non-pooling for reliability)
+// Supports Vercel prefixed envs (BANGELH_, UMANTAI_URL_, UMANTAI_) and prefers direct non-pooled connection.
 const getDatabaseConnectionString = () =>
-  process.env.POSTGRES_URL_NON_POOLING ||
-  process.env.POSTGRES_URL ||
-  process.env.DATABASE_URL ||
-  process.env.SUPABASE_URL // fallback if someone uses Supabase direct, but prefer Postgres strings
+  getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+  getPrefixedEnv('POSTGRES_URL') ||
+  getPrefixedEnv('DATABASE_URL') ||
+  getPrefixedEnv('SUPABASE_URL') // fallback if someone uses Supabase direct, but prefer Postgres strings
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)

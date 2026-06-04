@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { getPrefixedEnv } from '@/lib/env';
 
 /**
  * POST /api/admin/setup-db
@@ -8,11 +9,12 @@ import { sql } from '@/lib/db';
  * You should only need to call this once after creating your Vercel Postgres database.
  */
 async function setupDatabase() {
-  // Prefer non-pooling (matches lib/db.ts and recent neon migration)
+  // Prefer non-pooling (matches lib/db.ts and recent neon migration).
+  // Uses getPrefixedEnv for full support of BANGELH_, UMANTAI_URL_*, UMANTAI_* etc.
   const databaseUrl =
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL;
+    getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+    getPrefixedEnv('POSTGRES_URL') ||
+    getPrefixedEnv('DATABASE_URL');
 
   if (!databaseUrl) {
     return NextResponse.json(

@@ -217,14 +217,17 @@ export default function DebugEnvPage() {
                     <div className="font-semibold text-lg tracking-tight">
                       {debugInfo.database.resolvedFrom}
                     </div>
-                    {debugInfo.database.isNonPooling && (
-                      <div className="text-emerald-400 text-xs mt-0.5">✓ Using NON-POOLING connection (recommended for serverless)</div>
+                    {debugInfo.database.effectiveIsNonPooling && (
+                      <div className="text-emerald-400 text-xs mt-0.5">✓ Using NON-POOLING (direct) connection (recommended for serverless)</div>
                     )}
-                    {!debugInfo.database.isNonPooling && debugInfo.database.configured && (
-                      <div className="text-amber-400 text-xs mt-0.5">Using pooled connection — consider setting POSTGRES_URL_NON_POOLING for better reliability</div>
+                    {debugInfo.database.isNonPooling && debugInfo.database.isPooled && (
+                      <div className="text-amber-400 text-xs mt-0.5">Resolved from NON_POOLING var name, but value contains pooler — not actually direct</div>
+                    )}
+                    {!debugInfo.database.isNonPooling && debugInfo.database.configured && !debugInfo.database.isPooled && (
+                      <div className="text-amber-400 text-xs mt-0.5">Using pooled connection — set POSTGRES_URL_NON_POOLING (direct) for better reliability</div>
                     )}
                     {debugInfo.database.isPooled && (
-                      <div className="text-red-400 text-xs mt-0.5 font-medium">⚠️ URL contains 'pooler' — this is a pooled connection even if resolved from NON_POOLING var. Use the Direct connection string.</div>
+                      <div className="text-red-400 text-xs mt-0.5 font-medium">⚠️ URL contains 'pooler' — this is a pooled connection. Use the Direct (non-pooled) connection string from Supabase.</div>
                     )}
                   </div>
 
