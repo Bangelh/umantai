@@ -13,7 +13,8 @@
     "deploy:cloudflare": "npm run build:cloudflare && npx wrangler pages deploy .open-next",
     "cms": "next dev",
     "payload:generate-types": "payload generate:types",
-    "payload:migrate": "payload migrate"
+    "payload:migrate": "payload migrate",
+    "seed:inventory": "tsx scripts/seed-inventory.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
