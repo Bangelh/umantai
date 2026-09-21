@@ -122,6 +122,48 @@ export function canTransitionOrder(from: OrderStatus, to: OrderStatus): boolean 
 }
 
 // =============================================================================
+//  2.b ¿SE PUEDE COBRAR TODAVÍA?
+// =============================================================================
+
+/**
+ * Motivos por los que un pedido no se puede pagar. `'payable'` = sí se puede.
+ *
+ * Se usan como código de error en la API (`POST /api/payments/preference`).
+ */
+export type OrderPayability = 'payable' | 'order_not_payable' | 'reservation_expired';
+
+/**
+ * ¿Este pedido todavía se puede cobrar?
+ *
+ * Dos razones para decir que no:
+ *   · `order_not_payable`     — ya no está en `pending_payment` (pagado, cancelado,
+ *                               vencido…). Cobrarlo generaría un pago huérfano.
+ *   · `reservation_expired`   — la reserva de stock venció. El reaper puede tardar
+ *                               hasta un minuto en marcarlo `expired`, así que el
+ *                               estado todavía dice `pending_payment` aunque el stock
+ *                               ya se pudo vender a otra persona.
+ *
+ * Vive acá (y no en la ruta) para que la página de estado y el endpoint coincidan: si
+ * solo lo validara el endpoint, la UI mostraría un botón de pagar que siempre falla.
+ *
+ * @param nowMs Reloj inyectable — los tests no deberían depender de la hora real.
+ */
+export function evaluateOrderPayability(
+  order: Pick<Order, 'status' | 'reservationExpiresAt'>,
+  nowMs: number = Date.now(),
+): OrderPayability {
+  if (order.status !== 'pending_payment') return 'order_not_payable';
+
+  if (order.reservationExpiresAt) {
+    const expiresAt = Date.parse(order.reservationExpiresAt);
+    // Fecha ilegible = no bloqueamos la venta por un dato raro.
+    if (Number.isFinite(expiresAt) && expiresAt <= nowMs) return 'reservation_expired';
+  }
+
+  return 'payable';
+}
+
+// =============================================================================
 //  3. GUARDS DE RUNTIME
 // =============================================================================
 

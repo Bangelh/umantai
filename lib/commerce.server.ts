@@ -287,6 +287,31 @@ export async function createOrder(
   return toOrderWithItems(orderRow, itemRows);
 }
 
+/**
+ * Guarda el snapshot de la Preference de Mercado Pago dentro de `orders.metadata`.
+ *
+ * Se hace `||` sobre `metadata -> 'payment'` para no pisar otras claves de metadata
+ * (el `buyer` del checkout, etc.). No toca `status`/`payment_status`, así que el
+ * trigger de transiciones no se interpone.
+ */
+export async function saveOrderPaymentPreference(
+  orderId: string,
+  snapshot: Record<string, unknown>,
+): Promise<void> {
+  const sql = requireSql();
+
+  await sql`
+    UPDATE orders
+       SET metadata = jsonb_set(
+             COALESCE(metadata, '{}'::jsonb),
+             '{payment}',
+             COALESCE(metadata -> 'payment', '{}'::jsonb) || ${JSON.stringify(snapshot)}::jsonb,
+             true
+           )
+     WHERE id = ${orderId}::uuid
+  `;
+}
+
 // =============================================================================
 //  2. PEDIDOS — LECTURA
 // =============================================================================
