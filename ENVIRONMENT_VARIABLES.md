@@ -92,6 +92,12 @@ POSTGRES_DATABASE=...
 # Never expose this one to the browser (no NEXT_PUBLIC_ prefix).
 MERCADOPAGO_ACCESS_TOKEN=APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
+# Secret key Mercado Pago uses to sign its webhook notifications (HMAC-SHA256).
+# REQUIRED to accept payments: without it /api/payments/webhook cannot tell a real
+# payment from anyone who found the URL. Copy it from Your integrations → Webhooks
+# (the signature secret, not the access token).
+MERCADOPAGO_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 # Force the sandbox checkout URL (`sandbox_init_point`) instead of `init_point`.
 # Usually not needed: with test credentials Mercado Pago already routes to the sandbox.
 MERCADOPAGO_SANDBOX=false
@@ -106,8 +112,10 @@ MERCADOPAGO_STATEMENT_DESCRIPTOR=UMANTAI
 ```
 
 > The webhook at `/api/payments/webhook` must be reachable from the internet, so
-> `MERCADOPAGO_BACK_URL_BASE` (or a tunnel such as ngrok) is what you use while
-> testing locally.
+> `MERCADOPAGO_BACK_URL_BASE` is what you use while testing locally: point it at a
+> tunnel (`cloudflared tunnel --url http://localhost:3000` or `ngrok http 3000`).
+> Mercado Pago needs both the notification URL and the signature secret configured
+> in Your integrations → Webhooks.
 
 ### Additional / Recommended
 ```env
@@ -198,8 +206,12 @@ POSTGRES_DATABASE=...
 # Test credentials from Your integrations > Integration data > Test credentials
 MERCADOPAGO_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
+# Same account-level signature secret. Required to receive notifications at all.
+MERCADOPAGO_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 # Optional, see the Production section for the full list.
-MERCADOPAGO_BACK_URL_BASE=https://your-tunnel.ngrok.app
+# Point it at your tunnel so back_urls and notification_url are publicly reachable.
+MERCADOPAGO_BACK_URL_BASE=https://your-tunnel.trycloudflare.com
 ```
 
 ### Additional
