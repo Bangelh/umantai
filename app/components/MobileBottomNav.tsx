@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Home, ShoppingBag, ListTodo, ShoppingCart, Monitor } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
+import { useHydrated } from "@/lib/useHydrated";
 
 const tabs = [
   { href: "/", label: "Home", icon: Home },
@@ -16,6 +17,8 @@ const tabs = [
 
 export function MobileBottomNav() {
   const pathname = usePathname();
+  // Stores persistidos en localStorage: los contadores esperan al montaje.
+  const hydrated = useHydrated();
   const cartCount = useCartStore((s) => s.getTotalItems());
   const listCount = useShoppingListStore((s) => s.getTotalItems());
 
@@ -51,7 +54,7 @@ export function MobileBottomNav() {
               >
                 <div className="relative">
                   <Icon className="h-5 w-5" />
-                  {count > 0 && (
+                  {hydrated && count > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-white text-[9px] font-medium text-black flex items-center justify-center tabular-nums">
                       {count > 99 ? "99+" : count}
                     </span>

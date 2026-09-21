@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore, cartLineKey } from "@/lib/cartStore";
+import { useHydrated } from "@/lib/useHydrated";
 import { toast } from "sonner";
 
 /**
@@ -26,6 +27,9 @@ function money(value: number): string {
 export default function CartPage() {
   const { items, removeItem, updateQuantity, clearCart, getTotalPrice } = useCartStore();
   const router = useRouter();
+  // Ver `lib/useHydrated.ts`: el carrito vive en localStorage, así que no se puede
+  // pintar hasta después del montaje sin romper la hidratación.
+  const hydrated = useHydrated();
 
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -112,6 +116,24 @@ export default function CartPage() {
       setIsSubmitting(false);
     }
   };
+
+  /*
+    Mismo markup en servidor y primer render del cliente: el carrito recién aparece
+    cuando `useHydrated` pasa a true. Si en cambio renderizáramos `items` directo,
+    el primer render del cliente ya tendría los productos rehidratados y React
+    tiraría el error de hidratación en la consola.
+  */
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-6">🛍️</div>
+          <h1 className="text-4xl tracking-tight mb-4">Your cart</h1>
+          <p className="text-white/60">Loading your items…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
