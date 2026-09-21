@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getOrderByPublicToken } from "@/lib/commerce.server";
-import { evaluateOrderPayability, type FulfillmentType, type OrderStatus, type OrderWithItems } from "@/lib/commerce";
+import { getIssuedPickupCode, getOrderByPublicToken } from "@/lib/commerce.server";
+import {
+  evaluateOrderPayability,
+  type FulfillmentType,
+  type OrderStatus,
+  type OrderWithItems,
+  type PickupCode,
+} from "@/lib/commerce";
 import { PayButton } from "./PayButton";
 
 /**
@@ -15,6 +21,12 @@ import { PayButton } from "./PayButton";
  * terminaría pegándole a producción). Llamamos a la misma capa de datos que usa el
  * endpoint —mismo resultado, sin salto HTTP y sin depender del host—.
  * El GET sigue disponible para cuando necesites polling desde el cliente.
+ *
+ * ─── AQUÍ VIVE EL PIN DEL CLIENTE ────────────────────────────────────────────
+ * Cuando el pedido pasa a `ready_for_pickup`, esta página es el ÚNICO lugar donde el
+ * comprador ve su PIN (el kiosco nunca lo devuelve: es la operaria quien lo tipea, y el
+ * código tiene que probar algo). Por eso se lee con `getIssuedPickupCode()` —que
+ * descarta los PIN vencidos— y se renderiza en grande, tipo ticket.
  */
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -106,7 +118,7 @@ function formatDateTime(value: string | null): string | null {
   }).format(date);
 }
 
-function Notice({ order }: { order: OrderWithItems }) {
+function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode: boolean }) {
   if (order.status === "pending_payment") {
     const expiresAt = formatDateTime(order.reservationExpiresAt);
 
@@ -138,16 +150,76 @@ function Notice({ order }: { order: OrderWithItems }) {
     );
   }
 
-  if (order.status === "ready_for_pickup" && order.lockerCode) {
+  if (order.status === "ready_for_pickup") {
+    // Con PIN vivo, el ticket de abajo dice todo (ubicación, vigencia e instrucción):
+    // repetirlo acá sería ruido.
+    if (hasPickupCode) return null;
+
+    // Sin PIN vivo —venció a los 7 días, ya se usó o se revocó— el comprador vería
+    // "Ready for pickup" y ningún código. Hay que decirle que no venga y que pregunte.
     return (
-      <p className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
-        Your order is ready at <span className="font-semibold">{order.lockerCode}</span>. Bring your
-        pickup code.
+      <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
+        Your order is ready{order.lockerCode ? ` at ${order.lockerCode}` : ""}, but its pickup code is
+        no longer valid. Contact the store before coming so they can issue a new one.
       </p>
     );
   }
 
   return null;
+}
+
+/**
+ * Ticket de retiro: lo único que el comprador necesita mirar cuando llega a la tienda.
+ *
+ * El PIN se muestra EN CLARO y en dígitos separados. No es un descuido: el comprador
+ * tiene que poder leerlo o dictarlo en voz alta a la operaria, y esconderlo no protegería
+ * nada (quien tiene el enlace ya tiene el pedido).
+ */
+function PickupCodeTicket({ order, code }: { order: OrderWithItems; code: PickupCode }) {
+  const expiresAt = formatDateTime(code.expiresAt);
+  const location = code.lockerSlot
+    ? `Locker ${code.lockerSlot}`
+    : code.lockerCode ?? order.lockerCode ?? "Store counter";
+
+  return (
+    <section
+      aria-labelledby="pickup-code-heading"
+      className="mt-6 rounded-3xl border-2 border-emerald-400/60 bg-emerald-500/10 px-6 pt-6 pb-0 overflow-hidden"
+    >
+      <p id="pickup-code-heading" className="text-center text-xs tracking-[0.3em] text-emerald-300">
+        YOUR PICKUP CODE
+      </p>
+
+      {/* Los dígitos se anuncian una sola vez y de corrido: un lector de pantalla no
+          debería leer "uno, guion, dos..." seis casillas sueltas. */}
+      <p className="sr-only">Your pickup code is {code.code.split("").join(" ")}.</p>
+      <div aria-hidden="true" className="mt-5 flex justify-center gap-2 sm:gap-3">
+        {code.code.split("").map((digit, index) => (
+          <span
+            key={`${index}-${digit}`}
+            className="w-12 sm:w-16 rounded-2xl bg-neutral-950/70 py-4 text-center font-mono text-4xl sm:text-5xl font-bold tabular-nums text-white"
+          >
+            {digit}
+          </span>
+        ))}
+      </div>
+
+      <p className="mt-5 text-center text-sm text-emerald-100">
+        Show this code at the store. The operator types it in to hand over your order.
+      </p>
+
+      <dl className="mt-6 -mx-6 grid grid-cols-2 gap-px border-t-2 border-dashed border-emerald-400/40 bg-emerald-400/30 text-center">
+        <div className="bg-neutral-950/80 px-4 py-4">
+          <dt className="text-[11px] tracking-widest text-white/50">PICK UP AT</dt>
+          <dd className="mt-1 font-semibold break-words">{location}</dd>
+        </div>
+        <div className="bg-neutral-950/80 px-4 py-4">
+          <dt className="text-[11px] tracking-widest text-white/50">CODE VALID UNTIL</dt>
+          <dd className="mt-1 font-semibold">{expiresAt ?? "Ask the store"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
 }
 
 export default async function OrderStatusPage({
@@ -191,6 +263,20 @@ export default async function OrderStatusPage({
 
   if (!order) notFound();
 
+  // Sólo se consulta el PIN cuando el pedido puede tener uno: una query de más en
+  // cada visita a un pedido impago sería gratis de escribir y de pagar igual.
+  // `getIssuedPickupCode()` ya descarta los códigos vencidos o canjeados.
+  let pickupCode: PickupCode | null = null;
+  if (order.status === "ready_for_pickup") {
+    try {
+      pickupCode = await getIssuedPickupCode(order.id);
+    } catch (error) {
+      // El pedido ya se cargó: un fallo acá degrada la pantalla (sin ticket) en vez
+      // de tumbar la página entera.
+      console.error("Order page: could not load the pickup code", error);
+    }
+  }
+
   const statusLabel = STATUS_LABELS[order.status];
   const statusTone = STATUS_TONES[order.status];
   const fulfillmentLabel = FULFILLMENT_LABELS[order.fulfillmentType];
@@ -226,7 +312,7 @@ export default async function OrderStatusPage({
             : ""}
         </p>
 
-        <Notice order={order} />
+        <Notice order={order} hasPickupCode={pickupCode !== null} />
 
         {returnNotice && (
           <div className={`mt-4 rounded-2xl border px-5 py-4 text-sm ${returnNotice.tone}`}>
@@ -236,6 +322,8 @@ export default async function OrderStatusPage({
             </Link>
           </div>
         )}
+
+        {pickupCode && <PickupCodeTicket order={order} code={pickupCode} />}
 
         {canPay && (
           <div className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-6">
