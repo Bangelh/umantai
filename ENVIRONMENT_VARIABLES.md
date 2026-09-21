@@ -117,6 +117,18 @@ MERCADOPAGO_STATEMENT_DESCRIPTOR=UMANTAI
 > Mercado Pago needs both the notification URL and the signature secret configured
 > in Your integrations → Webhooks.
 
+### Kiosco (panel de la operaria)
+```env
+# Shared secret that unlocks /admin/kiosco. Verified SERVER-SIDE (never in the bundle):
+# the kiosk validates pickup PINs and commits inventory, so this endpoint cannot be
+# public. It is a device lock, not user authentication — rotate it when staff change.
+# If it is missing, the kiosk stays CLOSED (routes answer 503). Minimum 10 characters.
+KIOSK_ACCESS_CODE=change-me-long-random-string
+```
+
+> The device key is typed once on the tablet and kept in memory only. Ordering an
+> actual per-user login (Supabase Auth + roles) is a separate work item.
+
 ### Additional / Recommended
 ```env
 # Current environment (production, preview, development)
@@ -213,6 +225,16 @@ MERCADOPAGO_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Point it at your tunnel so back_urls and notification_url are publicly reachable.
 MERCADOPAGO_BACK_URL_BASE=https://your-tunnel.trycloudflare.com
 ```
+
+### Kiosco (panel de la operaria)
+```env
+# Same device key as in production. Without it /api/kiosk/* answers 503.
+KIOSK_ACCESS_CODE=dev-kiosk-code-at-least-10-chars
+```
+
+> Quick local check: open `http://localhost:3000/admin/kiosco`, type the key, then
+> redeem a real PIN from a `ready_for_pickup` order in your Neon dev branch. You can
+> move an order there from the kiosk's own PREPARAR tab.
 
 ### Additional
 ```env
