@@ -87,11 +87,20 @@ export const ORDER_STATUS_TRANSITIONS = {
   delivered: ['completed', 'refunded'],
   completed: ['refunded'],
   cancelled: [],
-  expired: [],
+  // `expired` NO es un callejón sin salida: si Mercado Pago aprueba el pago después
+  // de que venció la reserva (Yape/Plin tardan, el comprador paga al límite), el
+  // webhook confirma el pedido y reintenta la reserva de stock. Ver migración 002.
+  expired: ['confirmed'],
   refunded: [],
 } as const satisfies Record<OrderStatus, readonly OrderStatus[]>;
 
-/** Estados sin salida: un pedido aquí ya no se mueve. */
+/**
+ * Estados sin salida para el comprador: no hay acción que él pueda tomar.
+ *
+ * `expired` está acá a propósito aunque tenga una transición saliente: el único que
+ * puede rescatarlo es el webhook de pagos, y ya no depende de nada que el cliente
+ * haga. Para cualquier flujo de UI sigue siendo un final.
+ */
 export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = ['cancelled', 'expired', 'refunded'];
 
 /** Estados en los que el stock está retenido por una reserva. */
@@ -161,6 +170,49 @@ export function evaluateOrderPayability(
   }
 
   return 'payable';
+}
+
+// =============================================================================
+//  2.c AUDITORÍA DEL COBRO
+// =============================================================================
+
+/**
+ * Lo que el webhook de pagos dejó escrito en `orders.metadata.payment`.
+ *
+ * Existe para que el resultado de un cobro se pueda leer sin adivinar claves de
+ * JSON en cada consumidor (la ruta del webhook, un panel de admin, un cron).
+ */
+export interface OrderPaymentAudit {
+  lastPaymentId: string | null;
+  lastPaymentAmount: number | null;
+  amountMismatch: boolean;
+  /** El pago se aprobó pero no se pudo retener stock: reponer o reembolsar. */
+  stockConflict: boolean;
+  stockConflictReason: string | null;
+  /** Cobro real que no se pudo aplicar al pedido. Requiere intervención humana. */
+  needsReview: boolean;
+}
+
+function readBooleanFlag(source: Record<string, unknown>, key: string): boolean {
+  return source[key] === true;
+}
+
+/** Devuelve `null` si el pedido todavía no tiene ningún cobro registrado. */
+export function readOrderPaymentAudit(order: Pick<Order, 'metadata'>): OrderPaymentAudit | null {
+  const payment = order.metadata?.payment;
+  if (!payment || typeof payment !== 'object' || Array.isArray(payment)) return null;
+
+  const record = payment as Record<string, unknown>;
+  const amount = record.lastPaymentAmount;
+
+  return {
+    lastPaymentId: typeof record.lastPaymentId === 'string' ? record.lastPaymentId : null,
+    lastPaymentAmount: typeof amount === 'number' ? amount : null,
+    amountMismatch: readBooleanFlag(record, 'amountMismatch'),
+    stockConflict: readBooleanFlag(record, 'stockConflict'),
+    stockConflictReason: typeof record.stockConflictReason === 'string' ? record.stockConflictReason : null,
+    needsReview: readBooleanFlag(record, 'needsReview'),
+  };
 }
 
 // =============================================================================

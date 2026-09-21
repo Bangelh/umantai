@@ -26,9 +26,20 @@
  *   MERCADOPAGO_STATEMENT_DESCRIPTOR  Texto en el estado de cuenta del comprador.
  *                                 OJO: no todos los países lo soportan; por eso solo
  *                                 se manda si lo defines explícitamente.
+ *   MERCADOPAGO_WEBHOOK_SECRET    (requerida para cobrar)  Clave secreta de la firma
+ *                                 de los webhooks (Tus integraciones → Webhooks).
+ *                                 Sin ella no se puede verificar que una notificación
+ *                                 venga realmente de Mercado Pago.
  */
 
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import {
+  InvalidWebhookSignatureError,
+  MercadoPagoConfig,
+  Payment,
+  Preference,
+  SignatureFailureReason,
+  WebhookSignatureValidator,
+} from 'mercadopago';
 import { getPrefixedEnv } from './env';
 import type { OrderItem, OrderWithItems } from './commerce';
 
@@ -65,6 +76,22 @@ export function getMercadoPagoAccessToken(): string {
 /** ¿Está configurada la pasarela? Si no, la ruta responde 503 en vez de explotar. */
 export function isMercadoPagoConfigured(): boolean {
   return getMercadoPagoAccessToken().length > 0;
+}
+
+/**
+ * Clave con la que Mercado Pago firma sus notificaciones (HMAC-SHA256).
+ *
+ * No es la misma que el access token: se copia del panel, en Tus integraciones →
+ * Webhooks (o en la sección de firma secreta). La firma es lo ÚNICO que impide que
+ * cualquiera que descubra la URL del webhook se invente un pago aprobado.
+ */
+export function getMercadoPagoWebhookSecret(): string {
+  return readEnv('MERCADOPAGO_WEBHOOK_SECRET');
+}
+
+/** ¿Podemos verificar la autenticidad de un webhook? Si no, la ruta responde 503. */
+export function isMercadoPagoWebhookConfigured(): boolean {
+  return getMercadoPagoWebhookSecret().length > 0;
 }
 
 function preferSandboxInitPoint(): boolean {
@@ -366,5 +393,102 @@ export async function createCheckoutPreference(
     initPoint: chosen,
     sandboxInitPoint: sandboxUrl,
     createdAt: new Date().toISOString(),
+  };
+}
+
+// =============================================================================
+//  6. WEBHOOK — firma y lectura del pago
+//
+//  Un webhook es una URL pública: cualquiera puede hacerle POST y decir "este
+//  pedido está pagado". Por eso NUNCA se confía en el cuerpo del aviso:
+//   1. Se verifica la firma HMAC-SHA256 contra el secreto compartido.
+//   2. El cuerpo sólo aporta un ID.
+//   3. Los datos que DECIDEN (estado, monto, moneda) se le piden a la API de MP
+//      con nuestro access token — la única fuente que no se puede falsificar.
+// =============================================================================
+
+/** Resultado de verificar la firma. No se lanza excepción: la ruta decide el HTTP. */
+export type WebhookSignatureCheck =
+  | { ok: true }
+  | { ok: false; reason: SignatureFailureReason; requestId: string | null; timestamp: string | null };
+
+/**
+ * Verifica que la notificación la haya firmado Mercado Pago.
+ *
+ * ⚠️ A PROPÓSITO no se pasa `toleranceSeconds`: Mercado Pago reintenta una
+ * notificación hasta que recibe un 2xx, y un reintento puede llegar con el `ts`
+ * original horas después. Con una ventana de tolerancia, ese reintento legítimo
+ * sería rechazado para siempre y el pedido pagado nunca se confirmaría.
+ * El replay no es un riesgo acá: el único efecto de procesar dos veces el mismo
+ * pago es idempotente (ver `confirm_order_payment` en la migración 002).
+ */
+export function verifyMercadoPagoWebhookSignature(input: {
+  xSignature: string | null;
+  xRequestId: string | null;
+  dataId: string | null;
+}): WebhookSignatureCheck {
+  const secret = getMercadoPagoWebhookSecret();
+  if (!secret) throw new Error('mercadopago_webhook_secret_not_configured');
+
+  try {
+    WebhookSignatureValidator.validate({
+      xSignature: input.xSignature,
+      xRequestId: input.xRequestId,
+      dataId: input.dataId,
+      secret,
+    });
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof InvalidWebhookSignatureError) {
+      return {
+        ok: false,
+        reason: error.reason,
+        requestId: error.requestId ?? null,
+        timestamp: error.timestamp ?? null,
+      };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Lo mínimo que necesitamos de un pago para decidir el destino de un pedido.
+ *
+ * Se normaliza acá (y no se pasa el recurso crudo del SDK hacia arriba) para que el
+ * resto del código no dependa de la forma exacta del API de Mercado Pago.
+ */
+export interface MercadoPagoPaymentSnapshot {
+  id: string;
+  /** `approved` es el único estado que libera un pedido. */
+  status: string | null;
+  /** `accredited` para Yape/Plin aprobados, `cc_rejected_*` para rechazos, etc. */
+  statusDetail: string | null;
+  /** `orders.order_number` — así se sabe a qué pedido pertenece el cobro. */
+  externalReference: string | null;
+  transactionAmount: number | null;
+  currencyId: string | null;
+  paymentMethodId: string | null;
+  paymentTypeId: string | null;
+  dateApproved: string | null;
+  /** `false` = pago de sandbox. Distinguirlo evita dar por pagado un pedido de prueba. */
+  liveMode: boolean | null;
+}
+
+/** Lee el pago desde la API de Mercado Pago (nuestra fuente de verdad). */
+export async function fetchMercadoPagoPayment(paymentId: string): Promise<MercadoPagoPaymentSnapshot> {
+  const client = getClient();
+  const payment = await new Payment(client).get({ id: paymentId });
+
+  return {
+    id: String(payment.id ?? paymentId),
+    status: asNonEmptyString(payment.status),
+    statusDetail: asNonEmptyString(payment.status_detail),
+    externalReference: asNonEmptyString(payment.external_reference),
+    transactionAmount: typeof payment.transaction_amount === 'number' ? payment.transaction_amount : null,
+    currencyId: asNonEmptyString(payment.currency_id),
+    paymentMethodId: asNonEmptyString(payment.payment_method_id),
+    paymentTypeId: asNonEmptyString(payment.payment_type_id),
+    dateApproved: asNonEmptyString(payment.date_approved),
+    liveMode: typeof payment.live_mode === 'boolean' ? payment.live_mode : null,
   };
 }

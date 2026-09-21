@@ -531,6 +531,62 @@ async function commitAndTransition(
 }
 
 // =============================================================================
+//  3.b CONFIRMACIÓN DE PAGO (webhook de Mercado Pago)
+//
+//  Toda la lógica vive en `confirm_order_payment()` (migración 002) porque tiene
+//  que ser UNA unidad atómica: bloquear el pedido, re-reservar el stock liberado
+//  por el reaper y confirmar. Desde JavaScript eso son varias sentencias sobre
+//  HTTP y no hay forma de que sean atómicas entre sí.
+// =============================================================================
+
+export interface ConfirmOrderPaymentInput {
+  /** `orders.order_number`, que viaja como `payment.external_reference`. */
+  orderNumber: string;
+  /** Id del pago en Mercado Pago (queda en `orders.payment_reference`). */
+  paymentId: string;
+  paymentMethod?: string | null;
+  /** Monto que MP dice haber cobrado. Se valida contra `orders.total` en la base. */
+  paidAmount?: number | null;
+  currency?: string | null;
+  /** Snapshot del pago para `metadata.payment` (status, status_detail, fecha…). */
+  paymentMetadata?: Record<string, unknown>;
+  locationCode?: string;
+  actor?: string;
+}
+
+/**
+ * Confirma el pago de un pedido y devuelve su estado final.
+ *
+ * Es idempotente: si el pedido ya estaba pagado, devuelve el pedido sin tocar nada.
+ * Devuelve `null` si el `order_number` no existe en esta base (típicamente un pago
+ * de sandbox llegando a producción).
+ *
+ * Lee `readOrderPaymentAudit()` sobre el pedido devuelto para saber si el cobro
+ * quedó pendiente de revisión o si hubo conflicto de stock.
+ */
+export async function confirmOrderPayment(
+  input: ConfirmOrderPaymentInput,
+): Promise<Order | null> {
+  const sql = requireSql();
+
+  const rows = (await sql`
+    SELECT * FROM confirm_order_payment(
+      ${input.orderNumber},
+      ${input.paymentId},
+      ${input.paymentMethod ?? null},
+      ${input.paidAmount ?? null},
+      ${input.currency ?? null},
+      ${JSON.stringify(input.paymentMetadata ?? {})}::jsonb,
+      ${input.locationCode ?? 'MAIN'},
+      ${input.actor ?? 'mercadopago:webhook'}
+    )
+  `) as unknown as OrderRow[];
+
+  const row = rows[0];
+  return row ? toOrder(row) : null;
+}
+
+// =============================================================================
 //  4. INVENTARIO
 //
 //  Único camino sancionado para tocar stock. NUNCA hagas UPDATE directo sobre
@@ -625,6 +681,22 @@ export async function getInventoryItem(
   `) as unknown as InventoryRow[];
 
   return rows[0] ? toInventoryItem(rows[0]) : null;
+}
+
+/**
+ * Re-reserva el stock de un pedido cuya reserva ya había liberado el reaper
+ * (pago tardío de Mercado Pago). Sólo retiene las líneas que hoy no lo están.
+ *
+ * NO uses `reserveOrderStock()` para esto: reutiliza la clave de idempotencia
+ * `reserve:<order>:<item>`, que ya existe en el ledger, y el motor devolvería el
+ * movimiento viejo sin retener nada.
+ */
+export async function rereserveOrderStock(orderId: string, locationCode = 'MAIN'): Promise<number> {
+  const sql = requireSql();
+  const rows = (await sql`
+    SELECT inventory_rereserve_order(${orderId}::uuid, ${locationCode}) AS rereserved_lines
+  `) as unknown as Array<{ rereserved_lines: number }>;
+  return Number(rows[0]?.rereserved_lines ?? 0);
 }
 
 /**
