@@ -1,17 +1,116 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useCartStore, cartLineKey } from "@/lib/cartStore";
 import { toast } from "sonner";
 
+/**
+ * UUID v4 para la idempotencia del checkout.
+ * `crypto.randomUUID()` solo existe en contextos seguros (https / localhost), así
+ * que hay un respaldo por si pruebas desde una IP de la LAN por http.
+ */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** El backend cobra en Soles (PEN). */
+function money(value: number): string {
+  return `S/ ${value.toFixed(2)}`;
+}
+
 export default function CartPage() {
   const { items, removeItem, updateQuantity, clearCart, getTotalPrice } = useCartStore();
+  const router = useRouter();
+
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [docNumber, setDocNumber] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  /**
+   * Una clave por INTENTO de pago, no por render.
+   *
+   * Se reutiliza mientras el envío falle, así un reintento devuelve el MISMO pedido
+   * en vez de crear dos. Se descarta cuando el carrito cambia, porque eso ya es
+   * otro pedido (otra intención de pago).
+   */
+  const idempotencyKeyRef = useRef<string | null>(null);
+
+  const cartSignature = items
+    .map((item) => `${cartLineKey(item)}x${item.quantity}`)
+    .sort()
+    .join("|");
+
+  useEffect(() => {
+    idempotencyKeyRef.current = null;
+  }, [cartSignature]);
 
   const total = getTotalPrice();
 
-  const handleCheckout = () => {
-    toast.success("Thank you! This is a demo — in production this would process payment.");
-    // In a real app: redirect to checkout or open a modal
+  const handleCheckout = async () => {
+    if (isSubmitting) return;
+
+    const contactEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+      toast.error("Enter your email so we can send you the order confirmation.");
+      return;
+    }
+
+    // Se crea una sola vez y sobrevive a los reintentos fallidos.
+    const idempotencyKey =
+      idempotencyKeyRef.current ?? (idempotencyKeyRef.current = newIdempotencyKey());
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idempotencyKey,
+          contactEmail,
+          fullName: fullName.trim() || undefined,
+          // DNI: Mercado Pago lo pide para el cobro con Yape/Plin (sin RUC).
+          docType: docNumber.trim() ? "DNI" : undefined,
+          docNumber: docNumber.trim() || undefined,
+          // El negocio opera con retiro en Locker. El locker/slot concreto lo asigna
+          // operación al marcar el pedido como listo, no el checkout.
+          fulfillmentType: "pickup_locker",
+          items: items.map((item) => ({
+            productSlug: item.slug,
+            quantity: item.quantity,
+            // Solo opciones: el servidor recalcula nombre y precio contra el catálogo.
+            variant: { color: item.selectedColor, storage: item.selectedStorage },
+          })),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        // El pedido NO se creó: conservamos el carrito y la misma clave de idempotencia,
+        // por lo que reintentar es seguro.
+        toast.error(payload?.error ?? "We could not place your order. Please try again.");
+        return;
+      }
+
+      const publicToken = payload?.order?.publicToken;
+      clearCart();
+
+      if (publicToken) {
+        router.push(`/pedido/${publicToken}`);
+      } else {
+        toast.success("Order created.");
+      }
+    } catch {
+      toast.error("Network error. Your order was not placed.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (items.length === 0) {
@@ -67,7 +166,7 @@ export default function CartPage() {
                     )}
                   </div>
                   <div className="font-mono text-xl tracking-tight text-right">
-                    ${(item.price * item.quantity).toFixed(2)}
+                    {money(item.price * item.quantity)}
                   </div>
                 </div>
 
@@ -75,14 +174,16 @@ export default function CartPage() {
                   <div className="flex items-center border border-white/20 rounded-full">
                     <button 
                       onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
-                      className="px-3 py-1 hover:bg-white/10 rounded-l-full"
+                      disabled={isSubmitting}
+                      className="px-3 py-1 hover:bg-white/10 rounded-l-full disabled:opacity-40"
                     >
                       −
                     </button>
                     <div className="px-4 font-mono">{item.quantity}</div>
                     <button 
                       onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
-                      className="px-3 py-1 hover:bg-white/10 rounded-r-full"
+                      disabled={isSubmitting}
+                      className="px-3 py-1 hover:bg-white/10 rounded-r-full disabled:opacity-40"
                     >
                       +
                     </button>
@@ -90,7 +191,8 @@ export default function CartPage() {
 
                   <button 
                     onClick={() => removeItem(cartLineKey(item))}
-                    className="text-sm text-white/50 hover:text-white/80"
+                    disabled={isSubmitting}
+                    className="text-sm text-white/50 hover:text-white/80 disabled:opacity-40"
                   >
                     Remove
                   </button>
@@ -102,15 +204,55 @@ export default function CartPage() {
 
         <div className="mt-12 border-t border-white/10 pt-8 flex justify-between items-center text-xl">
           <div>Total</div>
-          <div className="font-mono tracking-tighter">${total.toFixed(2)}</div>
+          <div className="font-mono tracking-tighter">{money(total)}</div>
+        </div>
+
+        {/*
+          Datos de contacto: `POST /api/orders` exige `contactEmail` (la columna
+          `orders.contact_email` es NOT NULL). El checkout completo —dirección de
+          entrega, delivery, cupones— llega en una fase posterior.
+        */}
+        <div className="mt-10 border-t border-white/10 pt-8">
+          <h2 className="text-sm tracking-widest text-white/60 mb-4">CONTACT DETAILS</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email *"
+              autoComplete="email"
+              className="sm:col-span-2 h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
+            />
+            <input
+              type="text"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder="Full name (optional)"
+              autoComplete="name"
+              className="h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
+            />
+            <input
+              type="text"
+              inputMode="numeric"
+              value={docNumber}
+              onChange={(event) => setDocNumber(event.target.value)}
+              placeholder="DNI (optional)"
+              className="h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
+            />
+          </div>
+          <p className="mt-3 text-xs text-white/40">
+            We hold your items for 30 minutes after you place the order.
+          </p>
         </div>
 
         <div className="mt-8 flex gap-4">
           <button 
             onClick={handleCheckout}
-            className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors"
+            disabled={isSubmitting}
+            className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:bg-white/60"
           >
-            Proceed to Checkout
+            {isSubmitting ? "Placing order…" : "Proceed to Checkout"}
           </button>
           <Link 
             href="/products"
@@ -125,7 +267,8 @@ export default function CartPage() {
             clearCart();
             toast.info("Cart cleared");
           }}
-          className="mt-6 text-xs text-white/40 hover:text-white/70"
+          disabled={isSubmitting}
+          className="mt-6 text-xs text-white/40 hover:text-white/70 disabled:opacity-40"
         >
           Clear cart
         </button>
