@@ -57,6 +57,41 @@ interface QueuePayload {
   error?: string;
 }
 
+/** Respuesta de `POST /api/kiosk/ready`. */
+interface ReadyPayload {
+  ok?: boolean;
+  error?: string;
+  /** `sent` | `failed` | `not_configured` | `order_not_found` (ver lib/notifications.server.ts). */
+  adminNotification?: string;
+}
+
+/** Aviso posterior de "YA ESTÁ EN EL CASILLERO". */
+interface ReadyNotice {
+  ok: boolean;
+  message: string;
+  /** Línea aparte para lo que la operaria DEBE hacer aunque el pedido esté bien. */
+  warning?: string;
+}
+
+/**
+ * Traduce el resultado del aviso a algo que la operaria pueda accionar.
+ *
+ * `sent` no dice nada: que el correo haya salido bien no cambia lo que ella tiene que
+ * hacer. Lo que sí importa es cuándo Omar NO se va a enterar, porque el cliente ya está
+ * en el mostrador y ese aviso es lo único que le da tiempo a la tienda a prepararse.
+ */
+function notificationWarning(status: unknown): string | undefined {
+  switch (status) {
+    case 'failed':
+    case 'order_not_found':
+      return 'No se pudo enviar el aviso por correo a la tienda. Avisa a Omar que este pedido está listo.';
+    case 'not_configured':
+      return 'El aviso automático por correo no está configurado. Avisa a Omar que este pedido está listo.';
+    default:
+      return undefined;
+  }
+}
+
 function kioskHeaders(accessKey: string, json = false): HeadersInit {
   return {
     'x-kiosk-access': accessKey,
@@ -96,7 +131,7 @@ export default function KioscoPage() {
   const [outcome, setOutcome] = useState<PickupOutcome | null>(null);
 
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
-  const [readyNotice, setReadyNotice] = useState<{ ok: boolean; message: string } | null>(null);
+  const [readyNotice, setReadyNotice] = useState<ReadyNotice | null>(null);
 
   const applyQueue = useCallback((payload: QueuePayload) => {
     setQueue({ ready: payload.ready ?? [], preparing: payload.preparing ?? [] });
@@ -277,7 +312,7 @@ export default function KioscoPage() {
           headers: kioskHeaders(accessKey, true),
           body: JSON.stringify({ orderId, lockerSlot }),
         });
-        const payload = await response.json().catch(() => null);
+        const payload = (await response.json().catch(() => null)) as ReadyPayload | null;
 
         if (response.status === 401) {
           setAccessKey(null);
@@ -289,6 +324,7 @@ export default function KioscoPage() {
           setReadyNotice({
             ok: true,
             message: `Pedido listo${lockerSlot ? ` en el casillero ${lockerSlot}` : ''}. Su PIN ya funciona.`,
+            warning: notificationWarning(payload.adminNotification),
           });
           await loadQueue();
         } else {
@@ -375,17 +411,22 @@ export default function KioscoPage() {
         ) : (
           <>
             {readyNotice && (
-              <p
+              <div
                 role="status"
                 className={
-                  'rounded-2xl border-2 px-5 py-4 text-2xl ' +
+                  'rounded-2xl border-2 px-5 py-4 ' +
                   (readyNotice.ok
                     ? 'border-emerald-400/60 bg-emerald-950/60 text-emerald-100'
                     : 'border-red-400/60 bg-red-950/60 text-red-100')
                 }
               >
-                {readyNotice.message}
-              </p>
+                <p className="text-2xl">{readyNotice.message}</p>
+                {readyNotice.warning && (
+                  <p className="mt-3 border-t-2 border-amber-400/50 pt-3 text-2xl font-semibold text-amber-100">
+                    ⚠ {readyNotice.warning}
+                  </p>
+                )}
+              </div>
             )}
             <PreparationList
               orders={queue.preparing}

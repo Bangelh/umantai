@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { classifyCommerceError } from '@/lib/commerce';
 import { isCommerceDbConfigured, markReadyForPickup } from '@/lib/commerce.server';
 import { checkKioskAccess, READY_FAILURE_COPY } from '@/lib/kiosk.server';
+import { notifyPickupReadySafely } from '@/lib/notifications.server';
 
 /**
  * POST /api/kiosk/ready — la operaria marca un pedido como listo y se emite su PIN.
@@ -17,8 +18,13 @@ import { checkKioskAccess, READY_FAILURE_COPY } from '@/lib/kiosk.server';
  * El PIN lo recibe el cliente, no la pantalla de la operaria: es ella quien lo tipea
  * después y el control tiene que probar algo. Si una operaria necesita reimprimir el
  * PIN de un cliente, eso es una acción auditada de supervisor, no un GET del kiosco.
- * (Por eso mismo la entrega del PIN al cliente —WhatsApp/email— es un pendiente: hoy
- * `getIssuedPickupCode()` existe pero nadie lo manda.)
+ * El cliente lo ve en /pedido/<token> (vía `getIssuedPickupCode()`), que es su enlace.
+ *
+ * ─── AVISO AL ADMINISTRADOR ──────────────────────────────────────────────────
+ * Además se avisa a la tienda por correo (`notifyPickupReadySafely`). Es BEST-EFFORT:
+ * el PIN ya existe y el pedido ya está listo, así que un correo que falla no puede
+ * revertir nada — sólo se informa en `adminNotification` para que la pantalla pueda
+ * decir si Omar quedó enterado.
  *
  * 200 emitido · 400 body inválido · 401 clave incorrecta
  * 409 el pedido no se puede preparar (estado o pago) · 500 fallo inesperado · 503
@@ -62,12 +68,17 @@ export async function POST(request: NextRequest) {
       actor: access.actor,
     });
 
+    // Aviso a la tienda: a partir de acá el pedido ya está listo, así que este paso
+    // nunca puede hacer fallar la respuesta (`notifyPickupReadySafely` no lanza).
+    const notification = await notifyPickupReadySafely(orderId, pickupCode);
+
     console.info('[kiosk] pedido marcado como listo', {
       orderId,
       lockerCode: pickupCode.lockerCode,
       lockerSlot: pickupCode.lockerSlot,
       expiresAt: pickupCode.expiresAt,
       device: access.deviceId,
+      adminNotification: notification.status,
     });
 
     return NextResponse.json(
@@ -78,6 +89,9 @@ export async function POST(request: NextRequest) {
         lockerSlot: pickupCode.lockerSlot,
         // Se informa cuándo vence para que la pantalla pueda avisar, pero el PIN no sale.
         codeExpiresAt: pickupCode.expiresAt,
+        // Sólo el estado, nunca el destinatario: la clave de dispositivo es compartida
+        // y la bandeja del administrador no tiene por qué listarse en la tablet.
+        adminNotification: notification.status,
       },
       { status: 200 },
     );
