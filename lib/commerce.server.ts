@@ -867,7 +867,18 @@ export async function getKioskQueue(limit = 50): Promise<KioskQueue> {
   };
 }
 
-/** Código vigente de un pedido (para la pantalla de retiro del cliente). */
+/**
+ * Código de retiro VIGENTE de un pedido, para mostrárselo al cliente.
+ *
+ * ⚠️ `expires_at > NOW()` no es decorativo: el vencimiento de un PIN es PEREZOSO.
+ * `redeem_pickup_code()` marca `status = 'expired'` sólo cuando alguien intenta
+ * canjearlo, así que un PIN vencido sigue en `'issued'` durante días. Sin este filtro
+ * la pantalla del cliente le mostraría un código que el kiosco va a rechazar con
+ * "Ese PIN ya venció" — con el cliente parado en el mostrador.
+ *
+ * Devuelve `null` cuando no hay ningún código vivo (pedido sin preparar, PIN vencido
+ * o ya canjeado): la pantalla simplemente no muestra el bloque de retiro.
+ */
 export async function getIssuedPickupCode(orderId: string): Promise<PickupCode | null> {
   const sql = requireSql();
 
@@ -875,6 +886,7 @@ export async function getIssuedPickupCode(orderId: string): Promise<PickupCode |
     SELECT * FROM pickup_codes
      WHERE order_id = ${orderId}::uuid
        AND status = 'issued'
+       AND expires_at > NOW()
      ORDER BY created_at DESC
      LIMIT 1
   `) as unknown as PickupCodeRow[];
