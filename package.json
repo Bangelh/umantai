@@ -27,6 +27,7 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "lucide-react": "^1.17.0",
+    "mercadopago": "^3.6.1",
     "next": "16.2.6",
     "payload": "^3.85.0",
     "react": "19.2.4",

@@ -85,6 +85,30 @@ POSTGRES_HOST=...
 POSTGRES_DATABASE=...
 ```
 
+### Mercado Pago (Checkout Pro)
+```env
+# Private key of your Mercado Pago application. REQUIRED to create payment links.
+# Test credentials while developing, live credentials (APP_USR-) in production.
+# Never expose this one to the browser (no NEXT_PUBLIC_ prefix).
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Force the sandbox checkout URL (`sandbox_init_point`) instead of `init_point`.
+# Usually not needed: with test credentials Mercado Pago already routes to the sandbox.
+MERCADOPAGO_SANDBOX=false
+
+# Optional: override the base for back_urls / notification_url (defaults to the
+# request host, honouring x-forwarded-host behind Cloudflare/Vercel).
+MERCADOPAGO_BACK_URL_BASE=https://umantai.com
+
+# Optional: statement descriptor shown on the buyer's card statement.
+# Not supported in every country — only sent when set.
+MERCADOPAGO_STATEMENT_DESCRIPTOR=UMANTAI
+```
+
+> The webhook at `/api/payments/webhook` must be reachable from the internet, so
+> `MERCADOPAGO_BACK_URL_BASE` (or a tunnel such as ngrok) is what you use while
+> testing locally.
+
 ### Additional / Recommended
 ```env
 # Current environment (production, preview, development)
@@ -167,6 +191,15 @@ POSTGRES_USER=...
 POSTGRES_PASSWORD=...
 POSTGRES_HOST=...
 POSTGRES_DATABASE=...
+```
+
+### Mercado Pago (Checkout Pro)
+```env
+# Test credentials from Your integrations > Integration data > Test credentials
+MERCADOPAGO_ACCESS_TOKEN=TEST-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Optional, see the Production section for the full list.
+MERCADOPAGO_BACK_URL_BASE=https://your-tunnel.ngrok.app
 ```
 
 ### Additional
