@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrderByPublicToken } from "@/lib/commerce.server";
-import type { FulfillmentType, OrderStatus, OrderWithItems } from "@/lib/commerce";
+import { evaluateOrderPayability, type FulfillmentType, type OrderStatus, type OrderWithItems } from "@/lib/commerce";
+import { PayButton } from "./PayButton";
 
 /**
  * /pedido/[token] — estado público del pedido.
@@ -52,6 +53,39 @@ const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Estados de regreso del checkout de Mercado Pago (`back_urls`).
+ *
+ * `?pago=exitoso` NO significa "pago acreditado": significa que MP nos devolvió al
+ * comprador por la URL de pago aprobado. La verdad la dice el pedido cuando llega la
+ * confirmación desde MP, no el query param.
+ */
+type PaymentReturnFlag = "exitoso" | "pendiente" | "fallido";
+
+const PAYMENT_RETURN_NOTICES: Record<PaymentReturnFlag, { tone: string; message: string }> = {
+  exitoso: {
+    tone: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+    message:
+      "Mercado Pago approved your payment. We are confirming it against this order — if the status has not changed yet, check again in a few seconds.",
+  },
+  pendiente: {
+    tone: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+    message:
+      "Your payment is pending. Yape, Plin and other methods can take a few minutes to confirm; the order updates as soon as Mercado Pago reports it.",
+  },
+  fallido: {
+    tone: "border-red-500/30 bg-red-500/10 text-red-200",
+    message:
+      "The payment was not completed and nothing was charged. You can try again with another payment method.",
+  },
+};
+
+function readPaymentReturnFlag(value: string | string[] | undefined): PaymentReturnFlag | null {
+  const flag = Array.isArray(value) ? value[0] : value;
+  if (flag === "exitoso" || flag === "pendiente" || flag === "fallido") return flag;
+  return null;
+}
+
 function formatMoney(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat("es-PE", { style: "currency", currency }).format(amount);
@@ -75,6 +109,19 @@ function formatDateTime(value: string | null): string | null {
 function Notice({ order }: { order: OrderWithItems }) {
   if (order.status === "pending_payment") {
     const expiresAt = formatDateTime(order.reservationExpiresAt);
+
+    // El reaper puede no haber pasado todavía: el pedido sigue en `pending_payment`
+    // aunque la reserva ya venció y el stock volvió a estar disponible.
+    if (evaluateOrderPayability(order) !== "payable") {
+      return (
+        <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+          The stock reservation for this order expired
+          {expiresAt ? ` on ${expiresAt}` : ""}. Nothing was charged. Start the checkout
+          again to reserve the items.
+        </p>
+      );
+    }
+
     return (
       <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
         We are holding your items{expiresAt ? ` until ${expiresAt}` : ""}. They are released back
@@ -103,9 +150,16 @@ function Notice({ order }: { order: OrderWithItems }) {
   return null;
 }
 
-export default async function OrderStatusPage({ params }: { params: Promise<{ token: string }> }) {
-  // En esta versión de Next `params` es una Promise: hay que esperarla.
+export default async function OrderStatusPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ pago?: string | string[] }>;
+}) {
+  // En esta versión de Next `params` y `searchParams` son Promises: hay que esperarlas.
   const { token } = await params;
+  const { pago } = await searchParams;
 
   // Validación barata: evita mandar basura a Postgres con un cast ::uuid.
   if (!UUID_PATTERN.test(token)) notFound();
@@ -142,6 +196,15 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
   const fulfillmentLabel = FULFILLMENT_LABELS[order.fulfillmentType];
   const placedAt = formatDateTime(order.createdAt);
 
+  // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
+  const payability = evaluateOrderPayability(order);
+  const canPay = payability === "payable";
+
+  // El aviso de regreso solo se muestra si el pago sigue pendiente: si el pedido ya
+  // está confirmado, el badge de estado cuenta la historia y el aviso sobra.
+  const returnFlag = readPaymentReturnFlag(pago);
+  const returnNotice = returnFlag && order.status === "pending_payment" ? PAYMENT_RETURN_NOTICES[returnFlag] : null;
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <div className="max-w-3xl mx-auto px-8 py-12">
@@ -164,6 +227,29 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
         </p>
 
         <Notice order={order} />
+
+        {returnNotice && (
+          <div className={`mt-4 rounded-2xl border px-5 py-4 text-sm ${returnNotice.tone}`}>
+            <p>{returnNotice.message}</p>
+            <Link href={`/pedido/${order.publicToken}`} className="mt-2 inline-block underline underline-offset-4">
+              Check status again
+            </Link>
+          </div>
+        )}
+
+        {canPay && (
+          <div className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-6">
+            <div className="text-xs tracking-widest text-white/50 mb-2">PAYMENT</div>
+            <p className="text-sm text-white/70 mb-5">
+              Pay with Yape, Plin, card or your Mercado Pago balance. The stock stays reserved
+              for you until the reservation expires.
+            </p>
+            <PayButton
+              publicToken={order.publicToken}
+              amountLabel={formatMoney(order.total, order.currency)}
+            />
+          </div>
+        )}
 
         {/* Líneas del pedido — snapshot inmutable: estos precios y nombres quedaron
             congelados al momento de comprar. */}
@@ -265,7 +351,7 @@ export default async function OrderStatusPage({ params }: { params: Promise<{ to
         )}
 
         <p className="mt-10 text-xs text-white/40">
-          Save this link: it is your order reference. Payment is wired up in the next phase.
+          Save this link: it is both your order reference and your payment link.
         </p>
       </div>
     </div>
