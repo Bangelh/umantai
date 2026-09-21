@@ -626,12 +626,88 @@ export interface RefreshOrderTotalsResult {
  */
 export interface RedeemPickupCodeResult {
   ok: boolean;
-  error_code: CommerceErrorCode | null;
+  error_code: PickupRedemptionErrorCode | null;
   pickup_code_id: string | null;
   order_id: string | null;
   order_number: string | null;
   locker_code: string | null;
   locker_slot: string | null;
+  /**
+   * Líneas que salieron del inventario en este canje. Es la prueba de que la
+   * entrega consolidó la reserva: `0` sólo cuando el canje falló.
+   */
+  committed_lines: number;
+}
+
+/**
+ * Motivos por los que un PIN no sirve.
+ *
+ * `pickup_rate_limited` no es un error del PIN: es el freno de intentos entrando en
+ * acción. La operaria tiene que esperar, no reintentar.
+ */
+export type PickupRedemptionErrorCode =
+  | 'pickup_code_not_found'
+  | 'pickup_code_expired'
+  | 'pickup_code_locked'
+  | 'pickup_code_already_used'
+  | 'pickup_rate_limited';
+
+// -----------------------------------------------------------------------------
+//  Cola del kiosco (pantalla de la operaria)
+// -----------------------------------------------------------------------------
+
+/**
+ * Un pedido tal como aparece en la pantalla del kiosco.
+ *
+ * NUNCA incluye el PIN: la operaria lo recibe dictado por el cliente. Si el PIN
+ * estuviera en la misma pantalla donde se tipea, el control no probaría nada.
+ */
+export interface KioskOrderSummary {
+  orderId: string;
+  orderNumber: string;
+  status: OrderStatus;
+  fulfillmentType: FulfillmentType;
+  lockerCode: string | null;
+  lockerSlot: string | null;
+  /** `metadata.buyer.fullName` del checkout; puede faltar (checkout mínimo). */
+  customerName: string | null;
+  contactEmail: string;
+  contactPhone: string | null;
+  /** Unidades totales (no líneas). */
+  itemCount: number;
+  /** Ej. `'iPhone 15 Pro ×1 · Paltas Hass ×2'` — para saber qué buscar en el locker. */
+  itemSummary: string | null;
+  total: number;
+  currency: string;
+  readyAt: string | null;
+  /** Vencimiento del PIN vigente (sólo en `ready`). */
+  codeExpiresAt: string | null;
+}
+
+export interface KioskQueue {
+  /** Listos para entregar: acá se usa el teclado de PIN. */
+  ready: KioskOrderSummary[];
+  /** Pagados y todavía sin preparar: la operaria los marca listos desde acá. */
+  preparing: KioskOrderSummary[];
+}
+
+/** Fila cruda de la consulta de cola (`getKioskQueue`). */
+export interface KioskQueueRow {
+  id: string;
+  order_number: string;
+  status: OrderStatus;
+  fulfillment_type: FulfillmentType;
+  locker_code: string | null;
+  locker_slot: string | null;
+  buyer_name: string | null;
+  contact_email: string;
+  contact_phone: string | null;
+  item_count: number;
+  item_summary: string | null;
+  total: string; // NUMERIC
+  currency: string;
+  ready_at: string | null;
+  code_expires_at: string | null;
 }
 
 // =============================================================================
@@ -649,6 +725,10 @@ export const COMMERCE_ERROR_CODES = [
   'pickup_code_locked',
   'pickup_code_already_used',
   'pickup_code_generation_failed',
+  // No la lanza el motor: la produce el freno de intentos del kiosco
+  // (`redeem_pickup_code_verified`, migración 003).
+  'pickup_rate_limited',
+  'order_not_paid',
 ] as const;
 export type CommerceErrorCode = (typeof COMMERCE_ERROR_CODES)[number];
 
@@ -662,6 +742,8 @@ export const COMMERCE_ERROR_MESSAGES: Record<CommerceErrorCode, string> = {
   pickup_code_locked: 'Too many attempts. Ask staff to issue a new code.',
   pickup_code_already_used: 'This code was already used.',
   pickup_code_generation_failed: 'Could not generate a pickup code, please retry.',
+  pickup_rate_limited: 'Too many attempts in a row. Wait a couple of minutes and try again.',
+  order_not_paid: 'This order has not been paid yet.',
 };
 
 /** Extrae el código de error del motor a partir del mensaje crudo de Postgres. */
@@ -890,8 +972,8 @@ export const toPickupCodeWithOrder = (
 });
 
 /**
- * Resultado del RPC `redeem_pickup_code`. Devuelve `null` si el canje no prosperó
- * (en ese caso lee `row.error_code` y tradúcelo con `COMMERCE_ERROR_MESSAGES`).
+ * Resultado del RPC `redeem_pickup_code_verified`. Devuelve `null` si el canje no
+ * prosperó (en ese caso lee `row.error_code` y tradúcelo con `COMMERCE_ERROR_MESSAGES`).
  *
  * `orderStatus` se reporta como 'picked_up': la base solo avanza el pedido si estaba
  * en `ready_for_pickup`; si no, emite un NOTICE para que operación lo revise.
@@ -916,3 +998,22 @@ export const toRedeemedPickup = (row: RedeemPickupCodeResult): PickupCodeWithOrd
     createdAt: '',
   };
 };
+
+/** Fila de `getKioskQueue()` → lo que consume la pantalla del kiosco. */
+export const toKioskOrderSummary = (row: KioskQueueRow): KioskOrderSummary => ({
+  orderId: row.id,
+  orderNumber: row.order_number,
+  status: row.status,
+  fulfillmentType: row.fulfillment_type,
+  lockerCode: row.locker_code,
+  lockerSlot: row.locker_slot,
+  customerName: row.buyer_name,
+  contactEmail: row.contact_email,
+  contactPhone: row.contact_phone,
+  itemCount: Number(row.item_count ?? 0),
+  itemSummary: row.item_summary,
+  total: Number(row.total),
+  currency: row.currency,
+  readyAt: row.ready_at,
+  codeExpiresAt: row.code_expires_at,
+});

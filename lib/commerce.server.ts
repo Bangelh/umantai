@@ -35,6 +35,7 @@ import {
   computeOrderTotals,
   toInventoryItem,
   toInventoryMovement,
+  toKioskOrderSummary,
   toOrder,
   toOrderWithItems,
   toPickupCode,
@@ -44,6 +45,8 @@ import {
   type InventoryMovementType,
   type InventoryMovementRow,
   type InventoryRow,
+  type KioskQueue,
+  type KioskQueueRow,
   type Order,
   type OrderItemRow,
   type OrderRow,
@@ -450,8 +453,19 @@ export async function cancelOrder(
 }
 
 /**
- * Marca `ready_for_pickup` y emite el código del Locker en la misma transacción:
- * no puede existir un código sin pedido listo, ni un pedido listo sin código.
+ * Marca el pedido como listo para retirar y emite su PIN, en una sola transacción:
+ * no puede existir un PIN sin pedido listo, ni un pedido listo sin PIN.
+ *
+ * Toda la lógica vive en `mark_order_ready_for_pickup()` (migración 003) por dos
+ * razones:
+ *   · La máquina de estados NO permite `confirmed → ready_for_pickup`: hay que pasar
+ *     por `preparing`. Hacerlo desde acá serían dos transacciones y un estado
+ *     intermedio visible si la segunda falla.
+ *   · La base exige `payment_status = 'paid'`: sin esa barrera, un camino nuevo a
+ *     `ready_for_pickup` podría preparar mercadería impaga.
+ *
+ * Lanza `invalid_order_transition` u `order_not_paid` (traducibles con
+ * `classifyCommerceError()`).
  */
 export async function markReadyForPickup(
   orderId: string,
@@ -464,30 +478,19 @@ export async function markReadyForPickup(
   } = {},
 ): Promise<PickupCode> {
   const sql = requireSql();
-  const ttlDays = options.ttlDays ?? 7;
-  const maxAttempts = options.maxAttempts ?? 5;
 
-  const results = (await sql.transaction([
-    sql`SELECT set_config('app.actor', ${options.actor ?? 'system'}, true)`,
-    sql`
-      UPDATE orders
-         SET status = 'ready_for_pickup'::order_status,
-             locker_code = COALESCE(${options.lockerCode ?? null}, locker_code)
-       WHERE id = ${orderId}::uuid
-      RETURNING *
-    `,
-    sql`
-      SELECT * FROM issue_pickup_code(
-        ${orderId}::uuid,
-        ${options.lockerCode ?? null},
-        ${options.lockerSlot ?? null},
-        make_interval(days => ${ttlDays}::int),
-        ${maxAttempts}
-      )
-    `,
-  ])) as unknown as TransactionResults;
+  const rows = (await sql`
+    SELECT * FROM mark_order_ready_for_pickup(
+      ${orderId}::uuid,
+      ${options.lockerCode ?? null},
+      ${options.lockerSlot ?? null},
+      make_interval(days => ${options.ttlDays ?? 7}::int),
+      ${options.maxAttempts ?? 5},
+      ${options.actor ?? 'system'}
+    )
+  `) as unknown as PickupCodeRow[];
 
-  const codeRow = rowAt<PickupCodeRow>(results, 2);
+  const codeRow = rows[0];
   if (!codeRow) throw new Error(`markReadyForPickup: no se pudo emitir código para ${orderId}`);
   return toPickupCode(codeRow);
 }
@@ -741,18 +744,43 @@ export async function issuePickupCode(
   return toPickupCode(row);
 }
 
+export interface RedeemPickupCodeInput {
+  code: string;
+  /** Quién retira: `'kiosk:<device>'`, `'admin:jane'`… Queda en `pickup_codes.redeemed_by`. */
+  redeemedBy?: string | null;
+  /** Identificador del terminal. Alimenta el freno de intentos y la auditoría. */
+  deviceId?: string | null;
+  ip?: string | null;
+}
+
 /**
- * Canje de un solo uso y atómico. OJO: los fallos NO lanzan excepción (un RAISE
- * revertiría el contador de intentos); llegan en `error_code`. Revisa `ok`.
+ * Canje del PIN en el kiosco: frena, canjea y CONSOLIDA el inventario, atómicamente.
+ *
+ * OJO: los fallos NO lanzan excepción — un RAISE revertiría el registro del intento, y
+ * ese registro es justamente el freno anti-fuerza-bruta. Los fallos llegan en
+ * `error_code`; revisa `ok`.
+ *
+ * Usa `redeem_pickup_code_verified()` (migración 003) y NO `redeem_pickup_code()`
+ * directo: esa última marca el pedido `picked_up` pero nunca llama a
+ * `inventory_commit_order()`, así que la reserva jamás se convierte en salida real y
+ * `quantity_on_hand` queda inflado para siempre.
+ *
+ * Si el commit de stock falla (la reserva ya no estaba), la transacción completa se
+ * revierte: el PIN vuelve a ser válido y el pedido sigue listo. Nunca un PIN
+ * consumido con el stock todavía retenido.
  */
 export async function redeemPickupCode(
-  code: string,
-  redeemedBy?: string | null,
+  input: RedeemPickupCodeInput,
 ): Promise<RedeemPickupCodeResult> {
   const sql = requireSql();
 
   const rows = (await sql`
-    SELECT * FROM redeem_pickup_code(${code}, ${redeemedBy ?? null})
+    SELECT * FROM redeem_pickup_code_verified(
+      ${input.code},
+      ${input.redeemedBy ?? null},
+      ${input.deviceId ?? null},
+      ${input.ip ?? null}
+    )
   `) as unknown as RedeemPickupCodeResult[];
 
   const row = rows[0];
@@ -765,9 +793,78 @@ export async function redeemPickupCode(
       order_number: null,
       locker_code: null,
       locker_slot: null,
+      committed_lines: 0,
     };
   }
   return row;
+}
+
+/**
+ * Todo lo que necesita la pantalla del kiosco, en una sola lectura.
+ *
+ * `ready`    → pedidos con PIN vigente y pedido `ready_for_pickup`.
+ * `preparing` → pagados y todavía sin preparar (la operaria los marca listos).
+ *
+ * Se filtra `payment_status = 'paid'` en las dos: la cola del kiosco no debe mostrar
+ * pedidos impagos, aunque la base ya lo impida al emitir el PIN.
+ */
+export async function getKioskQueue(limit = 50): Promise<KioskQueue> {
+  const sql = requireSql();
+
+  // El resumen de items va como subconsulta correlacionada (y no con un GROUP BY sobre
+  // toda la consulta) para no arrastrar las columnas de `orders` a la agregación.
+  // Está escrito dos veces a propósito: reutilizar el MISMO fragmento `sql` en dos
+  // consultas distintas es apoyarse en cómo el driver arma las dinámicas, y no vale la
+  // pena arriesgar el comportamiento por ahorrar tres líneas de SQL.
+  const results = await sql.transaction(
+    [
+      sql`
+        SELECT o.id, o.order_number, o.status, o.fulfillment_type,
+               COALESCE(pc.locker_code, o.locker_code) AS locker_code,
+               pc.locker_slot AS locker_slot,
+               o.metadata -> 'buyer' ->> 'fullName' AS buyer_name,
+               o.contact_email, o.contact_phone, o.item_count, o.total, o.currency,
+               o.ready_at, pc.expires_at AS code_expires_at,
+               (SELECT string_agg(oi.product_name || ' ×' || oi.quantity, ' · ' ORDER BY oi.line_number)
+                  FROM order_items oi
+                 WHERE oi.order_id = o.id) AS item_summary
+          FROM orders o
+          LEFT JOIN LATERAL (
+            SELECT c.locker_code, c.locker_slot, c.expires_at
+              FROM pickup_codes c
+             WHERE c.order_id = o.id AND c.status = 'issued'
+             ORDER BY c.created_at DESC
+             LIMIT 1
+          ) pc ON TRUE
+         WHERE o.status = 'ready_for_pickup'
+         ORDER BY o.ready_at NULLS LAST, o.created_at
+         LIMIT ${limit}
+      `,
+      sql`
+        SELECT o.id, o.order_number, o.status, o.fulfillment_type,
+               o.locker_code,
+               NULL::TEXT AS locker_slot,
+               o.metadata -> 'buyer' ->> 'fullName' AS buyer_name,
+               o.contact_email, o.contact_phone, o.item_count, o.total, o.currency,
+               o.ready_at,
+               NULL::TIMESTAMPTZ AS code_expires_at,
+               (SELECT string_agg(oi.product_name || ' ×' || oi.quantity, ' · ' ORDER BY oi.line_number)
+                  FROM order_items oi
+                 WHERE oi.order_id = o.id) AS item_summary
+          FROM orders o
+         WHERE o.status IN ('confirmed', 'preparing')
+           AND o.payment_status = 'paid'
+         ORDER BY o.confirmed_at NULLS LAST, o.created_at
+         LIMIT ${limit}
+      `,
+    ],
+    { readOnly: true },
+  );
+
+  return {
+    ready: rowsAt<KioskQueueRow>(results as TransactionResults, 0).map(toKioskOrderSummary),
+    preparing: rowsAt<KioskQueueRow>(results as TransactionResults, 1).map(toKioskOrderSummary),
+  };
 }
 
 /** Código vigente de un pedido (para la pantalla de retiro del cliente). */
