@@ -50,3 +50,5 @@ next-env.d.ts
 .agents/
 skills-lock.json
 
+# Client proposals / commercial docs (contain pricing — keep out of the repo)
+/docs/
