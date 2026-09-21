@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCartStore } from "@/lib/cartStore";
+import { useCartStore, cartLineKey } from "@/lib/cartStore";
 import { toast } from "sonner";
 
 export default function CartPage() {
@@ -39,7 +39,7 @@ export default function CartPage() {
 
         <div className="space-y-6">
           {items.map((item) => (
-            <div key={item.slug} className="flex gap-6 border border-white/10 bg-neutral-900 p-6 rounded-3xl">
+            <div key={cartLineKey(item)} className="flex gap-6 border border-white/10 bg-neutral-900 p-6 rounded-3xl">
               <div className="w-24 h-24 bg-neutral-800 rounded-2xl flex-shrink-0 flex items-center justify-center text-4xl">
                 {item.brand === "Apple" && "📱"}
                 {item.brand === "Dyson" && "🌀"}
@@ -60,6 +60,11 @@ export default function CartPage() {
                   <div>
                     <div className="text-sm text-white/60">{item.brand}</div>
                     <div className="text-xl font-semibold tracking-tight">{item.name}</div>
+                    {(item.selectedColor || item.selectedStorage) && (
+                      <div className="text-sm text-white/50 mt-1">
+                        {[item.selectedColor, item.selectedStorage].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
                   </div>
                   <div className="font-mono text-xl tracking-tight text-right">
                     ${(item.price * item.quantity).toFixed(2)}
@@ -69,14 +74,14 @@ export default function CartPage() {
                 <div className="flex items-center gap-4 mt-4">
                   <div className="flex items-center border border-white/20 rounded-full">
                     <button 
-                      onClick={() => updateQuantity(item.slug, item.quantity - 1)}
+                      onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
                       className="px-3 py-1 hover:bg-white/10 rounded-l-full"
                     >
                       −
                     </button>
                     <div className="px-4 font-mono">{item.quantity}</div>
                     <button 
-                      onClick={() => updateQuantity(item.slug, item.quantity + 1)}
+                      onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
                       className="px-3 py-1 hover:bg-white/10 rounded-r-full"
                     >
                       +
@@ -84,7 +89,7 @@ export default function CartPage() {
                   </div>
 
                   <button 
-                    onClick={() => removeItem(item.slug)}
+                    onClick={() => removeItem(cartLineKey(item))}
                     className="text-sm text-white/50 hover:text-white/80"
                   >
                     Remove

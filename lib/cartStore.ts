@@ -8,11 +8,27 @@ export interface CartItem extends Product {
   selectedStorage?: string;
 }
 
+/**
+ * Identificador estable de una LÍNEA del carrito: un producto + una combinación de variante.
+ *
+ * El mismo `slug` puede aparecer varias veces con distinto color/almacenamiento, así que el
+ * slug NO es una clave única. Toda operación que apunte a una sola línea (cantidad, borrar,
+ * `key` de React) debe usar esto.
+ *
+ * Se deriva de los campos ya persistidos, así que los carritos guardados en localStorage
+ * siguen funcionando sin migración.
+ */
+export function cartLineKey(
+  item: Pick<CartItem, 'slug' | 'selectedColor' | 'selectedStorage'>,
+): string {
+  return [item.slug, item.selectedColor ?? '', item.selectedStorage ?? ''].join('::');
+}
+
 interface CartStore {
   items: CartItem[];
   addItem: (product: Product, quantity?: number, color?: string, storage?: string) => void;
-  removeItem: (slug: string) => void;
-  updateQuantity: (slug: string, quantity: number) => void;
+  removeItem: (lineKey: string) => void;
+  updateQuantity: (lineKey: string, quantity: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
@@ -42,17 +58,17 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
-      removeItem: (slug) => {
+      removeItem: (lineKey) => {
         set({
-          items: get().items.filter((item) => item.slug !== slug),
+          items: get().items.filter((item) => cartLineKey(item) !== lineKey),
         });
       },
 
-      updateQuantity: (slug, quantity) => {
+      updateQuantity: (lineKey, quantity) => {
         if (quantity < 1) return;
         set({
           items: get().items.map((item) =>
-            item.slug === slug ? { ...item, quantity } : item
+            cartLineKey(item) === lineKey ? { ...item, quantity } : item
           ),
         });
       },
