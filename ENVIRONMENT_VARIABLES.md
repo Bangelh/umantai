@@ -129,6 +129,26 @@ KIOSK_ACCESS_CODE=change-me-long-random-string
 > The device key is typed once on the tablet and kept in memory only. Ordering an
 > actual per-user login (Supabase Auth + roles) is a separate work item.
 
+### Notificaciones al administrador (Resend)
+```env
+# API key de Resend (https://resend.com/api-keys). Sin ella no se envía ningún aviso:
+# el kiosco lo reporta en pantalla, no falla.
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+
+# Destinatario(s) del aviso "pedido listo para entregar". Varios: separados por coma.
+ADMIN_NOTIFICATION_EMAIL=omar@umantai.com
+
+# Remitente. Por defecto `Umantai <onboarding@resend.dev>`, la dirección de PRUEBAS de
+# Resend: sólo entrega al correo dueño de la cuenta. Para escribirle a la dirección real
+# de Omar hay que verificar el dominio en Resend y poner acá ese remitente.
+RESEND_FROM_EMAIL=Umantai <pedidos@umantai.com>
+```
+
+> El aviso incluye número de pedido, total y PIN, y se dispara cuando la operaria marca
+> "YA ESTÁ EN EL CASILLERO". Es *best-effort*: si el correo falla, el pedido igual queda
+> listo y la pantalla del kiosco muestra la advertencia para avisarle a Omar por otro
+> canal. No hay reintento automático.
+
 ### Additional / Recommended
 ```env
 # Current environment (production, preview, development)
@@ -230,6 +250,15 @@ MERCADOPAGO_BACK_URL_BASE=https://your-tunnel.trycloudflare.com
 ```env
 # Same device key as in production. Without it /api/kiosk/* answers 503.
 KIOSK_ACCESS_CODE=dev-kiosk-code-at-least-10-chars
+```
+
+### Notificaciones al administrador (Resend)
+```env
+# Opcional en desarrollo. Con `onboarding@resend.dev` (el remitente por defecto) Resend
+# sólo entrega al correo dueño de la cuenta, así que para probar usa ESA dirección.
+# Si faltan estas variables, el kiosco funciona igual y avisa que no se pudo notificar.
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
+ADMIN_NOTIFICATION_EMAIL=your-resend-account-email@example.com
 ```
 
 > Quick local check: open `http://localhost:3000/admin/kiosco`, type the key, then
