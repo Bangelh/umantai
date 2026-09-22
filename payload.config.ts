@@ -14,6 +14,35 @@ const getDatabaseConnectionString = () =>
   getPrefixedEnv('DATABASE_URL') ||
   getPrefixedEnv('SUPABASE_URL') // fallback if someone uses Supabase direct, but prefer Postgres strings
 
+/**
+ * PAYLOAD_SECRET firma las sesiones del CMS (/cms). Sin él, cualquiera puede
+ * forjar una sesión de administrador. Antes tenía fallback a '' — es decir,
+ * "secreto vacío": en producción no arranca si falta, en desarrollo usa un valor
+ * explícito de desarrollo (nunca el vacío) para no romper `next dev` local.
+ */
+const payloadSecret = (process.env.PAYLOAD_SECRET ?? '').trim();
+
+// Verdadero sólo en producción real: Vercel production, o un build de producción
+// fuera de Vercel. En Vercel *preview* no se exige (no debe bloquear previews).
+const isProductionRuntime =
+  process.env.VERCEL_ENV === 'production' ||
+  (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV);
+
+if (!payloadSecret) {
+  if (isProductionRuntime) {
+    throw new Error(
+      'PAYLOAD_SECRET is required in production: set it to a long random string ' +
+        '(it signs the /cms admin sessions). Generate one with `openssl rand -hex 32`.',
+    );
+  }
+  console.warn(
+    '⚠️  PAYLOAD_SECRET is not set. Using an insecure development-only value. ' +
+      'Set PAYLOAD_SECRET in .env.local (and in production) before deploying.',
+  );
+}
+
+const resolvedPayloadSecret = payloadSecret || 'umantai-dev-only-insecure-payload-secret';
+
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 
@@ -359,7 +388,7 @@ export default buildConfig({
     },
   ],
   editor: lexicalEditor({}),
-  secret: process.env.PAYLOAD_SECRET || '',
+  secret: resolvedPayloadSecret,
   db: postgresAdapter({
     pool: {
       connectionString: getDatabaseConnectionString(),

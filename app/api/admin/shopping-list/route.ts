@@ -1,14 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { hasDatabaseConnection } from '@/lib/db';
 import { supabaseServer } from '@/lib/supabase/server';
+import { requireAdminToken } from '@/lib/admin.server';
 
 /**
  * GET /api/admin/shopping-list
  * Admin view: returns ALL shopping list items across all users (bypasses RLS via service role).
- * No auth here (protected by /admin password gate in UI).
- * Use only from the admin panel.
+ * Requires the admin token (`x-admin-token`): it bypasses RLS with the service
+ * role, so an open endpoint here would leak every user's list.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!hasDatabaseConnection() || !supabaseServer) {
     return NextResponse.json({ items: [], error: "Database not configured" }, { status: 503 });
   }
@@ -52,6 +58,11 @@ export async function GET() {
 
 // PATCH for admin (bypass RLS)
 export async function PATCH(req: Request) {
+  const access = requireAdminToken(req);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!hasDatabaseConnection() || !supabaseServer) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
@@ -85,6 +96,11 @@ export async function PATCH(req: Request) {
 
 // DELETE for admin
 export async function DELETE(req: Request) {
+  const access = requireAdminToken(req);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!hasDatabaseConnection() || !supabaseServer) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }

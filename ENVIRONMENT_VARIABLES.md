@@ -129,6 +129,24 @@ KIOSK_ACCESS_CODE=change-me-long-random-string
 > The device key is typed once on the tablet and kept in memory only. Ordering an
 > actual per-user login (Supabase Auth + roles) is a separate work item.
 
+### Panel de administración (token de API)
+```env
+# Secreto compartido que protege el panel /admin y TODAS las APIs de administración
+# (/api/admin/*, /api/products, /api/categories, /api/brands, /api/notes, /api/debug/env).
+# Se verifica SERVIDOR-side contra el header `x-admin-token`; nunca viaja en el bundle.
+# Si falta, esas rutas responden 503 (fallan cerrado, igual que el kiosco).
+# Mínimo 16 caracteres; usa 32+ aleatorios (p. ej. `openssl rand -hex 32`). Rótalo cuando
+# salga del equipo.
+ADMIN_API_SECRET=change-me-long-random-string
+```
+
+> El panel ya NO usa una contraseña hardcodeada (`umantai`): eso era security theater,
+> porque viajaba en el bundle que descarga cualquier visitante. Ahora el panel pide este
+> token, lo guarda en el navegador y lo manda en el header `x-admin-token`. Es una llave
+> compartida — no identifica a la persona; eso llega en la V2 con Supabase Auth + roles.
+> El kiosco usa SU PROPIA clave (`KIOSK_ACCESS_CODE`), separada a propósito: quien edita
+> precios no debería poder, con esa misma credencial, entregar mercadería.
+
 ### Notificaciones al cliente (Resend)
 ```env
 # API key de Resend (https://resend.com/api-keys). Sin ella no se envía ningún aviso:

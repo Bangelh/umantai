@@ -4,11 +4,12 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  POR QUÉ EXISTE ESTE ARCHIVO
  *
- *  `/admin` hoy se protege con un password escrito en el bundle del cliente
- *  (`"umantai"`, incluso impreso en pantalla) y sus rutas `/api/admin/*` están
- *  abiertas. Eso era tolerable cuando el peor daño era cambiar un precio.
+ *  El panel `/admin` y sus rutas ya están cerradas con `ADMIN_API_SECRET` y el
+ *  header `x-admin-token` (ver `lib/admin.server.ts`), y el kiosco usa SU PROPIA
+ *  clave. Son llaves distintas a propósito: quien puede editar precios no debería
+ *  poder, con esa misma credencial, entregar mercadería.
  *
- *  El kiosco no: valida PIN y CONSOLIDA INVENTARIO (entrega mercadería). Un endpoint
+ *  El kiosco valida PIN y CONSOLIDA INVENTARIO (entrega mercadería). Un endpoint
  *  abierto ahí es una tienda con la puerta sin llave y la caja abierta.
  *
  *  Solución de este bloque: una clave de dispositivo verificada en el SERVIDOR

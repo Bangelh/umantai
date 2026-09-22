@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, hasDatabaseConnection, getDatabaseNotConfiguredError } from '@/lib/db';
+import { requireAdminToken } from '@/lib/admin.server';
 
 interface Category {
   id: number;
@@ -44,6 +45,11 @@ export async function GET(request: NextRequest) {
 
 // POST /api/categories → create new category/subcategory
 export async function POST(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ success: false, error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!hasDatabaseConnection()) {
     return NextResponse.json(getDatabaseNotConfiguredError(), { status: 503 });
   }

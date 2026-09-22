@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { envConfig } from '@/lib/env';
+import { withAdminAuth } from '@/lib/adminAuth';
 
 interface ServerStatus {
   database: { 
@@ -23,7 +24,7 @@ export function EnvironmentStatus() {
 
   useEffect(() => {
     // Fetch real server-side status (masked, safe for admin)
-    fetch('/api/debug/env', { cache: 'no-store' })
+    fetch('/api/debug/env', withAdminAuth({ cache: 'no-store' }))
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {

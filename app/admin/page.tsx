@@ -6,6 +6,7 @@ import { baseProducts } from "@/lib/products";
 import { useAdminProductStore, ProductOverride } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
 import { EnvironmentStatus } from "./components/EnvironmentStatus";
+import { getAdminToken, setAdminToken, withAdminAuth } from "@/lib/adminAuth";
 
 // Types
 type Section = "products" | "brands" | "categories" | "stock";
@@ -104,11 +105,11 @@ function EditModal({ product, onClose }: EditModalProps) {
 
     // 2. Send to backend (Postgres) using the new PATCH endpoint
     try {
-      await fetch(`/api/products/${product.slug}`, {
+      await fetch(`/api/products/${product.slug}`, withAdminAuth({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatePayload),
-      });
+      }));
     } catch (error) {
       console.error("Failed to persist product edit (rename/stock/category) to database", error);
       alert(
@@ -384,11 +385,11 @@ function CategoriesManager() {
     const groups = wholeFoodsCategories.subcategories || [];
     for (const group of groups) {
       // Create group as top-level (parent_id null)
-      const groupRes = await fetch('/api/categories', {
+      const groupRes = await fetch('/api/categories', withAdminAuth({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: group.name }),
-      });
+      }));
       const groupData = await groupRes.json().catch(() => ({}));
       const parentId = groupData?.data?.id;
       if (!parentId) {
@@ -397,11 +398,11 @@ function CategoriesManager() {
       }
       // Create subs under it
       for (const sub of (group.subcategories || [])) {
-        await fetch('/api/categories', {
+        await fetch('/api/categories', withAdminAuth({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: sub.name, parent_id: parentId }),
-        }).catch(() => {});
+        })).catch(() => {});
       }
     }
     await loadTree();
@@ -440,11 +441,11 @@ function CategoriesManager() {
     const name = prompt("New subcategory name:");
     if (!name) return;
 
-    await fetch('/api/categories', {
+    await fetch('/api/categories', withAdminAuth({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, parent_id: parentId }),
-    });
+    }));
     loadTree();
   };
 
@@ -472,11 +473,11 @@ function CategoriesManager() {
     }
 
     try {
-      const res = await fetch(`/api/categories/${id}`, {
+      const res = await fetch(`/api/categories/${id}`, withAdminAuth({
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
-      });
+      }));
 
       if (res.ok) {
         cancelRename();
@@ -502,7 +503,7 @@ function CategoriesManager() {
 
   const deleteCategory = async (id: number, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"?\n\nThis action cannot be undone. The category must have no subcategories.`)) return;
-    await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+    await fetch(`/api/categories/${id}`, withAdminAuth({ method: 'DELETE' }));
     loadTree();
   };
 
@@ -661,11 +662,11 @@ function BrandsManager() {
 
   const addBrand = async () => {
     if (!newBrandName.trim()) return;
-    await fetch('/api/brands', {
+    await fetch('/api/brands', withAdminAuth({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newBrandName.trim() }),
-    });
+    }));
     setNewBrandName("");
     loadBrands();
   };
@@ -687,18 +688,18 @@ function BrandsManager() {
       return;
     }
 
-    await fetch(`/api/brands/${id}`, {
+    await fetch(`/api/brands/${id}`, withAdminAuth({
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName }),
-    });
+    }));
     setEditingId(null);
     loadBrands();
   };
 
   const deleteBrand = async (id: number, name: string) => {
     if (!confirm(`Are you sure you want to delete the brand "${name}"?`)) return;
-    await fetch(`/api/brands/${id}`, { method: 'DELETE' });
+    await fetch(`/api/brands/${id}`, withAdminAuth({ method: 'DELETE' }));
     loadBrands();
   };
 
@@ -758,9 +759,11 @@ export default function AdminPage() {
     migrateLocalChangesToDatabase 
   } = useAdminProductStore();
 
-  // Auth
+  // Auth — token de administración (la validación real ocurre en el servidor)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState(false);
 
   // Sections
   const [activeSection, setActiveSection] = useState<Section>("products");
@@ -789,24 +792,65 @@ export default function AdminPage() {
     else if (lower.includes("stock") || lower.includes("unit")) setActiveSection("stock");
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  /**
+   * Valida el token contra el SERVIDOR antes de guardarlo: si
+   * `/api/admin/overrides` responde 200, el token sirve; si no, no se guarda nada.
+   * Así el navegador nunca necesita conocer el secreto.
+   */
+  const verifyAdminToken = async (candidate: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/admin/overrides', withAdminAuth({}, candidate));
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === "umantai" || password === "admin") {
+    const candidate = tokenInput.trim();
+    if (!candidate) {
+      setAuthError('Ingresa el token de administración.');
+      return;
+    }
+    setAuthChecking(true);
+    setAuthError('');
+    const ok = await verifyAdminToken(candidate);
+    setAuthChecking(false);
+    if (ok) {
+      setAdminToken(candidate);
       setIsAuthenticated(true);
       loadFromDatabase();
     } else {
-      alert("Wrong password. Try 'umantai'");
+      setAuthError('Token inválido. Revisa ADMIN_API_SECRET en el servidor.');
     }
   };
+
+  // Reutiliza el token guardado (si sigue siendo válido) al recargar la página.
+  useEffect(() => {
+    const stored = getAdminToken();
+    if (!stored) return;
+    let cancelled = false;
+    void (async () => {
+      const ok = await verifyAdminToken(stored);
+      if (!cancelled && ok) {
+        setIsAuthenticated(true);
+        loadFromDatabase();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handlePublish = async () => {
     setPublishStatus("publishing");
     try {
-      const res = await fetch("/api/admin/overrides", {
+      const res = await fetch("/api/admin/overrides", withAdminAuth({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ overrides }),
-      });
+      }));
       const data = await res.json();
       if (res.ok) {
         setPublishStatus("success");
@@ -846,7 +890,7 @@ export default function AdminPage() {
     setSetupStatus("running");
     setSetupMessage("");
     try {
-      const res = await fetch("/api/admin/setup-db", { method: "POST" });
+      const res = await fetch("/api/admin/setup-db", withAdminAuth({ method: "POST" }));
       const data = await res.json();
       if (res.ok && data.success) {
         setSetupStatus("success");
@@ -881,10 +925,15 @@ export default function AdminPage() {
             <div className="text-white/60">Admin Panel</div>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter admin password" className="w-full bg-neutral-900 border border-white/20 rounded-xl px-4 py-3 text-lg" autoFocus />
-            <button type="submit" className="w-full py-3 bg-white text-black rounded-xl font-medium">Enter Admin</button>
+            <input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Enter admin token" className="w-full bg-neutral-900 border border-white/20 rounded-xl px-4 py-3 text-lg" autoFocus />
+            <button type="submit" disabled={authChecking} className="w-full py-3 bg-white text-black rounded-xl font-medium disabled:opacity-60">
+              {authChecking ? "Verificando…" : "Enter Admin"}
+            </button>
           </form>
-          <p className="text-center text-white/40 text-sm mt-6">Password: <span className="font-mono">umantai</span></p>
+          {authError && <p className="text-center text-red-400 text-sm mt-3">{authError}</p>}
+          <p className="text-center text-white/40 text-sm mt-6">
+            Se valida en el servidor contra <span className="font-mono">ADMIN_API_SECRET</span>
+          </p>
         </div>
       </div>
     );

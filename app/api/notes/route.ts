@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
+import { requireAdminToken } from '@/lib/admin.server';
 
 // GET all notes
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ success: false, error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!supabaseServer) {
     return NextResponse.json(
       { 
@@ -32,6 +38,11 @@ export async function GET() {
 
 // POST - Create a new note
 export async function POST(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ success: false, error: access.message, code: access.code }, { status: access.status });
+  }
+
   if (!supabaseServer) {
     return NextResponse.json(
       { 

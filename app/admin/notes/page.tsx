@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getAdminToken, setAdminToken, withAdminAuth } from "@/lib/adminAuth";
 
 interface Note {
   id: number;
@@ -10,28 +11,19 @@ interface Note {
 
 export default function AdminNotesPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authChecking, setAuthChecking] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Same simple password as main admin for now
-    if (password === "umantai" || password === "admin") {
-      setIsAuthenticated(true);
-      fetchNotes();
-    } else {
-      alert("Wrong password. Try 'umantai'");
-    }
-  };
-
   const fetchNotes = async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/notes");
+      const res = await fetch("/api/notes", withAdminAuth());
       const data = await res.json();
       if (data.success) {
         setNotes(data.data);
@@ -45,17 +37,64 @@ export default function AdminNotesPage() {
     }
   };
 
+  /** Valida el token contra el servidor (GET /api/notes) antes de guardarlo. */
+  const verifyAdminToken = async (candidate: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/notes", withAdminAuth({}, candidate));
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const candidate = tokenInput.trim();
+    if (!candidate) {
+      setAuthError("Ingresa el token de administración.");
+      return;
+    }
+    setAuthChecking(true);
+    setAuthError("");
+    const ok = await verifyAdminToken(candidate);
+    setAuthChecking(false);
+    if (ok) {
+      setAdminToken(candidate);
+      setIsAuthenticated(true);
+      fetchNotes();
+    } else {
+      setAuthError("Token inválido. Revisa ADMIN_API_SECRET en el servidor.");
+    }
+  };
+
+  // Reutiliza el token guardado (si sigue siendo válido) al recargar la página.
+  useEffect(() => {
+    const stored = getAdminToken();
+    if (!stored) return;
+    let cancelled = false;
+    void (async () => {
+      const ok = await verifyAdminToken(stored);
+      if (!cancelled && ok) {
+        setIsAuthenticated(true);
+        fetchNotes();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
     setLoading(true);
     try {
-      const res = await fetch("/api/notes", {
+      const res = await fetch("/api/notes", withAdminAuth({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newTitle.trim() }),
-      });
+      }));
       const data = await res.json();
 
       if (data.success) {
@@ -83,22 +122,27 @@ export default function AdminNotesPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter admin password"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder="Enter admin token"
               className="w-full bg-neutral-900 border border-white/20 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-white/40"
               autoFocus
             />
             <button
               type="submit"
-              className="w-full py-3 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors"
+              disabled={authChecking}
+              className="w-full py-3 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors disabled:opacity-60"
             >
-              Enter Notes Admin
+              {authChecking ? "Verificando…" : "Enter Notes Admin"}
             </button>
           </form>
 
+          {authError && (
+            <p className="text-center text-red-400 text-sm mt-3">{authError}</p>
+          )}
+
           <p className="text-center text-white/40 text-sm mt-6">
-            Password: <span className="font-mono">umantai</span>
+            Se valida en el servidor contra <span className="font-mono">ADMIN_API_SECRET</span>
           </p>
 
           <div className="mt-8 text-center">

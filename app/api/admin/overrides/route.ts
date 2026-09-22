@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllOverrides, upsertOverride, deleteAllOverrides } from '@/lib/db';
+import { requireAdminToken } from '@/lib/admin.server';
 
 /**
  * GET /api/admin/overrides
  * Returns all published product overrides from Vercel Postgres.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   try {
     const overrides = await getAllOverrides();
     return NextResponse.json({ overrides });
@@ -21,6 +27,11 @@ export async function GET() {
  * Body: { overrides: Record<string, any> }
  */
 export async function POST(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   try {
     const body = await request.json();
     const { overrides } = body;

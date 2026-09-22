@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getEnvDebugInfo } from '@/lib/env';
+import { requireAdminToken } from '@/lib/admin.server';
 
 /**
  * GET /api/debug/env
@@ -7,7 +8,12 @@ import { getEnvDebugInfo } from '@/lib/env';
  * Intended for the /debug/env page and admin debugging.
  * All secrets and connection strings are masked.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
   try {
     const debug = getEnvDebugInfo();
     return NextResponse.json(debug, {

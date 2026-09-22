@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Product } from './products';
+import { withAdminAuth } from './adminAuth';
 
 export interface ProductOverride {
   // Basic info
@@ -78,7 +79,7 @@ export const useAdminProductStore = create<AdminProductStore>()(
 
       loadFromDatabase: async () => {
         try {
-          const res = await fetch('/api/admin/overrides');
+          const res = await fetch('/api/admin/overrides', withAdminAuth());
           const data = await res.json();
           
           if (data.overrides) {
@@ -101,11 +102,11 @@ export const useAdminProductStore = create<AdminProductStore>()(
         }
 
         try {
-          const res = await fetch('/api/admin/overrides', {
+          const res = await fetch('/api/admin/overrides', withAdminAuth({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ overrides: currentOverrides }),
-          });
+          }));
 
           if (!res.ok) {
             const errorData = await res.json().catch(() => ({}));
@@ -113,7 +114,7 @@ export const useAdminProductStore = create<AdminProductStore>()(
           }
 
           // After successful migration, refresh published data
-          const publishedRes = await fetch('/api/admin/overrides');
+          const publishedRes = await fetch('/api/admin/overrides', withAdminAuth());
           const publishedData = await publishedRes.json();
 
           if (publishedData.overrides) {
