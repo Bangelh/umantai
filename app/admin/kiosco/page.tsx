@@ -61,8 +61,9 @@ interface QueuePayload {
 interface ReadyPayload {
   ok?: boolean;
   error?: string;
-  /** `sent` | `failed` | `not_configured` | `order_not_found` (ver lib/notifications.server.ts). */
-  adminNotification?: string;
+  /** `sent` | `failed` | `not_configured` | `order_not_found` | `invalid_recipient`
+   *  (ver lib/notifications.server.ts). */
+  customerNotification?: string;
 }
 
 /** Aviso posterior de "YA ESTÁ EN EL CASILLERO". */
@@ -77,16 +78,18 @@ interface ReadyNotice {
  * Traduce el resultado del aviso a algo que la operaria pueda accionar.
  *
  * `sent` no dice nada: que el correo haya salido bien no cambia lo que ella tiene que
- * hacer. Lo que sí importa es cuándo Omar NO se va a enterar, porque el cliente ya está
- * en el mostrador y ese aviso es lo único que le da tiempo a la tienda a prepararse.
+ * hacer. Lo que sí importa es cuándo el CLIENTE no recibió el aviso: el PIN se dicta en
+ * el mostrador igual, pero conviene que ella confirme en voz alta que el pedido es suyo.
  */
 function notificationWarning(status: unknown): string | undefined {
   switch (status) {
+    case 'invalid_recipient':
+      return 'El pedido no tiene un correo válido, así que el cliente no recibió el aviso. Confirma con él que este pedido es suyo.';
     case 'failed':
     case 'order_not_found':
-      return 'No se pudo enviar el aviso por correo a la tienda. Avisa a Omar que este pedido está listo.';
+      return 'No se pudo enviar el aviso por correo al cliente. Confirma con él que este pedido es suyo.';
     case 'not_configured':
-      return 'El aviso automático por correo no está configurado. Avisa a Omar que este pedido está listo.';
+      return 'El aviso automático por correo no está configurado. Dile al cliente que guarde su PIN y confirma que este pedido es suyo.';
     default:
       return undefined;
   }
@@ -324,7 +327,7 @@ export default function KioscoPage() {
           setReadyNotice({
             ok: true,
             message: `Pedido listo${lockerSlot ? ` en el casillero ${lockerSlot}` : ''}. Su PIN ya funciona.`,
-            warning: notificationWarning(payload.adminNotification),
+            warning: notificationWarning(payload.customerNotification),
           });
           await loadQueue();
         } else {
