@@ -48,6 +48,7 @@ next-env.d.ts
 # Grok Build / agent / skills artifacts (do not deploy)
 .grok/
 .agents/
+.claude/
 skills-lock.json
 
 # Client proposals / commercial docs (contain pricing — keep out of the repo)
