@@ -17,13 +17,12 @@
  *  movimiento existente en vez de duplicar stock. Además el script lee primero
  *  las claves ya aplicadas, así que tampoco hace viajes de más.
  *
- *  OJO CON LAS VARIANTES
+ *  VARIANTES GENÉRICAS
  *
- *  El selector de color/almacenamiento de `app/products/[slug]/page.tsx` todavía
- *  es decorativo: llama a `addItem(product)` sin opciones, así que hoy el carrito
- *  manda SIEMPRE `variant_key = ''`. Por eso cada producto siembra su SKU base.
- *  Las combinaciones color × almacenamiento se siembran además para cuando se
- *  conecte el selector — con la MISMA clave que genera `buildVariantKey()`.
+ *  Cada producto se expande a una fila por combinación de sus `options` (o de sus
+ *  `colors`/`storage` legacy). La clave de cada fila es exactamente la que produce
+ *  `buildVariantKey()`, así que la reserva del checkout encuentra el stock correcto.
+ *  Un producto sin opciones siembra una sola fila con `variant_key = ''`.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  *  USO
@@ -88,11 +87,21 @@ function seedKey(target: Pick<SeedTarget, 'productSlug' | 'variantKey'>): string
  * Expande el catálogo a una fila por SKU.
  * El stock sale del override de /admin si existe, para no sembrar un número viejo.
  */
+type ProductOptionLike = { name: string; values: readonly string[] };
+
+interface BuildDeps {
+  buildVariantKey: (variant?: ProductVariant) => string;
+  enumerateVariantSelections: (options: readonly ProductOptionLike[]) => ProductVariant[];
+  getProductOptions: (
+    product: Pick<Product, 'options' | 'colors' | 'storage'>,
+  ) => ProductOptionLike[];
+}
+
 function buildTargets(
   products: Product[],
   overrides: Record<string, Record<string, unknown>>,
   flags: Flags,
-  buildVariantKey: (variant?: ProductVariant) => string,
+  deps: BuildDeps,
 ): SeedTarget[] {
   const targets: SeedTarget[] = [];
 
@@ -106,34 +115,29 @@ function buildTargets(
     const quantity = Math.floor(stock);
     if (quantity <= 0) continue;
 
-    // 1) SKU sin variante: el que consume el carrito hoy.
-    targets.push({
-      productSlug: base.slug,
-      productName: base.name,
-      variantKey: '',
-      variantLabel: 'sin variante',
-      quantity,
-    });
+    const options = deps.getProductOptions(base);
 
-    if (flags.baseOnly) continue;
+    // Producto sin opciones: una sola fila con `variant_key = ''`.
+    if (flags.baseOnly || options.length === 0) {
+      targets.push({
+        productSlug: base.slug,
+        productName: base.name,
+        variantKey: '',
+        variantLabel: 'sin variante',
+        quantity,
+      });
+      continue;
+    }
 
-    // 2) Cada combinación color × almacenamiento.
-    const colors: Array<string | null> = base.colors?.length ? base.colors : [null];
-    const storages: Array<string | null> = base.storage?.length ? base.storage : [null];
-
-    for (const color of colors) {
-      for (const storage of storages) {
-        if (color === null && storage === null) continue; // ya cubierto por el SKU base
-
-        const variant: ProductVariant = { color, storage };
-        targets.push({
-          productSlug: base.slug,
-          productName: base.name,
-          variantKey: buildVariantKey(variant),
-          variantLabel: [color, storage].filter(Boolean).join(' · '),
-          quantity,
-        });
-      }
+    // Una fila por combinación real de opciones (producto cartesiano).
+    for (const selection of deps.enumerateVariantSelections(options)) {
+      targets.push({
+        productSlug: base.slug,
+        productName: base.name,
+        variantKey: deps.buildVariantKey(selection),
+        variantLabel: Object.values(selection).filter(Boolean).join(' · '),
+        quantity,
+      });
     }
   }
 
@@ -158,13 +162,17 @@ async function readSeededKeys(): Promise<Set<string>> {
 async function main() {
   const flags = parseFlags(process.argv.slice(2));
 
-  const [{ baseProductsData }, { getAllOverrides, hasDatabaseConnection }, { buildVariantKey }, commerceServer] =
-    await Promise.all([
-      import('../lib/products'),
-      import('../lib/db'),
-      import('../lib/commerce'),
-      import('../lib/commerce.server'),
-    ]);
+  const [
+    { baseProductsData, getProductOptions },
+    { getAllOverrides, hasDatabaseConnection },
+    { buildVariantKey, enumerateVariantSelections },
+    commerceServer,
+  ] = await Promise.all([
+    import('../lib/products'),
+    import('../lib/db'),
+    import('../lib/commerce'),
+    import('../lib/commerce.server'),
+  ]);
 
   if (!hasDatabaseConnection() || !commerceServer.isCommerceDbConfigured()) {
     console.error('✗ No hay base de datos configurada.');
@@ -177,7 +185,11 @@ async function main() {
   console.log(`   local: ${flags.location}${flags.dryRun ? '  ·  🧪 DRY RUN (no escribe)' : ''}`);
 
   const overrides = await getAllOverrides();
-  const targets = buildTargets(baseProductsData, overrides, flags, buildVariantKey);
+  const targets = buildTargets(baseProductsData, overrides, flags, {
+    buildVariantKey,
+    enumerateVariantSelections,
+    getProductOptions,
+  });
   const seeded = await readSeededKeys();
 
   console.log(`\n📦 ${targets.length} SKU(s) objetivo · ${seeded.size} ya sembrado(s) antes\n`);

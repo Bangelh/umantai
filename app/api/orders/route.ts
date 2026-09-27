@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllOverrides, hasDatabaseConnection } from '@/lib/db';
-import { baseProductsData, type Product } from '@/lib/products';
+import { baseProductsData, getProductOptions, type Product } from '@/lib/products';
 import {
   COMMERCE_ERROR_MESSAGES,
-  buildVariantKey,
   classifyCommerceError,
   isFulfillmentType,
   isOrderChannel,
+  normalizeVariantSelection,
+  variantKeyForSelection,
   type CreateOrderLineInput,
   type ProductVariant,
   type ShippingAddress,
@@ -159,15 +160,27 @@ export async function POST(request: NextRequest) {
     const variant: ProductVariant =
       line.variant && typeof line.variant === 'object' ? (line.variant as ProductVariant) : {};
 
+    // ── Validación SERVER-SIDE de la variante ─────────────────────────────────
+    // El navegador solo elige; acá se comprueba que la selección sea una combinación
+    // real del producto (una opción por cada eje declarado, sin opciones de más).
+    // Producto sin variantes: solo vale la selección vacía (`variant_key = ''`).
+    const options = getProductOptions(base);
+    const variantKey = variantKeyForSelection(options, variant);
+    if (variantKey === null) {
+      return badRequest(
+        `items[${index}].variant is not a valid selection for "${productSlug}"`,
+      );
+    }
+
     lines.push({
       productSlug,
       productName: typeof override.name === 'string' ? override.name : base.name,
       productBrand: typeof override.brand === 'string' ? override.brand : base.brand,
       imageUrl: pickImage(override, base),
-      variant,
-      // Clave de SKU compartida con `inventory`. Debe coincidir con lo que persiste
-      // `order_items.variant_key`, o la reserva no encontraría el stock.
-      variantKey: buildVariantKey(variant),
+      // Se guarda la selección normalizada (sin claves vacías) y la clave canónica
+      // que comparte `inventory`. La clave SIEMPRE se deriva acá, nunca del cliente.
+      variant: normalizeVariantSelection(variant),
+      variantKey,
       quantity,
       unitPrice,
     });

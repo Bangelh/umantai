@@ -687,6 +687,130 @@ export async function getInventoryItem(
 }
 
 /**
+ * Disponibilidad de stock por variante, para el catálogo público.
+ *
+ * Es de SOLO LECTURA: la autoridad sigue siendo `inventory.quantity_available`
+ * (columna generada). El catálogo la usa para mostrar disponibilidad real y para
+ * deshabilitar combinaciones agotadas, nunca para decidir una venta.
+ */
+export interface VariantAvailability {
+  productSlug: string;
+  variantKey: string;
+  quantityOnHand: number;
+  quantityReserved: number;
+  quantityAvailable: number;
+}
+
+export async function getVariantAvailability(
+  slugs: string[],
+  locationCode = 'MAIN',
+): Promise<VariantAvailability[]> {
+  if (slugs.length === 0) return [];
+  const sql = requireSql();
+
+  const rows = (await sql`
+    SELECT product_slug, variant_key, quantity_on_hand, quantity_reserved, quantity_available
+      FROM inventory
+     WHERE location_code = ${locationCode}
+       AND product_slug = ANY(${slugs}::text[])
+       AND is_active = TRUE
+  `) as unknown as Array<{
+    product_slug: string;
+    variant_key: string;
+    quantity_on_hand: number;
+    quantity_reserved: number;
+    quantity_available: number;
+  }>;
+
+  return rows.map((row) => ({
+    productSlug: row.product_slug,
+    variantKey: row.variant_key,
+    quantityOnHand: Number(row.quantity_on_hand),
+    quantityReserved: Number(row.quantity_reserved),
+    quantityAvailable: Number(row.quantity_available),
+  }));
+}
+
+/**
+ * Inventario completo del local (solo lectura). Lo usa el panel de operación.
+ * Ordenado por disponibilidad ascendente: lo que está por agotarse queda arriba.
+ */
+export async function listInventory(locationCode = 'MAIN', limit = 500): Promise<InventoryItem[]> {
+  const sql = requireSql();
+  const rows = (await sql`
+    SELECT * FROM inventory
+     WHERE location_code = ${locationCode}
+     ORDER BY quantity_available ASC, product_slug, variant_key
+     LIMIT ${limit}
+  `) as unknown as InventoryRow[];
+  return rows.map(toInventoryItem);
+}
+
+/**
+ * SKUs en o por debajo de su punto de reorden (`reorder_point > 0`).
+ * Es la base de las alertas de stock bajo que revisa la tienda.
+ */
+export async function listLowStock(locationCode = 'MAIN'): Promise<InventoryItem[]> {
+  const sql = requireSql();
+  const rows = (await sql`
+    SELECT * FROM inventory
+     WHERE location_code = ${locationCode}
+       AND is_active = TRUE
+       AND reorder_point > 0
+       AND quantity_available <= reorder_point
+     ORDER BY (quantity_available - reorder_point) ASC, product_slug, variant_key
+  `) as unknown as InventoryRow[];
+  return rows.map(toInventoryItem);
+}
+
+/**
+ * Ajusta el punto de reorden de un SKU. NO toca cantidades (no es un movimiento de
+ * stock); solo configura el umbral de alerta. Crea la fila del SKU en cero si aún no
+ * existe, para poder vigilar un producto antes de recibir mercadería.
+ */
+export async function setReorderPoint(
+  productSlug: string,
+  variantKey: string,
+  reorderPoint: number,
+  locationCode = 'MAIN',
+): Promise<InventoryItem | null> {
+  const sql = requireSql();
+  const rows = (await sql`
+    INSERT INTO inventory (location_code, product_slug, variant_key, reorder_point)
+    VALUES (${locationCode}, ${productSlug}, ${variantKey}, ${reorderPoint})
+    ON CONFLICT (location_code, product_slug, variant_key)
+    DO UPDATE SET reorder_point = EXCLUDED.reorder_point
+    RETURNING *
+  `) as unknown as InventoryRow[];
+  return rows[0] ? toInventoryItem(rows[0]) : null;
+}
+
+/** SKUs (slug + variante) de las líneas de un pedido. Para revisar stock tras una venta. */
+export async function getOrderItemSkus(
+  orderId: string,
+): Promise<Array<{ productSlug: string; variantKey: string; productName: string; quantity: number }>> {
+  const sql = requireSql();
+  const rows = (await sql`
+    SELECT product_slug, variant_key, product_name, quantity
+      FROM order_items
+     WHERE order_id = ${orderId}::uuid
+     ORDER BY line_number
+  `) as unknown as Array<{
+    product_slug: string;
+    variant_key: string;
+    product_name: string;
+    quantity: number;
+  }>;
+
+  return rows.map((row) => ({
+    productSlug: row.product_slug,
+    variantKey: row.variant_key,
+    productName: row.product_name,
+    quantity: Number(row.quantity),
+  }));
+}
+
+/**
  * Re-reserva el stock de un pedido cuya reserva ya había liberado el reaper
  * (pago tardío de Mercado Pago). Sólo retiene las líneas que hoy no lo están.
  *
@@ -825,7 +949,12 @@ export async function getKioskQueue(limit = 50): Promise<KioskQueue> {
                o.metadata -> 'buyer' ->> 'fullName' AS buyer_name,
                o.contact_email, o.contact_phone, o.item_count, o.total, o.currency,
                o.ready_at, pc.expires_at AS code_expires_at,
-               (SELECT string_agg(oi.product_name || ' ×' || oi.quantity, ' · ' ORDER BY oi.line_number)
+               (SELECT string_agg(
+                         oi.product_name
+                         || COALESCE(' [' || (SELECT string_agg(e.value, '·' ORDER BY e.key)
+                                                FROM jsonb_each_text(oi.variant) e) || ']', '')
+                         || ' ×' || oi.quantity,
+                         ' · ' ORDER BY oi.line_number)
                   FROM order_items oi
                  WHERE oi.order_id = o.id) AS item_summary
           FROM orders o
@@ -848,7 +977,12 @@ export async function getKioskQueue(limit = 50): Promise<KioskQueue> {
                o.contact_email, o.contact_phone, o.item_count, o.total, o.currency,
                o.ready_at,
                NULL::TIMESTAMPTZ AS code_expires_at,
-               (SELECT string_agg(oi.product_name || ' ×' || oi.quantity, ' · ' ORDER BY oi.line_number)
+               (SELECT string_agg(
+                         oi.product_name
+                         || COALESCE(' [' || (SELECT string_agg(e.value, '·' ORDER BY e.key)
+                                                FROM jsonb_each_text(oi.variant) e) || ']', '')
+                         || ' ×' || oi.quantity,
+                         ' · ' ORDER BY oi.line_number)
                   FROM order_items oi
                  WHERE oi.order_id = o.id) AS item_summary
           FROM orders o

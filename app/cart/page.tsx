@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCartStore, cartLineKey } from "@/lib/cartStore";
+import { useCartStore, cartLineKey, cartItemVariant } from "@/lib/cartStore";
 import { useHydrated } from "@/lib/useHydrated";
 import { toast } from "sonner";
 
@@ -87,8 +87,9 @@ export default function CartPage() {
           items: items.map((item) => ({
             productSlug: item.slug,
             quantity: item.quantity,
-            // Solo opciones: el servidor recalcula nombre y precio contra el catálogo.
-            variant: { color: item.selectedColor, storage: item.selectedStorage },
+            // Solo opciones: el servidor valida la combinación y recalcula nombre y
+            // precio contra el catálogo. `cartItemVariant` normaliza carritos antiguos.
+            variant: cartItemVariant(item),
           })),
         }),
       });
@@ -181,9 +182,9 @@ export default function CartPage() {
                   <div>
                     <div className="text-sm text-white/60">{item.brand}</div>
                     <div className="text-xl font-semibold tracking-tight">{item.name}</div>
-                    {(item.selectedColor || item.selectedStorage) && (
+                    {Object.values(cartItemVariant(item)).filter(Boolean).length > 0 && (
                       <div className="text-sm text-white/50 mt-1">
-                        {[item.selectedColor, item.selectedStorage].filter(Boolean).join(" · ")}
+                        {Object.values(cartItemVariant(item)).filter(Boolean).join(" · ")}
                       </div>
                     )}
                   </div>

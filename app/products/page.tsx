@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { getAvailableProducts, categories, brands, Product, getAllProducts } from "@/lib/products";
+import { useRouter } from "next/navigation";
+import { getAvailableProducts, getProductOptions, categories, brands, Product, getAllProducts } from "@/lib/products";
 import { useAdminProductStore } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
 import { useCartStore } from "@/lib/cartStore";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 import { FilterDrawer } from "../components/FilterDrawer";
 
 export default function ProductsPage() {
+  const router = useRouter();
   const { loadFromDatabase } = useAdminProductStore();
 
   // Automatically load the latest published overrides from Vercel Postgres
@@ -361,12 +363,18 @@ export default function ProductsPage() {
                         <button
                           onClick={(e) => {
                             e.preventDefault();
+                            // Un producto con opciones no se puede agregar sin elegir variante:
+                            // se manda a la página de detalle, donde la selección es obligatoria.
+                            if (getProductOptions(product).length > 0) {
+                              router.push(`/products/${product.slug}`);
+                              return;
+                            }
                             useCartStore.getState().addItem(product);
                             toast.success(`Added ${product.name} to cart`);
                           }}
                           className="text-sm px-4 py-1 rounded-full border border-white/20 hover:bg-white/5 transition-colors"
                         >
-                          Add to Cart
+                          {getProductOptions(product).length > 0 ? "Choose options" : "Add to Cart"}
                         </button>
                         <button
                           onClick={(e) => {

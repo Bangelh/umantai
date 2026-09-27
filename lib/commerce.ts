@@ -393,6 +393,18 @@ export interface ProductVariant {
   [key: string]: string | null | undefined;
 }
 
+/**
+ * Una opción declarada por un producto: su nombre (`color`, `talla`, `presentacion`,
+ * `peso`, `capacidad`, …) y los valores permitidos.
+ *
+ * Es la pieza que hace GENÉRICA la cadena de variantes: el carrito, `POST /api/orders`
+ * y el seed de inventario derivan de acá qué combinaciones existen realmente.
+ */
+export interface ProductOption {
+  name: string;
+  values: readonly string[];
+}
+
 export interface Customer {
   id: string;
   email: string;
@@ -532,7 +544,7 @@ export interface CreateOrderLineInput {
   productName: string;
   productBrand?: string | null;
   imageUrl?: string | null;
-  /** Opciones del carrito (`selectedColor`, `selectedStorage`). */
+  /** Opciones del carrito (`selectedColor`, `selectedStorage` o cualquier opción genérica). */
   variant?: ProductVariant;
   /** Opcional: si no se envía, el servidor lo deriva con `buildVariantKey(variant)`. */
   variantKey?: string;
@@ -779,6 +791,112 @@ export function variantKeyFromCartSelection(selection: {
   selectedStorage?: string | null;
 }): string {
   return buildVariantKey({ color: selection.selectedColor, storage: selection.selectedStorage });
+}
+
+// -----------------------------------------------------------------------------
+//  Variantes genéricas (producto → opciones → variant_key)
+//
+//  Estas funciones son puras y no dependen del catálogo: reciben las opciones del
+//  producto. El catálogo (`lib/products.ts`) las alimenta con `getProductOptions()`.
+// -----------------------------------------------------------------------------
+
+/** ¿El producto se vende por variantes (tiene al menos una opción con valores)? */
+export function productHasVariants(options: readonly ProductOption[] | null | undefined): boolean {
+  return !!options && options.some((option) => option.values.length > 0);
+}
+
+/** Quita claves sin valor y recorta espacios: `{talla: undefined}` deja de ser una opción. */
+export function normalizeVariantSelection(
+  selection: ProductVariant | null | undefined,
+): ProductVariant {
+  const normalized: ProductVariant = {};
+  if (!selection) return normalized;
+
+  for (const [key, value] of Object.entries(selection)) {
+    if (value === null || value === undefined) continue;
+    const trimmed = String(value).trim();
+    if (trimmed !== '') normalized[key] = trimmed;
+  }
+
+  return normalized;
+}
+
+/**
+ * `variant_key` canónico de una selección, o `null` si la selección NO corresponde a
+ * ninguna combinación real del producto.
+ *
+ * Reglas (idénticas a las del frontend, pero esta es la que autoriza):
+ *   · Producto sin opciones → sólo vale una selección vacía (`variant_key = ''`).
+ *   · Producto con opciones → exactamente un valor por CADA opción, sin opciones de más,
+ *     y cada valor debe existir (comparación sin distinguir mayúsculas).
+ *
+ * El valor canónico se toma del catálogo (no del cliente) para que la clave coincida
+ * con la fila sembrada en `inventory`.
+ */
+export function variantKeyForSelection(
+  options: readonly ProductOption[] | null | undefined,
+  selection: ProductVariant | null | undefined,
+): string | null {
+  const chosen = normalizeVariantSelection(selection);
+  const declared = (options ?? []).filter((option) => option.values.length > 0);
+
+  if (declared.length === 0) {
+    return Object.keys(chosen).length === 0 ? '' : null;
+  }
+
+  const canonical: ProductVariant = {};
+  for (const option of declared) {
+    const provided = chosen[option.name];
+    if (provided === undefined || provided === null) return null;
+
+    const match = option.values.find(
+      (value) => value.trim().toLowerCase() === provided.toLowerCase(),
+    );
+    if (match === undefined) return null;
+
+    canonical[option.name] = match;
+  }
+
+  // Una clave de más significa una opción que el producto no declara: se rechaza.
+  if (Object.keys(chosen).length !== declared.length) return null;
+
+  return buildVariantKey(canonical);
+}
+
+/** ¿La selección es una combinación real del producto? */
+export function isValidVariantSelection(
+  options: readonly ProductOption[] | null | undefined,
+  selection: ProductVariant | null | undefined,
+): boolean {
+  return variantKeyForSelection(options, selection) !== null;
+}
+
+/**
+ * Producto cartesiano de las opciones: cada combinación es una variante.
+ * Un producto sin opciones devuelve `[{}]` (su única SKU es `variant_key = ''`).
+ *
+ * Lo usan el seed de inventario y los tests; el orden de `options` es el de declaración.
+ */
+export function enumerateVariantSelections(
+  options: readonly ProductOption[] | null | undefined,
+): ProductVariant[] {
+  const declared = (options ?? []).filter((option) => option.values.length > 0);
+  if (declared.length === 0) return [{}];
+
+  return declared.reduce<ProductVariant[]>(
+    (acc, option) =>
+      acc.flatMap((selection) =>
+        option.values.map((value) => ({ ...selection, [option.name]: value })),
+      ),
+    [{}],
+  );
+}
+
+/** Claves de SKU válidas de un producto. Producto sin opciones → `['']`. */
+export function enumerateVariantKeys(
+  options: readonly ProductOption[] | null | undefined,
+): string[] {
+  return enumerateVariantSelections(options).map((selection) => buildVariantKey(selection));
 }
 
 export interface OrderTotalsInput {

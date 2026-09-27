@@ -79,7 +79,10 @@ export const useAdminProductStore = create<AdminProductStore>()(
 
       loadFromDatabase: async () => {
         try {
-          const res = await fetch('/api/admin/overrides', withAdminAuth());
+          // Lectura PÚBLICA: `/api/admin/overrides` exige `x-admin-token` desde
+          // f141b60, así que el sitio público recibía 401 y los precios publicados no
+          // llegaban. El endpoint de catálogo es de solo lectura y no requiere token.
+          const res = await fetch('/api/catalog/overrides');
           const data = await res.json();
           
           if (data.overrides) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redeemPickupCode } from '@/lib/commerce.server';
 import { checkKioskAccess, maskPickupCode, PICKUP_FAILURE_COPY } from '@/lib/kiosk.server';
+import { notifyLowStockAfterSale } from '@/lib/notifications.server';
 
 /**
  * POST /api/kiosk/pickup — valida el PIN y ENTREGA el pedido.
@@ -87,6 +88,16 @@ export async function POST(request: NextRequest) {
         orderNumber: result.order_number,
         orderId: result.order_id,
       });
+    } else if (result.order_id) {
+      // Alerta de stock bajo (best-effort): la venta ya se consolidó, así que un
+      // correo caído no puede afectar la entrega.
+      const lowStock = await notifyLowStockAfterSale(result.order_id);
+      if (lowStock.status === 'sent') {
+        console.warn('[kiosk] alerta de stock bajo enviada', {
+          orderNumber: result.order_number,
+          skus: lowStock.count,
+        });
+      }
     }
 
     return NextResponse.json(

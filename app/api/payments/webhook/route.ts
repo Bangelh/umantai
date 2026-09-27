@@ -7,6 +7,7 @@ import {
   isMercadoPagoWebhookConfigured,
   verifyMercadoPagoWebhookSignature,
 } from '@/lib/mercadopago.server';
+import { notifyNewOrderSafely } from '@/lib/notifications.server';
 
 /**
  * POST /api/payments/webhook — la verdad absoluta sobre el estado de un cobro.
@@ -268,6 +269,14 @@ export async function POST(request: NextRequest) {
         reason: audit.stockConflictReason,
       },
     );
+  }
+
+  // Aviso a la TIENDA (best-effort): recién ahora el pedido está pagado y suena la
+  // alarma para prepararlo. No puede hacer fallar la respuesta; `notifyNewOrderSafely`
+  // nunca lanza. La clave de idempotencia del correo evita duplicados en reintentos.
+  if (order.status === 'confirmed' && order.paymentStatus === 'paid') {
+    const storeAviso = await notifyNewOrderSafely(order.id);
+    log('store-notified', { orderNumber: order.orderNumber, status: storeAviso.status });
   }
 
   // Reintento sobre un pedido ya pagado: no es un error, es idempotencia funcionando.

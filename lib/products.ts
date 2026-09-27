@@ -1,3 +1,7 @@
+import type { ProductOption } from './commerce';
+
+export type { ProductOption } from './commerce';
+
 export interface Product {
   slug: string;
   name: string;
@@ -7,13 +11,47 @@ export interface Product {
   subcategory?: string;       // Specific subcategory (exact match from wholeFoodsCategories)
   description: string;
   specs: string[];
-  inStock: number;            // Fictitious stock units. Items with 0 are hidden from listings.
+  /**
+   * @deprecated Ya NO es la autoridad del stock. El stock real vive en la tabla
+   * `inventory` (`quantity_available`). Este campo solo se usa como valor de
+   * presentación de respaldo cuando no hay datos de inventario disponibles.
+   */
+  inStock: number;
   rating: number;
   reviewCount: number;
   bestseller?: boolean;
   images: string[];
   colors?: string[];
   storage?: string[];
+  /**
+   * Ejes de variación genéricos (`color`, `talla`, `presentacion`, `peso`, `capacidad`…).
+   * Si existe, manda sobre `colors`/`storage` (que quedan como formato legacy).
+   */
+  options?: ProductOption[];
+}
+
+/**
+ * Opciones efectivas de un producto, normalizando el formato legacy.
+ *
+ * Orden de precedencia:
+ *   1. `options` (formato genérico nuevo)
+ *   2. `colors` / `storage` (legacy)
+ *   3. sin opciones → el producto se vende sin variantes (`variant_key = ''`)
+ *
+ * Es la única función que debe leer los ejes de variación: la usan el frontend,
+ * `POST /api/orders` y el seed de inventario para no divergir.
+ */
+export function getProductOptions(
+  product: Pick<Product, 'options' | 'colors' | 'storage'>,
+): ProductOption[] {
+  if (product.options && product.options.length > 0) {
+    return product.options.filter((option) => option.values.length > 0);
+  }
+
+  const legacy: ProductOption[] = [];
+  if (product.colors && product.colors.length > 0) legacy.push({ name: 'color', values: product.colors });
+  if (product.storage && product.storage.length > 0) legacy.push({ name: 'storage', values: product.storage });
+  return legacy;
 }
 
 // Raw product data (source of truth - do not import directly in most places)

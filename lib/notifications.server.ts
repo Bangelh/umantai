@@ -44,7 +44,7 @@
 
 import { Resend } from 'resend';
 import { getPrefixedEnv } from './env';
-import { getOrderWithItems } from './commerce.server';
+import { getInventoryItem, getOrderItemSkus, getOrderWithItems } from './commerce.server';
 import type { OrderWithItems, PickupCode } from './commerce';
 
 /**
@@ -323,6 +323,247 @@ function buildPickupReadyEmail(order: OrderWithItems, pickupCode: PickupCode): P
     html,
     text,
   };
+}
+
+// =============================================================================
+//  4.b AVISO A LA TIENDA (nuevo pedido pagado)
+//
+//  Además del PIN al comprador, la tienda necesita enterarse de que entró un pedido
+//  pagado para prepararlo. El destinatario es `ADMIN_NOTIFICATION_EMAIL` (el correo
+//  del negocio), no el del comprador. Es BEST-EFFORT, igual que el aviso al cliente:
+//  el pago ya está confirmado y un correo caído no puede revertirlo.
+// =============================================================================
+
+/** Correo de la tienda que recibe los avisos de pedidos nuevos. */
+export function getStoreNotificationEmail(): string {
+  return readEnv('ADMIN_NOTIFICATION_EMAIL');
+}
+
+/** ¿Se puede avisar a la tienda? Requiere Resend y un destinatario configurados. */
+export function isStoreNotificationConfigured(): boolean {
+  return getResendApiKey().length > 0 && getStoreNotificationEmail().length > 0;
+}
+
+function buildNewOrderEmail(order: OrderWithItems): PickupReadyEmail {
+  const lines = order.items.map((item) => {
+    const variant = Object.values(item.variant ?? {})
+      .filter(Boolean)
+      .join(' · ');
+    const label = variant ? `${item.productName} (${variant})` : item.productName;
+    return `${label} ×${item.quantity}`;
+  });
+
+  const buyerName = readBuyerName(order) ?? 'Cliente sin nombre';
+  const total = formatMoney(order.total, order.currency);
+
+  const rows: Array<[string, string]> = [
+    ['Pedido', order.orderNumber],
+    ['Cliente', buyerName],
+    ['Correo', order.contactEmail],
+    ['Total', total],
+  ];
+  if (order.contactPhone) rows.push(['Teléfono', order.contactPhone]);
+
+  const rowsHtml = rows
+    .map(
+      ([label, value]) => `
+        <tr>
+          <td style="padding:6px 16px 6px 0;font-size:16px;color:#555555;white-space:nowrap;">${escapeHtml(label)}</td>
+          <td style="padding:6px 0;font-size:16px;color:#111111;font-weight:600;">${escapeHtml(value)}</td>
+        </tr>`,
+    )
+    .join('');
+
+  const itemsHtml = lines
+    .map((line) => `<li style="font-size:16px;color:#111111;">${escapeHtml(line)}</li>`)
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+  <body style="margin:0;padding:24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;">
+      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#666666;">UMANTAI · NUEVO PEDIDO PAGADO</p>
+      <h1 style="margin:8px 0 16px;font-size:24px;color:#111111;">Hay un pedido para preparar</h1>
+      <table style="border-collapse:collapse;width:100%;">${rowsHtml}</table>
+      <p style="margin:20px 0 6px;font-size:15px;color:#555555;">Productos:</p>
+      <ul style="margin:0;padding-left:20px;">${itemsHtml}</ul>
+      <p style="margin:24px 0 0;font-size:13px;color:#888888;border-top:1px solid #e4e4e7;padding-top:16px;">
+        Ingresa al kiosco para marcarlo listo para retiro.
+      </p>
+    </div>
+  </body>
+</html>`;
+
+  const text = [
+    `Nuevo pedido pagado ${order.orderNumber}`,
+    '',
+    ...rows.map(([label, value]) => `${label}: ${value}`),
+    '',
+    'Productos:',
+    ...lines.map((line) => `- ${line}`),
+  ].join('\n');
+
+  return { subject: `Nuevo pedido pagado ${order.orderNumber}`, html, text };
+}
+
+// =============================================================================
+//  4.c ALERTA DE STOCK BAJO
+//
+//  Tras consolidar una venta, si algún SKU del pedido quedó en o por debajo de su
+//  `reorder_point`, se avisa a la tienda. Es BEST-EFFORT: la venta ya ocurrió.
+// =============================================================================
+
+export interface LowStockAlertResult {
+  status: 'sent' | 'none_low' | 'not_configured' | 'failed';
+  count: number;
+  reason?: string;
+}
+
+interface LowStockLine {
+  productName: string;
+  variantKey: string;
+  quantityAvailable: number;
+  reorderPoint: number;
+}
+
+function buildLowStockEmail(lines: LowStockLine[]): PickupReadyEmail {
+  const itemsHtml = lines
+    .map(
+      (line) =>
+        `<li style="font-size:16px;color:#111111;">${escapeHtml(line.productName)}${
+          line.variantKey ? ` (${escapeHtml(line.variantKey)})` : ''
+        }: quedan <strong>${line.quantityAvailable}</strong> (reorden en ${line.reorderPoint})</li>`,
+    )
+    .join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+  <body style="margin:0;padding:24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;">
+      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#b45309;">UMANTAI · ALERTA DE STOCK BAJO</p>
+      <h1 style="margin:8px 0 16px;font-size:24px;color:#111111;">Hay productos por agotarse</h1>
+      <ul style="margin:0;padding-left:20px;">${itemsHtml}</ul>
+      <p style="margin:24px 0 0;font-size:13px;color:#888888;">Conviene registrar el ingreso de mercadería.</p>
+    </div>
+  </body>
+</html>`;
+
+  const text = [
+    'Alerta de stock bajo',
+    '',
+    ...lines.map(
+      (line) =>
+        `- ${line.productName}${line.variantKey ? ` (${line.variantKey})` : ''}: quedan ${line.quantityAvailable} (reorden en ${line.reorderPoint})`,
+    ),
+  ].join('\n');
+
+  return { subject: `Stock bajo: ${lines.length} producto(s) por agotarse`, html, text };
+}
+
+/**
+ * Revisa el stock de los SKUs de un pedido recién vendido y avisa a la tienda si
+ * alguno cruzó su punto de reorden. NUNCA lanza.
+ */
+export async function notifyLowStockAfterSale(orderId: string): Promise<LowStockAlertResult> {
+  try {
+    if (!isStoreNotificationConfigured()) return { status: 'not_configured', count: 0 };
+
+    const skus = await getOrderItemSkus(orderId);
+    const low: LowStockLine[] = [];
+
+    for (const sku of skus) {
+      const item = await getInventoryItem(sku.productSlug, sku.variantKey);
+      if (item && item.reorderPoint > 0 && item.quantityAvailable <= item.reorderPoint) {
+        low.push({
+          productName: sku.productName,
+          variantKey: sku.variantKey,
+          quantityAvailable: item.quantityAvailable,
+          reorderPoint: item.reorderPoint,
+        });
+      }
+    }
+
+    if (low.length === 0) return { status: 'none_low', count: 0 };
+
+    const email = buildLowStockEmail(low);
+
+    const { error } = await withTimeout(
+      getResendClient().emails.send(
+        {
+          from: getNotificationSender(),
+          to: [getStoreNotificationEmail()],
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
+          tags: [{ name: 'evento', value: 'stock_bajo' }],
+        },
+        { idempotencyKey: `low-stock-${orderId}` },
+      ),
+      SEND_TIMEOUT_MS,
+    );
+
+    if (error) {
+      console.error('[notificaciones] Resend rechazó la alerta de stock bajo', {
+        orderId,
+        message: error.message,
+      });
+      return { status: 'failed', count: low.length, reason: error.message };
+    }
+
+    return { status: 'sent', count: low.length };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error('[notificaciones] no se pudo enviar la alerta de stock bajo', { orderId, reason });
+    return { status: 'failed', count: 0, reason };
+  }
+}
+
+/**
+ * Avisa a la TIENDA de un pedido recién pagado. NUNCA lanza: el pago ya está
+ * confirmado y el aviso es solo operativo.
+ */
+export async function notifyNewOrderSafely(
+  orderId: string,
+): Promise<CustomerNotificationResult> {
+  try {
+    if (!isStoreNotificationConfigured()) return { status: 'not_configured' };
+
+    const order = await getOrderWithItems(orderId);
+    if (!order) return { status: 'order_not_found' };
+
+    const recipient = getStoreNotificationEmail();
+    const email = buildNewOrderEmail(order);
+
+    const { data, error } = await withTimeout(
+      getResendClient().emails.send(
+        {
+          from: getNotificationSender(),
+          to: [recipient],
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
+          tags: [{ name: 'evento', value: 'pedido_nuevo' }],
+        },
+        // Clave estable por pedido: un reintento del webhook no duplica el aviso.
+        { idempotencyKey: `new-order-${order.id}` },
+      ),
+      SEND_TIMEOUT_MS,
+    );
+
+    if (error) {
+      console.error('[notificaciones] Resend rechazó el aviso a la tienda', {
+        orderId,
+        message: error.message,
+      });
+      return { status: 'failed', reason: error.message };
+    }
+
+    return { status: 'sent', messageId: data?.id };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error('[notificaciones] no se pudo avisar a la tienda', { orderId, reason });
+    return { status: 'failed', reason };
+  }
 }
 
 /** Nombre del comprador del checkout (`orders.metadata.buyer.fullName`), si existe. */

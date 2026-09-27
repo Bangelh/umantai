@@ -15,6 +15,12 @@
       "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/expire-reservations",
+      "schedule": "* * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
