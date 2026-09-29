@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getIssuedPickupCode, getOrderByPublicToken } from "@/lib/commerce.server";
+import { expireStaleOrders, getIssuedPickupCode, getOrderByPublicToken } from "@/lib/commerce.server";
 import {
   evaluateOrderPayability,
   type FulfillmentType,
@@ -262,6 +262,28 @@ export default async function OrderStatusPage({
   }
 
   if (!order) notFound();
+
+  // ── Expiración dirigida: el estado que se muestra tiene que ser el real ─────
+  // El reaper ya no corre cada minuto (Vercel Hobby sólo admite un cron diario), así
+  // que el pedido puede quedarse en `pending_payment` con la reserva ya vencida. Cuando
+  // eso pasa, esta visita es el momento de soltar el stock y releer el pedido: la
+  // pantalla muestra `expired` (lo que de verdad ocurrió) en vez de un `pending_payment`
+  // que ya no es cierto.
+  //
+  // Se usa el MISMO motor que el cron (`expire_stale_orders`), sólo libera reservas
+  // realmente vencidas (reloj de Postgres) y es idempotente: recargar la página no
+  // vuelve a liberar nada ni suelta una reserva válida antes de tiempo.
+  if (order.status === "pending_payment" && evaluateOrderPayability(order) !== "payable") {
+    try {
+      const expired = await expireStaleOrders();
+      // Sólo se relee si el barrido cambió algo: si no, el pedido sigue igual.
+      if (expired > 0) order = (await getOrderByPublicToken(token)) ?? order;
+    } catch (error) {
+      // Degradación: si el barrido falla, la página igual avisa que la reserva venció.
+      // Una tarea de mantenimiento no debe tumbar la pantalla del comprador.
+      console.error("Order page: no se pudieron expirar reservas vencidas", error);
+    }
+  }
 
   // Sólo se consulta el PIN cuando el pedido puede tener uno: una query de más en
   // cada visita a un pedido impago sería gratis de escribir y de pagar igual.

@@ -101,6 +101,72 @@ function isUniqueViolation(error: unknown): boolean {
   return message.includes('duplicate key value violates unique constraint');
 }
 
+/**
+ * SQLSTATE 40P01 — Postgres abortó una transacción por deadlock detectado.
+ *
+ * En este sistema el deadlock es posible entre dos transacciones que toman las
+ * MISMAS filas de `inventory` en órdenes distintos:
+ *   · dos `createOrder` cuyos carritos listan los SKUs en distinto `line_number`
+ *     (el carrito A reserva [X, Y] y el B [Y, X]);
+ *   · un `createOrder` contra el reaper (`expire_stale_orders`), que bloquea
+ *     primero `orders` y después `inventory`.
+ *
+ * Postgres ya eligió a la víctima y revirtió su transacción COMPLETA, así que
+ * reintentar es seguro: no hay escritura parcial y se vuelve a emitir el mismo
+ * lote. Es la ÚNICA clase de error que reintentamos.
+ */
+const DEADLOCK_DETECTED = '40P01';
+
+/** Intentos totales por operación: 1 intento + 1 reintento. Deliberadamente bajo. */
+const DEADLOCK_MAX_ATTEMPTS = 2;
+
+/** Espera entre intentos (un deadlock se resuelve en cuanto la otra transacción cae). */
+const DEADLOCK_RETRY_DELAY_MS = 40;
+
+/** ¿El error es un deadlock de Postgres? (por SQLSTATE y, si no viene, por mensaje). */
+export function isDeadlockError(error: unknown): boolean {
+  if ((error as { code?: string } | null | undefined)?.code === DEADLOCK_DETECTED) return true;
+  const message = (error as { message?: string } | null | undefined)?.message ?? '';
+  return message.includes('deadlock detected');
+}
+
+/**
+ * Reintenta UNA sola vez cuando Postgres reporta deadlock (40P01).
+ *
+ * No es un retry genérico: cualquier otro error sube de inmediato, sin reintentar
+ * (un `insufficient_stock` reintentado sería una forma silenciosa de sobreventa
+ * intermitente). Tampoco se oculta el deadlock: cada reintento se registra, para
+ * que uno recurrente sea visible en los logs en vez de quedar tapado.
+ *
+ * Se exporta para poder probar el comportamiento sin base de datos.
+ */
+export async function withDeadlockRetry<T>(label: string, run: () => Promise<T>): Promise<T> {
+  let attempt = 0;
+
+  for (;;) {
+    attempt += 1;
+    try {
+      return await run();
+    } catch (error) {
+      if (!isDeadlockError(error) || attempt >= DEADLOCK_MAX_ATTEMPTS) throw error;
+
+      console.warn(
+        `[commerce] deadlock (40P01) en ${label}: reintento ${attempt}/${DEADLOCK_MAX_ATTEMPTS - 1}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, DEADLOCK_RETRY_DELAY_MS * attempt));
+    }
+  }
+}
+
+/**
+ * Cuántos pedidos vencidos libera cada barrido.
+ *
+ * Un único número para el cron diario y para las expiraciones dirigidas: el reaper
+ * está indexado por `idx_orders_expiring`, así que el barrido es barato cuando no hay
+ * nada vencido y acotado cuando sí lo hay.
+ */
+const STALE_ORDER_SWEEP_LIMIT = 200;
+
 /** Resultado crudo de `sql.transaction()`: un array de arrays de filas. */
 type TransactionResults = Array<Array<Record<string, unknown>>>;
 
@@ -265,11 +331,16 @@ export async function createOrder(
 
   let results: TransactionResults;
   try {
-    results = (await sql.transaction([
-      orderStatement,
-      ...itemStatements,
-      reserveStatement,
-    ])) as unknown as TransactionResults;
+    // El batch entero se reintenta UNA vez si Postgres detecta deadlock (40P01).
+    // Seguro porque el deadlock revierte la transacción completa: no hay forma de
+    // re-emitir un lote a medias. Cualquier otro error sube sin reintentarse.
+    results = await withDeadlockRetry('createOrder', async () => {
+      return (await sql.transaction([
+        orderStatement,
+        ...itemStatements,
+        reserveStatement,
+      ])) as unknown as TransactionResults;
+    });
   } catch (error) {
     // Carrera de idempotencia: otra request con la misma clave ganó. Devolvemos la suya.
     if (input.idempotencyKey && isUniqueViolation(error)) {
@@ -689,9 +760,26 @@ export async function getInventoryItem(
 /**
  * Disponibilidad de stock por variante, para el catálogo público.
  *
- * Es de SOLO LECTURA: la autoridad sigue siendo `inventory.quantity_available`
- * (columna generada). El catálogo la usa para mostrar disponibilidad real y para
- * deshabilitar combinaciones agotadas, nunca para decidir una venta.
+ * Es de SOLO LECTURA: el catálogo la usa para mostrar disponibilidad real y para
+ * deshabilitar combinaciones agotadas, nunca para decidir una venta. La autoridad
+ * sigue siendo `inventory` leído a través de `inventory_apply_movement()`.
+ *
+ * ─── POR QUÉ NO SE DEVUELVE `quantity_available` TAL CUAL ───────────────────
+ * `quantity_reserved` incluye las reservas VENCIDAS que el reaper todavía no liberó
+ * (con el cron diario puede tardar hasta un día). Contarlas mostraría "agotado" un
+ * producto que en realidad está libre. Se descuentan SOLO en esta lectura: sin tocar
+ * el esquema y sin convertir un GET público de alto tráfico en una escritura.
+ *
+ * El predicado de "retención fantasma" es el del propio reaper
+ * (`expire_stale_orders`): pedido `pending_payment`, reserva no liberada y vencimiento
+ * ya pasado. NO se consulta `inventory_movements` a propósito: para un pedido en
+ * `pending_payment` el flag `reservation_released` es fiel —la creación del pedido es
+ * atómica con la reserva, y sólo se libera marcando ese flag—, así que la consulta se
+ * apoya en `idx_orders_expiring` en vez de recorrer el ledger.
+ *
+ * Presupuesto de local: los pedidos reservan en el mismo local que se consulta
+ * (`MAIN` por defecto). Si algún día hay pedidos en varios locales, esta resta tiene
+ * que pasar por `inventory_movements.inventory_id` para atribuir cada retención a su local.
  */
 export interface VariantAvailability {
   productSlug: string;
@@ -708,12 +796,34 @@ export async function getVariantAvailability(
   if (slugs.length === 0) return [];
   const sql = requireSql();
 
+  // `quantity_reserved` se recalcula (reservado real − retenciones vencidas) y
+  // `quantity_available` se deriva de ahí, con tope en cero: nunca negativo.
   const rows = (await sql`
-    SELECT product_slug, variant_key, quantity_on_hand, quantity_reserved, quantity_available
-      FROM inventory
-     WHERE location_code = ${locationCode}
-       AND product_slug = ANY(${slugs}::text[])
-       AND is_active = TRUE
+    WITH stale_holds AS (
+      SELECT oi.product_slug AS product_slug,
+             oi.variant_key  AS variant_key,
+             SUM(oi.quantity)::INTEGER AS held
+        FROM orders o
+        JOIN order_items oi ON oi.order_id = o.id
+       WHERE o.status = 'pending_payment'
+         AND o.reservation_released = FALSE
+         AND o.reservation_expires_at IS NOT NULL
+         AND o.reservation_expires_at < NOW()
+       GROUP BY oi.product_slug, oi.variant_key
+    )
+    SELECT i.product_slug,
+           i.variant_key,
+           i.quantity_on_hand,
+           GREATEST(i.quantity_reserved - COALESCE(sh.held, 0), 0) AS quantity_reserved,
+           i.quantity_on_hand
+             - GREATEST(i.quantity_reserved - COALESCE(sh.held, 0), 0) AS quantity_available
+      FROM inventory i
+      LEFT JOIN stale_holds sh
+        ON sh.product_slug = i.product_slug
+       AND sh.variant_key  = i.variant_key
+     WHERE i.location_code = ${locationCode}
+       AND i.product_slug = ANY(${slugs}::text[])
+       AND i.is_active = TRUE
   `) as unknown as Array<{
     product_slug: string;
     variant_key: string;
@@ -827,14 +937,29 @@ export async function rereserveOrderStock(orderId: string, locationCode = 'MAIN'
 }
 
 /**
- * Reaper de reservas vencidas. Engánchalo a un cron (Vercel Cron / GitHub Action)
- * cada minuto: libera stock de pedidos `pending_payment` sin pagar y los marca `expired`.
+ * Reaper de reservas vencidas — el ÚNICO motor que libera stock fuera de una venta.
+ *
+ * Libera el stock de los pedidos `pending_payment` sin pagar y los marca `expired`.
+ * "Vencida" lo decide Postgres (`reservation_expires_at < NOW()`), con el MISMO reloj
+ * con el que se escribió el vencimiento: es imposible liberar una reserva válida antes
+ * de tiempo por desfase de reloj de Node.
+ *
+ * Se llama desde tres lugares, siempre por este mismo camino:
+ *   1. el cron diario de Vercel (`/api/cron/expire-reservations`), como backstop;
+ *   2. la expiración perezosa de `POST /api/orders`, ANTES de reservar, para no
+ *      rechazar una venta por stock que en realidad ya está libre;
+ *   3. la expiración dirigida de `/api/payments/preference` y de la página del pedido,
+ *      para que el estado que ve el comprador sea el real y el stock se suelte ya.
+ *
+ * Es idempotente y acotado; reintenta una vez si Postgres reporta deadlock (40P01).
  */
-export async function expireStaleOrders(limit = 100): Promise<number> {
+export async function expireStaleOrders(limit = STALE_ORDER_SWEEP_LIMIT): Promise<number> {
   const sql = requireSql();
-  const rows = (await sql`
-    SELECT expire_stale_orders(${limit}) AS expired_orders
-  `) as unknown as Array<{ expired_orders: number }>;
+  const rows = await withDeadlockRetry('expireStaleOrders', async () => {
+    return (await sql`
+      SELECT expire_stale_orders(${limit}) AS expired_orders
+    `) as unknown as Array<{ expired_orders: number }>;
+  });
   return Number(rows[0]?.expired_orders ?? 0);
 }
 

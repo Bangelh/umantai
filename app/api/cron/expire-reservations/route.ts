@@ -7,11 +7,21 @@ import { isAdminApiConfigured, requireAdminToken } from '@/lib/admin.server';
  * GET /api/cron/expire-reservations — libera la reserva de pedidos sin pagar vencidos.
  *
  * Llama a `expire_stale_orders()`, que libera el stock retenido y marca el pedido
- * `expired`. Sin este barrido, cada carrito abandonado deja stock congelado para
- * siempre (el reaper NO se dispara solo: es un cron).
+ * `expired`. Mercado Pago puede confirmar un pago después del vencimiento: la
+ * migración 002 re-reserva el stock en ese caso.
  *
- * Programado en `vercel.json` (`crons`). Mercado Pago puede confirmar un pago
- * después del vencimiento: la migración 002 re-reserva el stock en ese caso.
+ * ─── POR QUÉ EL CRON ES DIARIO Y NO CADA MINUTO ─────────────────────────────
+ * El proyecto está en Vercel **Hobby**, y Hobby sólo admite cron una vez al día:
+ * una expresión más frecuente hace fallar el DEPLOYMENT entero (`vercel.json` es
+ * parte de la configuración del build). Un cron de cada minuto no es viable ahí.
+ *
+ * La frescura la dan las expiraciones perezosas, que llaman al MISMO reaper:
+ *   · `POST /api/orders`    — antes de reservar (liberar lo vencido y así no rechazar la venta);
+ *   · `/api/payments/preference` y `/pedido/<token>` — liberación dirigida del pedido.
+ *
+ * Este endpoint queda como **backstop de limpieza**: barre lo que nadie volvió a
+ * mirar (un carrito abandonado cuyo SKU nadie vuelve a comprar ni a consultar).
+ * Sigue valiendo la pena: sin él, esas reservas quedarían congeladas para siempre.
  *
  * Autorización:
  *   · Si hay `CRON_SECRET` configurado, se exige `Authorization: Bearer <CRON_SECRET>`
@@ -43,7 +53,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const expired = await expireStaleOrders(200);
+    const expired = await expireStaleOrders();
     if (expired > 0) console.info(`[cron] reservas vencidas liberadas: ${expired}`);
     return NextResponse.json({ ok: true, expiredOrders: expired });
   } catch (error) {

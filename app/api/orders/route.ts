@@ -12,7 +12,12 @@ import {
   type ProductVariant,
   type ShippingAddress,
 } from '@/lib/commerce';
-import { createOrder, getOrderByPublicToken, isCommerceDbConfigured } from '@/lib/commerce.server';
+import {
+  createOrder,
+  expireStaleOrders,
+  getOrderByPublicToken,
+  isCommerceDbConfigured,
+} from '@/lib/commerce.server';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -208,6 +213,25 @@ export async function POST(request: NextRequest) {
     typeof body.shippingTotal === 'number' && Number.isFinite(body.shippingTotal)
       ? body.shippingTotal
       : 0;
+
+  // ── Expiración perezosa ANTES de reservar ──────────────────────────────────
+  // El reaper ya no corre cada minuto (Vercel Hobby sólo admite un cron diario),
+  // así que acá se suelta el stock de las reservas vencidas antes de intentar
+  // retener el carrito. Sin esto, un producto "vendido" por un carrito abandonado
+  // rechazaría esta venta con 409 aunque el stock esté libre.
+  //
+  // Se usa el MISMO motor que el cron (`expire_stale_orders`): no hay un segundo
+  // camino de liberación, y sólo toca reservas realmente vencidas (reloj de Postgres).
+  // Un fallo acá NO debe bloquear la compra: se registra y se sigue; en el peor caso
+  // el comprador recibe el 409 de stock de siempre y reintenta.
+  try {
+    const expired = await expireStaleOrders();
+    if (expired > 0) {
+      console.info(`[orders] reservas vencidas liberadas antes de reservar: ${expired}`);
+    }
+  } catch (error) {
+    console.error('POST /api/orders: el barrido de reservas vencidas falló', error);
+  }
 
   try {
     const order = await createOrder(

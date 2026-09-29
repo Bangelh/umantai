@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPrefixedEnv } from '@/lib/env';
 import { evaluateOrderPayability } from '@/lib/commerce';
 import {
+  expireStaleOrders,
   getOrderByPublicToken,
   isCommerceDbConfigured,
   saveOrderPaymentPreference,
@@ -120,8 +121,26 @@ export async function POST(request: NextRequest) {
   }
 
   if (payability === 'reservation_expired') {
-    // El reaper (`expire_stale_orders`) puede tardar hasta un minuto en pasar: si la
-    // reserva ya venció, el stock pudo venderse a otra persona. No se cobra.
+    // El pedido sigue en `pending_payment` pero su reserva ya venció: no se cobra
+    // (el stock pudo venderse a otra persona).
+    //
+    // Antes de responder "expirado", se suelta el stock DE VERDAD: con el cron diario
+    // de Vercel Hobby, el reaper puede tardar hasta un día en pasar y el stock quedaría
+    // retenido sin dueño. Se reutiliza el MISMO motor del cron (`expire_stale_orders`),
+    // nunca una liberación paralela, y sólo libera reservas realmente vencidas (reloj de
+    // Postgres): jamás suelta una reserva válida antes de tiempo.
+    //
+    // Si el barrido falla, la respuesta es la misma: este endpoint no cobra, y un fallo
+    // de mantenimiento no debe cambiarle el mensaje al comprador.
+    try {
+      const expired = await expireStaleOrders();
+      if (expired > 0) {
+        console.info(`[preference] reservas vencidas liberadas: ${expired}`);
+      }
+    } catch (error) {
+      console.error('POST /api/payments/preference: el barrido de reservas vencidas falló', error);
+    }
+
     return NextResponse.json(
       {
         error:
