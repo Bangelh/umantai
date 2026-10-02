@@ -46,6 +46,27 @@ function log(event: string, details: Record<string, unknown>) {
   console.info(`[mp-webhook] ${event}`, { ...details, budgetMs: MERCADOPAGO_RETRY_BUDGET_MS });
 }
 
+/**
+ * ¿Estamos en un entorno de PRODUCCIÓN real?
+ *
+ * `NODE_ENV` NO sirve para distinguir Preview de Production en Vercel: la
+ * plataforma compila y ejecuta TODOS los deployments con `NODE_ENV=production`,
+ * Preview incluido. El entorno real lo dice `VERCEL_ENV`
+ * (`production` | `preview` | `development`).
+ *
+ * Efecto: un pago de sandbox (`live_mode = false`) se ignora SOLO en Producción
+ * real; en Preview y desarrollo se procesa y puede confirmar el pedido.
+ *
+ * Fuera de Vercel (`VERCEL_ENV` ausente) se cae a `NODE_ENV` para no abrir una
+ * producción autoalojada a pagos de sandbox.
+ */
+function isProductionRuntime(): boolean {
+  const vercelEnv = (process.env.VERCEL_ENV ?? '').trim();
+  if (vercelEnv === 'production') return true;
+  if (vercelEnv === 'preview' || vercelEnv === 'development') return false;
+  return process.env.NODE_ENV === 'production';
+}
+
 /** Lee un valor que MP puede mandar como string, número o array (query vs body). */
 function firstString(value: unknown): string | null {
   if (Array.isArray(value)) return firstString(value[0]);
@@ -188,7 +209,10 @@ export async function POST(request: NextRequest) {
 
   // Un pago de sandbox no puede dar por pagado un pedido real. La contaminación
   // cruzada pasa cuando el desarrollo apunta a la misma base que producción.
-  if (process.env.NODE_ENV === 'production' && payment.liveMode === false) {
+  // La distinción es por entorno de Vercel (`VERCEL_ENV`), NO por `NODE_ENV`:
+  // en Vercel `NODE_ENV` es `production` también en Preview, así que usarlo acá
+  // hacía que un pago TEST jamás confirmara nada en Preview.
+  if (isProductionRuntime() && payment.liveMode === false) {
     console.error('[mp-webhook] sandbox payment received in production: order left untouched', {
       paymentId: payment.id,
       externalReference: payment.externalReference,
