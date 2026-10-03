@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPrefixedEnv } from '@/lib/env';
+import { getPrefixedEnv, isVercelPreview } from '@/lib/env';
+import { requireAdminToken, type AdminAccessCheck } from '@/lib/admin.server';
 import { evaluateOrderPayability } from '@/lib/commerce';
 import {
   expireStaleOrders,
@@ -11,6 +12,7 @@ import {
   createCheckoutPreference,
   isMercadoPagoConfigured,
   isStoredPreferenceFresh,
+  matchesNotificationRouting,
   readStoredCheckoutPreference,
   toStoredPreferenceSnapshot,
 } from '@/lib/mercadopago.server';
@@ -32,6 +34,63 @@ import {
  * 409 pedido no pagable (ya confirmado/cancelado, o reserva vencida) · 502 MP caído
  * 503 sin base de datos o sin MERCADOPAGO_ACCESS_TOKEN
  */
+
+/**
+ * Header que pide el modo diagnóstico de enrutamiento de notificaciones.
+ *
+ * Es un opt-in EXPLÍCITO: si no viaja (que es lo normal), el flujo sigue enviando
+ * `notification_url` como siempre. Activarlo exige además Preview + token admin
+ * (ver `decideNotificationRouting`).
+ */
+export const MP_DIAGNOSTIC_HEADER = 'x-mp-diagnostic';
+
+/** Valor exacto que activa el modo (omitir `notification_url` para usar el dashboard). */
+export const MP_DIAGNOSTIC_OMIT_NOTIFICATION_URL = 'omit-notification-url';
+
+/** ¿La petición pide explícitamente crear una Preference SIN `notification_url`? */
+export function requestedNotificationUrlOmission(request: Request): boolean {
+  const raw = (request.headers.get(MP_DIAGNOSTIC_HEADER) ?? '').trim().toLowerCase();
+  return raw === MP_DIAGNOSTIC_OMIT_NOTIFICATION_URL;
+}
+
+export type NotificationRoutingDecision =
+  | { ok: true; omitNotificationUrl: boolean }
+  | { ok: false; status: number; code: string; message: string };
+
+/**
+ * Decide si la petición puede crear una Preference de diagnóstico sin
+ * `notification_url`.
+ *
+ * Candados (TODOS obligatorios para activar el modo):
+ *   1. La petición debe pedirlo explícitamente (header `x-mp-diagnostic`).
+ *   2. `VERCEL_ENV === 'preview'`: Production NUNCA puede activarlo.
+ *   3. Token admin válido (`x-admin-token`).
+ *
+ * Sin la petición explícita devuelve `omitNotificationUrl: false` sin exigir nada
+ * más, así que el flujo público normal queda intacto.
+ */
+export function decideNotificationRouting(
+  diagnosticRequested: boolean,
+  isPreview: boolean,
+  admin: AdminAccessCheck,
+): NotificationRoutingDecision {
+  if (!diagnosticRequested) return { ok: true, omitNotificationUrl: false };
+
+  if (!isPreview) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'diagnostic_not_available',
+      message: 'El diagnóstico de notification_url solo está disponible en Preview.',
+    };
+  }
+
+  if (!admin.ok) {
+    return { ok: false, status: admin.status, code: admin.code, message: admin.message };
+  }
+
+  return { ok: true, omitNotificationUrl: true };
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -81,6 +140,18 @@ export async function POST(request: NextRequest) {
       { status: 503 },
     );
   }
+
+  // Modo diagnóstico de enrutamiento de notificaciones (deshabilitado por defecto).
+  // Pasa por aquí ANTES de tocar la base de datos: si no está autorizado, no se lee nada.
+  const diagnosticRequested = requestedNotificationUrlOmission(request);
+  const isPreview = isVercelPreview();
+  const admin: AdminAccessCheck =
+    diagnosticRequested && isPreview ? requireAdminToken(request) : { ok: true };
+  const routing = decideNotificationRouting(diagnosticRequested, isPreview, admin);
+  if (!routing.ok) {
+    return NextResponse.json({ error: routing.message, code: routing.code }, { status: routing.status });
+  }
+  const { omitNotificationUrl } = routing;
 
   let body: PreferenceRequestBody;
   try {
@@ -153,14 +224,17 @@ export async function POST(request: NextRequest) {
   }
 
   // Doble clic / reintento de red: devolvemos la Preference que ya generamos.
+  // Solo si pertenece al MISMO modo: no se reutiliza una Preference de diagnóstico
+  // (sin `notification_url`) en el flujo normal, ni al revés.
   const stored = readStoredCheckoutPreference(order);
-  if (stored && isStoredPreferenceFresh(stored)) {
+  if (stored && isStoredPreferenceFresh(stored) && matchesNotificationRouting(stored, omitNotificationUrl)) {
     return NextResponse.json(
       {
         initPoint: stored.initPoint,
         sandboxInitPoint: stored.sandboxInitPoint,
         preferenceId: stored.preferenceId,
         orderNumber: order.orderNumber,
+        notificationSource: stored.notificationSource ?? 'preference',
         reused: true,
       },
       { status: 200 },
@@ -172,6 +246,7 @@ export async function POST(request: NextRequest) {
       origin: resolveOrigin(request),
       // Una Preference por pedido: mismo pedido = misma clave = una sola Preference.
       idempotencyKey: `preference-${order.id}`,
+      omitNotificationUrl,
     });
 
     // Best-effort: si falla el guardado, el comprador igual debe poder pagar.
@@ -189,6 +264,7 @@ export async function POST(request: NextRequest) {
         sandboxInitPoint: preference.sandboxInitPoint,
         preferenceId: preference.preferenceId,
         orderNumber: order.orderNumber,
+        notificationSource: preference.notificationSource ?? 'preference',
         reused: false,
       },
       { status: 201 },

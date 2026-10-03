@@ -124,6 +124,20 @@ export const envConfig = {
 // Type export for consumers
 export type EnvConfig = typeof envConfig;
 
+/**
+ * ¿Estamos corriendo en un Preview de Vercel AHORA MISMO?
+ *
+ * A propósito se lee `process.env.VERCEL_ENV` en cada llamada en vez de usar
+ * `envConfig.vercel.isPreview`: `envConfig` se congela al importar el módulo, y los
+ * candados de diagnóstico necesitan evaluar el entorno real de la petición (los
+ * tests alternan Preview/Production dentro del mismo proceso).
+ *
+ * Producción (`VERCEL_ENV=production`) y desarrollo local devuelven `false`.
+ */
+export function isVercelPreview(): boolean {
+  return process.env.VERCEL_ENV === 'preview';
+}
+
 // === Environment Validation & Startup Logging ===
 
 function validateEnvironment() {

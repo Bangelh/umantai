@@ -126,6 +126,15 @@ function getClient(): MercadoPagoConfig {
 //  2. TIPOS
 // =============================================================================
 
+/**
+ * De dónde salió la ruta de notificación de una Preference.
+ *
+ *  · `preference` → se envió `notification_url` en el body (flujo NORMAL).
+ *  · `dashboard`  → modo diagnóstico SOLO-Preview: NO se envió `notification_url` y
+ *    Mercado Pago debe usar la URL global de Webhooks de su panel.
+ */
+export type NotificationRoutingSource = 'preference' | 'dashboard';
+
 /** Lo que dejamos guardado en `orders.metadata.payment.mercadoPago`. */
 export interface StoredCheckoutPreference {
   preferenceId: string;
@@ -140,6 +149,12 @@ export interface StoredCheckoutPreference {
    * un valor retroactivo (el host pudo haber cambiado entre la creación y la lectura).
    */
   notificationUrl: string | null;
+  /**
+   * Modo de enrutamiento de la notificación. Opcional por compatibilidad: los
+   * snapshots creados antes de este campo se tratan como `preference` (siempre
+   * llevaban `notification_url`).
+   */
+  notificationSource?: NotificationRoutingSource;
   /** ISO 8601, para saber si todavía sirve reutilizarla. */
   createdAt: string;
 }
@@ -155,6 +170,12 @@ export interface CreateCheckoutPreferenceOptions {
    * misma clave NO crea una segunda Preference.
    */
   idempotencyKey?: string;
+  /**
+   * Modo diagnóstico (SOLO Preview, protegido por token admin en la ruta): NO
+   * enviar `notification_url` a Mercado Pago. Por defecto `false`; el flujo normal
+   * SIEMPRE envía `notification_url`.
+   */
+  omitNotificationUrl?: boolean;
 }
 
 // =============================================================================
@@ -211,8 +232,23 @@ export function readStoredCheckoutPreference(order: Pick<OrderWithItems, 'metada
     initPoint,
     sandboxInitPoint: asNonEmptyString(mercadoPago.sandboxInitPoint),
     notificationUrl: asNonEmptyString(mercadoPago.notificationUrl),
+    notificationSource: mercadoPago.notificationSource === 'dashboard' ? 'dashboard' : 'preference',
     createdAt,
   };
+}
+
+/**
+ * ¿La Preference guardada pertenece al MISMO modo de notificación que la petición?
+ *
+ * Evita reutilizar una Preference de diagnóstico (sin `notification_url`) en el
+ * flujo normal, y viceversa. Un snapshot antiguo sin `notificationSource` cuenta
+ * como flujo normal: siempre llevaba `notification_url`.
+ */
+export function matchesNotificationRouting(
+  stored: StoredCheckoutPreference,
+  omitNotificationUrl: boolean,
+): boolean {
+  return ((stored.notificationSource ?? 'preference') === 'dashboard') === omitNotificationUrl;
 }
 
 /** ¿La Preference guardada sigue dentro de la ventana de reutilización? */
@@ -357,12 +393,31 @@ type PreferenceRequestBody = Parameters<Preference['create']>[0]['body'];
  * notificación exacta que se usará. Se separa de la llamada a MP para poder
  * demostrar en tests que `notification_url` y el dato de auditoría son la MISMA cadena.
  */
+export interface BuildPreferenceBodyOptions {
+  /**
+   * Modo diagnóstico (SOLO Preview): NO enviar `notification_url` a Mercado Pago,
+   * para que use la URL global de Webhooks de su panel. Por defecto `false` (el
+   * flujo normal SIEMPRE envía `notification_url`).
+   */
+  omitNotificationUrl?: boolean;
+}
+
 export function buildCheckoutPreferenceBody(
   order: OrderWithItems,
   rawOrigin: string,
-): { body: PreferenceRequestBody; notificationUrl: string } {
+  options: BuildPreferenceBodyOptions = {},
+): {
+  body: PreferenceRequestBody;
+  notificationUrl: string | null;
+  notificationSource: NotificationRoutingSource;
+} {
   const origin = rawOrigin.replace(/\/+$/, '');
-  const notificationUrl = resolveNotificationUrl(origin);
+  const omitNotificationUrl = options.omitNotificationUrl === true;
+  // Modo diagnóstico: NO se inventa una URL. Si no viaja a MP, se audita como `null`.
+  const notificationUrl = omitNotificationUrl ? null : resolveNotificationUrl(origin);
+  const notificationSource: NotificationRoutingSource = omitNotificationUrl
+    ? 'dashboard'
+    : 'preference';
 
   const backUrl = (flag: 'exitoso' | 'pendiente' | 'fallido') =>
     `${origin}/pedido/${order.publicToken}?pago=${flag}`;
@@ -385,7 +440,7 @@ export function buildCheckoutPreferenceBody(
       failure: backUrl('fallido'),
     },
     ...(isHttps ? { auto_return: 'approved' } : {}),
-    notification_url: notificationUrl,
+    ...(notificationUrl ? { notification_url: notificationUrl } : {}),
     metadata: {
       order_id: order.id,
       order_number: order.orderNumber,
@@ -394,7 +449,7 @@ export function buildCheckoutPreferenceBody(
     ...(statementDescriptor ? { statement_descriptor: statementDescriptor } : {}),
   };
 
-  return { body, notificationUrl };
+  return { body, notificationUrl, notificationSource };
 }
 
 /**
@@ -408,6 +463,7 @@ export function toStoredPreferenceSnapshot(preference: StoredCheckoutPreference)
       initPoint: preference.initPoint,
       sandboxInitPoint: preference.sandboxInitPoint,
       notificationUrl: preference.notificationUrl,
+      notificationSource: preference.notificationSource ?? 'preference',
       createdAt: preference.createdAt,
     },
   };
@@ -426,7 +482,9 @@ export async function createCheckoutPreference(
   const client = getClient();
   const preference = new Preference(client);
 
-  const { body, notificationUrl } = buildCheckoutPreferenceBody(order, options.origin);
+  const { body, notificationUrl, notificationSource } = buildCheckoutPreferenceBody(order, options.origin, {
+    omitNotificationUrl: options.omitNotificationUrl,
+  });
 
   const response = await preference.create({
     body,
@@ -448,6 +506,7 @@ export async function createCheckoutPreference(
     initPoint: chosen,
     sandboxInitPoint: sandboxUrl,
     notificationUrl,
+    notificationSource,
     createdAt: new Date().toISOString(),
   };
 }
