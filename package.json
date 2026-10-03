@@ -9,7 +9,7 @@
     "build:cloudflare": "npx @opennextjs/cloudflare build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test tests/commerce.variants.test.ts tests/commerce.reservations.test.ts tests/mercadopago.observability.test.ts tests/mercadopago.webhook-signature.test.ts tests/mercadopago.webhook-observability.test.ts",
+    "test": "node --import tsx --test tests/commerce.variants.test.ts tests/commerce.reservations.test.ts tests/mercadopago.observability.test.ts tests/mercadopago.webhook-signature.test.ts tests/mercadopago.webhook-observability.test.ts tests/mercadopago.identity.test.ts",
     "preview": "npx wrangler pages dev .open-next",
     "deploy:cloudflare": "npm run build:cloudflare && npx wrangler pages deploy .open-next",
     "cms": "next dev",
