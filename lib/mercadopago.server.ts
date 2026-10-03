@@ -132,6 +132,14 @@ export interface StoredCheckoutPreference {
   /** URL a la que hay que mandar al comprador (ya resuelta según el modo). */
   initPoint: string;
   sandboxInitPoint: string | null;
+  /**
+   * URL EXACTA enviada a Mercado Pago como `notification_url`. Se persiste junto al
+   * resto del snapshot para poder auditar (sin adivinar) a dónde notifica MP.
+   *
+   * `null` sólo en snapshots antiguos creados antes de este campo: nunca se inventa
+   * un valor retroactivo (el host pudo haber cambiado entre la creación y la lectura).
+   */
+  notificationUrl: string | null;
   /** ISO 8601, para saber si todavía sirve reutilizarla. */
   createdAt: string;
 }
@@ -202,6 +210,7 @@ export function readStoredCheckoutPreference(order: Pick<OrderWithItems, 'metada
     preferenceId,
     initPoint,
     sandboxInitPoint: asNonEmptyString(mercadoPago.sandboxInitPoint),
+    notificationUrl: asNonEmptyString(mercadoPago.notificationUrl),
     createdAt,
   };
 }
@@ -330,6 +339,81 @@ function buildPayer(order: OrderWithItems): PreferencePayer {
 // =============================================================================
 
 /**
+ * URL EXACTA de notificación que se envía a Mercado Pago.
+ *
+ * Única fuente de verdad: la MISMA cadena se manda como `notification_url` y se
+ * persiste en `orders.metadata.payment.mercadoPago.notificationUrl`. Nunca se
+ * recalcula por separado, para que lo que viaja sea lo que se guarda.
+ */
+export function resolveNotificationUrl(origin: string): string {
+  return `${origin.replace(/\/+$/, '')}/api/payments/webhook`;
+}
+
+/** Tipo del body de la Preference, derivado del SDK sin importar tipos internos. */
+type PreferenceRequestBody = Parameters<Preference['create']>[0]['body'];
+
+/**
+ * Construye el body de la Preference (puro, sin red) y devuelve además la URL de
+ * notificación exacta que se usará. Se separa de la llamada a MP para poder
+ * demostrar en tests que `notification_url` y el dato de auditoría son la MISMA cadena.
+ */
+export function buildCheckoutPreferenceBody(
+  order: OrderWithItems,
+  rawOrigin: string,
+): { body: PreferenceRequestBody; notificationUrl: string } {
+  const origin = rawOrigin.replace(/\/+$/, '');
+  const notificationUrl = resolveNotificationUrl(origin);
+
+  const backUrl = (flag: 'exitoso' | 'pendiente' | 'fallido') =>
+    `${origin}/pedido/${order.publicToken}?pago=${flag}`;
+
+  // MP exige `back_urls` en HTTPS para poder usar `auto_return`; en local (http)
+  // omitimos `auto_return` en vez de comerse un 400 del API.
+  const isHttps = origin.startsWith('https://');
+
+  const statementDescriptor = readEnv('MERCADOPAGO_STATEMENT_DESCRIPTOR');
+
+  const body: PreferenceRequestBody = {
+    items: buildItems(order),
+    payer: buildPayer(order),
+    // Referencia que MP nos devuelve en el pago: con esto se sabe a qué pedido
+    // pertenece un cobro sin depender de nuestro estado interno.
+    external_reference: order.orderNumber,
+    back_urls: {
+      success: backUrl('exitoso'),
+      pending: backUrl('pendiente'),
+      failure: backUrl('fallido'),
+    },
+    ...(isHttps ? { auto_return: 'approved' } : {}),
+    notification_url: notificationUrl,
+    metadata: {
+      order_id: order.id,
+      order_number: order.orderNumber,
+      public_token: order.publicToken,
+    },
+    ...(statementDescriptor ? { statement_descriptor: statementDescriptor } : {}),
+  };
+
+  return { body, notificationUrl };
+}
+
+/**
+ * Snapshot de auditoría que se escribe en `orders.metadata.payment`. Incluye la
+ * `notificationUrl` REAL usada, para poder leerla después sin recalcular nada.
+ */
+export function toStoredPreferenceSnapshot(preference: StoredCheckoutPreference) {
+  return {
+    mercadoPago: {
+      preferenceId: preference.preferenceId,
+      initPoint: preference.initPoint,
+      sandboxInitPoint: preference.sandboxInitPoint,
+      notificationUrl: preference.notificationUrl,
+      createdAt: preference.createdAt,
+    },
+  };
+}
+
+/**
  * Crea (o reutiliza) la Preference de pago del pedido y devuelve la URL del checkout.
  *
  * NO valida el estado del pedido: de eso se encarga la ruta, que es quien tiene el
@@ -342,36 +426,7 @@ export async function createCheckoutPreference(
   const client = getClient();
   const preference = new Preference(client);
 
-  const origin = options.origin.replace(/\/+$/, '');
-  const backUrl = (flag: 'exitoso' | 'pendiente' | 'fallido') =>
-    `${origin}/pedido/${order.publicToken}?pago=${flag}`;
-
-  // MP exige `back_urls` en HTTPS para poder usar `auto_return`; en local (http)
-  // omitimos `auto_return` en vez de comerse un 400 del API.
-  const isHttps = origin.startsWith('https://');
-
-  const statementDescriptor = readEnv('MERCADOPAGO_STATEMENT_DESCRIPTOR');
-
-  const body = {
-    items: buildItems(order),
-    payer: buildPayer(order),
-    // Referencia que MP nos devuelve en el pago: con esto se sabe a qué pedido
-    // pertenece un cobro sin depender de nuestro estado interno.
-    external_reference: order.orderNumber,
-    back_urls: {
-      success: backUrl('exitoso'),
-      pending: backUrl('pendiente'),
-      failure: backUrl('fallido'),
-    },
-    ...(isHttps ? { auto_return: 'approved' } : {}),
-    notification_url: `${origin}/api/payments/webhook`,
-    metadata: {
-      order_id: order.id,
-      order_number: order.orderNumber,
-      public_token: order.publicToken,
-    },
-    ...(statementDescriptor ? { statement_descriptor: statementDescriptor } : {}),
-  };
+  const { body, notificationUrl } = buildCheckoutPreferenceBody(order, options.origin);
 
   const response = await preference.create({
     body,
@@ -392,6 +447,7 @@ export async function createCheckoutPreference(
     preferenceId: response.id,
     initPoint: chosen,
     sandboxInitPoint: sandboxUrl,
+    notificationUrl,
     createdAt: new Date().toISOString(),
   };
 }

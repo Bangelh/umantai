@@ -281,6 +281,15 @@ export interface EnvDebugInfo {
     salesConfigured: boolean;
     supportConfigured: boolean;
   };
+  mercadoPago: {
+    accessTokenConfigured: boolean;
+    webhookSecretConfigured: boolean;
+    sandboxConfigured: boolean;
+    sandboxEnabled: boolean;
+    backUrlBaseConfigured: boolean;
+    backUrlBaseProtocol: string | null;
+    backUrlBaseHost: string | null;
+  };
   presence: Record<string, boolean>;
   note: string;
 }
@@ -310,6 +319,28 @@ export function getEnvDebugInfo(): EnvDebugInfo {
     VERCEL_GIT_REPO_SLUG: process.env.VERCEL_GIT_REPO_SLUG || undefined,
     VERCEL_GIT_REPO_OWNER: process.env.VERCEL_GIT_REPO_OWNER || undefined,
   };
+
+  // ── Mercado Pago: SOLO presencia y datos NO secretos ────────────────────────
+  // Nunca se expone el access token ni el webhook secret. De BACK_URL_BASE sólo
+  // viajan protocolo y host (es una base pública, sin query ni credenciales).
+  const mpAccessToken = (getPrefixedEnv('MERCADOPAGO_ACCESS_TOKEN') ?? '').trim();
+  const mpWebhookSecret = (getPrefixedEnv('MERCADOPAGO_WEBHOOK_SECRET') ?? '').trim();
+  const mpSandbox = (getPrefixedEnv('MERCADOPAGO_SANDBOX') ?? '').trim();
+  const mpBackUrlBase = (getPrefixedEnv('MERCADOPAGO_BACK_URL_BASE') ?? '').trim();
+
+  let backUrlBaseProtocol: string | null = null;
+  let backUrlBaseHost: string | null = null;
+  if (mpBackUrlBase) {
+    try {
+      const parsed = new URL(mpBackUrlBase);
+      backUrlBaseProtocol = parsed.protocol.replace(/:$/, '');
+      backUrlBaseHost = parsed.host;
+    } catch {
+      // Base malformada: se reporta que está configurada, pero sin inventar host/protocolo.
+      backUrlBaseProtocol = null;
+      backUrlBaseHost = null;
+    }
+  }
 
   const presence: Record<string, boolean> = {
     'NEXT_PUBLIC_SUPABASE_URL (or BANGELH_/UMANTAI_URL_*)': !!envConfig.supabase.url,
@@ -352,6 +383,15 @@ export function getEnvDebugInfo(): EnvDebugInfo {
     whatsapp: {
       salesConfigured: !!envConfig.whatsapp.salesPhone,
       supportConfigured: !!envConfig.whatsapp.supportPhone,
+    },
+    mercadoPago: {
+      accessTokenConfigured: mpAccessToken.length > 0,
+      webhookSecretConfigured: mpWebhookSecret.length > 0,
+      sandboxConfigured: mpSandbox.length > 0,
+      sandboxEnabled: /^(1|true|yes|on)$/i.test(mpSandbox),
+      backUrlBaseConfigured: mpBackUrlBase.length > 0,
+      backUrlBaseProtocol,
+      backUrlBaseHost,
     },
     presence,
     note: 'All secret values are masked. This data is for diagnostics only.',

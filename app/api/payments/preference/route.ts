@@ -12,6 +12,7 @@ import {
   isMercadoPagoConfigured,
   isStoredPreferenceFresh,
   readStoredCheckoutPreference,
+  toStoredPreferenceSnapshot,
 } from '@/lib/mercadopago.server';
 
 /**
@@ -175,14 +176,9 @@ export async function POST(request: NextRequest) {
 
     // Best-effort: si falla el guardado, el comprador igual debe poder pagar.
     try {
-      await saveOrderPaymentPreference(order.id, {
-        mercadoPago: {
-          preferenceId: preference.preferenceId,
-          initPoint: preference.initPoint,
-          sandboxInitPoint: preference.sandboxInitPoint,
-          createdAt: preference.createdAt,
-        },
-      });
+      // El snapshot incluye la `notificationUrl` REAL enviada a MP (`toStoredPreferenceSnapshot`),
+      // para poder auditar a dónde notifica MP sin recalcular nada después.
+      await saveOrderPaymentPreference(order.id, toStoredPreferenceSnapshot(preference));
     } catch (error) {
       console.error('POST /api/payments/preference: no se pudo guardar la Preference', error);
     }
