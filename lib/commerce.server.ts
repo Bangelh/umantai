@@ -57,6 +57,7 @@ import {
   type ProductVariant,
   type RedeemPickupCodeResult,
 } from './commerce';
+import type { PaymentWebhookEventRecord } from './payment-webhook-observability';
 
 // =============================================================================
 //  0. CLIENTE Y GUARDS
@@ -1151,4 +1152,190 @@ export async function getIssuedPickupCode(orderId: string): Promise<PickupCode |
   `) as unknown as PickupCodeRow[];
 
   return rows[0] ? toPickupCode(rows[0]) : null;
+}
+
+// =============================================================================
+//  6. OBSERVABILIDAD DEL WEBHOOK DE PAGO (diagnóstico, best-effort)
+//
+//  Ver `lib/payment-webhook-observability.ts` (qué se deriva) y la migración 004
+//  (dónde se guarda). Acá solo vive el acceso a datos.
+//
+//  REGLA: la escritura es BEST-EFFORT. Un fallo al registrar NO puede tumbar una
+//  notificación legítima, ni cambiar el 401/200 que decide la ruta. Si la tabla
+//  todavía no existe (migración sin aplicar), el webhook sigue igual.
+// =============================================================================
+
+export interface PaymentWebhookEventInput {
+  /** ISO 8601 del momento en que la ruta recibió el request. */
+  receivedAt: string;
+  /** Campos NO sensibles derivados por `buildWebhookEventRecord()`. */
+  record: PaymentWebhookEventRecord;
+  /** true/false según la validación; null si no se llegó a evaluar (p. ej. 503). */
+  signatureOk: boolean | null;
+  /** Etiqueta corta del resultado. */
+  result: string | null;
+  /** Código HTTP que la ruta devolvió (o se propuso devolver). */
+  httpStatus: number | null;
+}
+
+/** Fila de `payment_webhook_events` ya normalizada a camelCase para la API. */
+export interface PaymentWebhookEvent extends PaymentWebhookEventRecord {
+  id: string;
+  receivedAt: string;
+  signatureOk: boolean | null;
+  result: string | null;
+  httpStatus: number | null;
+}
+
+interface PaymentWebhookEventRow {
+  id: string;
+  received_at: string;
+  pathname: string | null;
+  query_param_names: unknown;
+  data_id: string | null;
+  query_data_id_present: boolean;
+  query_data_id_length: number | null;
+  query_data_id_matches_body: boolean | null;
+  query_type: string | null;
+  body_type: string | null;
+  action: string | null;
+  live_mode: boolean | null;
+  body_user_id: string | null;
+  x_request_id_present: boolean;
+  x_request_id_length: number | null;
+  x_signature_present: boolean;
+  signature_has_ts: boolean;
+  signature_has_v1: boolean;
+  ts_length: number | null;
+  v1_length: number | null;
+  user_agent: string | null;
+  x_retry: string | null;
+  signature_ok: boolean | null;
+  result: string | null;
+  http_status: number | null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function toPaymentWebhookEvent(row: PaymentWebhookEventRow): PaymentWebhookEvent {
+  return {
+    id: row.id,
+    receivedAt: row.received_at,
+    pathname: row.pathname ?? '',
+    queryParamNames: toStringArray(row.query_param_names),
+    dataId: row.data_id,
+    queryDataIdPresent: row.query_data_id_present,
+    queryDataIdLength: row.query_data_id_length,
+    queryDataIdMatchesBody: row.query_data_id_matches_body,
+    queryType: row.query_type,
+    bodyType: row.body_type,
+    action: row.action,
+    liveMode: row.live_mode,
+    bodyUserId: row.body_user_id,
+    xRequestIdPresent: row.x_request_id_present,
+    xRequestIdLength: row.x_request_id_length,
+    xSignaturePresent: row.x_signature_present,
+    signatureHasTs: row.signature_has_ts,
+    signatureHasV1: row.signature_has_v1,
+    tsLength: row.ts_length,
+    v1Length: row.v1_length,
+    userAgent: row.user_agent,
+    xRetry: row.x_retry,
+    signatureOk: row.signature_ok,
+    result: row.result,
+    httpStatus: row.http_status,
+  };
+}
+
+/**
+ * Persiste un evento de webhook. NUNCA lanza.
+ *
+ * `options.sql` permite inyectar un cliente (tests): pasar `null` desactiva la
+ * persistencia; omitirlo usa el cliente real. Cualquier fallo —base sin configurar,
+ * tabla ausente, red caída— se registra en logs y la función resuelve igual. Esa es
+ * la garantía de que la observabilidad no cambia el comportamiento del webhook.
+ */
+export async function recordPaymentWebhookEvent(
+  input: PaymentWebhookEventInput,
+  options: { sql?: NeonQuery | null } = {},
+): Promise<void> {
+  if (options.sql === null) return;
+
+  let sql: NeonQuery | null;
+  try {
+    sql = options.sql ?? getCommerceSql();
+  } catch (error) {
+    console.warn('[commerce] no se pudo resolver el cliente para observabilidad de webhooks', error);
+    return;
+  }
+  if (!sql) return;
+
+  const r = input.record;
+  try {
+    await sql`
+      INSERT INTO payment_webhook_events (
+        received_at, pathname, query_param_names,
+        data_id, query_data_id_present, query_data_id_length, query_data_id_matches_body,
+        query_type, body_type, action, live_mode, body_user_id,
+        x_request_id_present, x_request_id_length,
+        x_signature_present, signature_has_ts, signature_has_v1, ts_length, v1_length,
+        user_agent, x_retry, signature_ok, result, http_status
+      ) VALUES (
+        ${input.receivedAt}::timestamptz,
+        ${r.pathname},
+        ${JSON.stringify(r.queryParamNames)}::jsonb,
+        ${r.dataId},
+        ${r.queryDataIdPresent},
+        ${r.queryDataIdLength},
+        ${r.queryDataIdMatchesBody},
+        ${r.queryType},
+        ${r.bodyType},
+        ${r.action},
+        ${r.liveMode},
+        ${r.bodyUserId},
+        ${r.xRequestIdPresent},
+        ${r.xRequestIdLength},
+        ${r.xSignaturePresent},
+        ${r.signatureHasTs},
+        ${r.signatureHasV1},
+        ${r.tsLength},
+        ${r.v1Length},
+        ${r.userAgent},
+        ${r.xRetry},
+        ${input.signatureOk},
+        ${input.result},
+        ${input.httpStatus}
+      )
+    `;
+  } catch (error) {
+    // BEST-EFFORT: se registra el fallo y se sigue. Nunca se propaga.
+    console.warn('[commerce] no se pudo registrar el evento del webhook de pago', error);
+  }
+}
+
+/**
+ * Últimos eventos de webhook, más reciente primero. Solo lectura.
+ *
+ * `dataId` filtra por recurso (p. ej. el Payment ID del pago investigado). El límite
+ * se acota en la capa de datos ([1, 200]) para que ningún consumidor pueda pedir la
+ * tabla entera.
+ */
+export async function listPaymentWebhookEvents(
+  filter: { limit?: number; dataId?: string | null } = {},
+): Promise<PaymentWebhookEvent[]> {
+  const sql = requireSql();
+  const limit = Math.min(Math.max(1, Math.trunc(filter.limit ?? 50)), 200);
+  const dataId = filter.dataId?.trim() || null;
+
+  const rows = (await sql`
+    SELECT * FROM payment_webhook_events
+     WHERE (${dataId}::text IS NULL OR data_id = ${dataId})
+     ORDER BY received_at DESC, id DESC
+     LIMIT ${limit}
+  `) as unknown as PaymentWebhookEventRow[];
+
+  return rows.map(toPaymentWebhookEvent);
 }

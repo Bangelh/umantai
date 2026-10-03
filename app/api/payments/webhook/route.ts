@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readOrderPaymentAudit } from '@/lib/commerce';
-import { confirmOrderPayment, isCommerceDbConfigured } from '@/lib/commerce.server';
+import {
+  confirmOrderPayment,
+  isCommerceDbConfigured,
+  recordPaymentWebhookEvent,
+} from '@/lib/commerce.server';
 import {
   fetchMercadoPagoPayment,
   isMercadoPagoConfigured,
   isMercadoPagoWebhookConfigured,
   verifyMercadoPagoWebhookSignature,
 } from '@/lib/mercadopago.server';
+import {
+  buildWebhookEventRecord,
+  webhookOutcome,
+  type PaymentWebhookEventRecord,
+  type WebhookObservabilityInput,
+} from '@/lib/payment-webhook-observability';
 import { notifyNewOrderSafely } from '@/lib/notifications.server';
 
 /**
@@ -84,6 +94,32 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** `data.id` (o `id`) tal como vino en el QUERY string. */
+function readQueryDataId(request: NextRequest): string | null {
+  return (
+    firstString(request.nextUrl.searchParams.get('data.id')) ??
+    firstString(request.nextUrl.searchParams.get('id'))
+  );
+}
+
+/** `data.id` (o `id`) tal como vino en el BODY JSON. */
+function readBodyDataId(body: Record<string, unknown>): string | null {
+  return firstString(asRecord(body.data)?.id) ?? firstString(body.id);
+}
+
+/** Tipo de notificación tal como vino en el QUERY string. */
+function readQueryNotificationType(request: NextRequest): string | null {
+  return (
+    firstString(request.nextUrl.searchParams.get('type')) ??
+    firstString(request.nextUrl.searchParams.get('topic'))
+  );
+}
+
+/** Tipo de notificación tal como vino en el BODY JSON. */
+function readBodyNotificationType(body: Record<string, unknown>): string | null {
+  return firstString(body.type) ?? firstString(body.topic);
+}
+
 /**
  * Id del recurso notificado.
  *
@@ -92,31 +128,112 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  * del body, una notificación legítima podría fallar la verificación.
  */
 function readNotificationDataId(request: NextRequest, body: Record<string, unknown>): string | null {
-  const fromQuery =
-    firstString(request.nextUrl.searchParams.get('data.id')) ??
-    firstString(request.nextUrl.searchParams.get('id'));
-
-  if (fromQuery) return fromQuery;
-
-  return firstString(asRecord(body.data)?.id) ?? firstString(body.id);
+  return readQueryDataId(request) ?? readBodyDataId(body);
 }
 
 /** Tipo de notificación: `payment` es el único que nos interesa. */
 function readNotificationType(request: NextRequest, body: Record<string, unknown>): string | null {
-  return (
-    firstString(request.nextUrl.searchParams.get('type')) ??
-    firstString(request.nextUrl.searchParams.get('topic')) ??
-    firstString(body.type) ??
-    firstString(body.topic)
-  );
+  return readQueryNotificationType(request) ?? readBodyNotificationType(body);
+}
+
+/** Lee un booleano que MP puede mandar como string o boolean (body JSON). */
+function readBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return null;
+}
+
+// =============================================================================
+//  INSTRUMENTACIÓN SEGURA DEL WEBHOOK
+//
+//  Reúne, SIN ningún secreto, los inputs que recibe la validación para poder
+//  comparar una notificación AUTOMÁTICA contra una SIMULADA. Es pura observación:
+//  no decide nada y no puede cambiar el resultado.
+// =============================================================================
+
+/**
+ * Extrae la entrada cruda del request. Contiene valores sin tratar (incluido
+ * `x-signature`), así que vive SOLO en memoria y jamás se loguea ni persiste:
+ * lo que se guarda es `buildWebhookEventRecord()`, que reduce todo a presencia y
+ * longitudes.
+ */
+function collectWebhookObservability(
+  request: NextRequest,
+  body: Record<string, unknown>,
+): WebhookObservabilityInput {
+  const queryParamNames: string[] = [];
+  request.nextUrl.searchParams.forEach((_value, key) => {
+    queryParamNames.push(key);
+  });
+
+  const queryDataId = readQueryDataId(request);
+  const bodyDataId = readBodyDataId(body);
+
+  return {
+    pathname: request.nextUrl.pathname,
+    queryParamNames,
+    queryDataId,
+    bodyDataId,
+    dataId: queryDataId ?? bodyDataId,
+    queryType: readQueryNotificationType(request),
+    bodyType: readBodyNotificationType(body),
+    action: firstString(body.action),
+    liveMode: readBoolean(body.live_mode),
+    userId: firstString(body.user_id),
+    xRequestId: request.headers.get('x-request-id'),
+    xSignature: request.headers.get('x-signature'),
+    userAgent: request.headers.get('user-agent'),
+    xRetry: request.headers.get('x-retry'),
+  };
+}
+
+/**
+ * Persiste el evento de observabilidad. BEST-EFFORT de punta a punta: se traga
+ * cualquier error para que un fallo de diagnóstico NUNCA altere el 200/401 que
+ * decide la ruta (incluida una base de datos sin configurar o sin la migración).
+ */
+async function persistWebhookEvent(params: {
+  receivedAt: string;
+  record: PaymentWebhookEventRecord;
+  signatureOk: boolean | null;
+  result: string | null;
+  httpStatus: number;
+}): Promise<void> {
+  try {
+    await recordPaymentWebhookEvent({
+      receivedAt: params.receivedAt,
+      record: params.record,
+      signatureOk: params.signatureOk,
+      result: params.result,
+      httpStatus: params.httpStatus,
+    });
+  } catch (error) {
+    console.warn('[mp-webhook] no se pudo registrar el evento de observabilidad (ignorado)', error);
+  }
 }
 
 export async function POST(request: NextRequest) {
+  // Momento de recepción: lo fija el receptor, no el INSERT, para que el reloj sea
+  // el de la app aunque la persistencia best-effort falle o llegue más tarde.
+  const receivedAt = new Date().toISOString();
+
   if (!isCommerceDbConfigured()) {
     return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
   }
 
   if (!isMercadoPagoConfigured()) {
+    // No hay validación posible, pero sí se puede dejar constancia del aviso.
+    await persistWebhookEvent({
+      receivedAt,
+      record: buildWebhookEventRecord(collectWebhookObservability(request, {})),
+      signatureOk: null,
+      result: 'mercadopago_not_configured',
+      httpStatus: 503,
+    });
     return NextResponse.json(
       { error: 'Mercado Pago is not configured', code: 'mercadopago_not_configured' },
       { status: 503 },
@@ -126,6 +243,13 @@ export async function POST(request: NextRequest) {
   // Sin secreto no hay forma de distinguir un pago real de una invención. Se
   // responde 503 (no 200) a propósito: MP reintenta y el cobro no se pierde.
   if (!isMercadoPagoWebhookConfigured()) {
+    await persistWebhookEvent({
+      receivedAt,
+      record: buildWebhookEventRecord(collectWebhookObservability(request, {})),
+      signatureOk: null,
+      result: 'webhook_secret_not_configured',
+      httpStatus: 503,
+    });
     console.error(
       '[mp-webhook] MERCADOPAGO_WEBHOOK_SECRET is not set: cannot verify notifications. ' +
         'Copy the secret from Mercado Pago (Your integrations → Webhooks).',
@@ -151,12 +275,31 @@ export async function POST(request: NextRequest) {
   const dataId = readNotificationDataId(request, body);
   const notificationType = readNotificationType(request, body);
   const xRequestId = request.headers.get('x-request-id');
+  const xSignature = request.headers.get('x-signature');
+
+  // ---- 0. Observabilidad (segura, ANTES de validar) --------------------------
+  // Se deriva un resumen NO sensible: solo PRESENCIA y LONGITUDES de los headers
+  // de firma, tipos/ids y user-agent. Nunca el valor de `x-signature`, del hash
+  // `v1` ni el `x-request-id` completo. Se persiste abajo, ya con el resultado.
+  const eventRecord = buildWebhookEventRecord(collectWebhookObservability(request, body));
+  log('received', eventRecord as unknown as Record<string, unknown>);
 
   // ---- 1. Firma -------------------------------------------------------------
   const signature = verifyMercadoPagoWebhookSignature({
-    xSignature: request.headers.get('x-signature'),
+    xSignature,
     xRequestId,
     dataId,
+  });
+
+  // Se persiste SIEMPRE, firma válida o no. Best-effort: si el INSERT falla, el
+  // resultado del webhook queda intacto (firma inválida sigue siendo 401).
+  const outcome = webhookOutcome(signature.ok, signature.ok ? null : signature.reason);
+  await persistWebhookEvent({
+    receivedAt,
+    record: eventRecord,
+    signatureOk: signature.ok,
+    result: outcome.result,
+    httpStatus: outcome.httpStatus,
   });
 
   if (!signature.ok) {
