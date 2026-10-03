@@ -191,10 +191,34 @@ export interface OrderPaymentAudit {
   stockConflictReason: string | null;
   /** Cobro real que no se pudo aplicar al pedido. Requiere intervención humana. */
   needsReview: boolean;
+  /**
+   * Se recibió un SEGUNDO Payment ID aprobado distinto sobre un pedido ya pagado.
+   * La referencia primaria NO se sobrescribe; requiere revisión manual.
+   */
+  duplicatePayment: boolean;
+  /**
+   * Ids de TODOS los pagos registrados para el pedido (`receivedPayments`), en el
+   * orden en que se recibieron. El primario (el que confirmó) va primero.
+   */
+  receivedPaymentIds: string[];
 }
 
 function readBooleanFlag(source: Record<string, unknown>, key: string): boolean {
   return source[key] === true;
+}
+
+/** Ids no vacíos de `metadata.payment.receivedPayments` (si existe y es un array). */
+function readReceivedPaymentIds(source: Record<string, unknown>): string[] {
+  const received = source.receivedPayments;
+  if (!Array.isArray(received)) return [];
+
+  return received
+    .map((entry) =>
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>).id
+        : null,
+    )
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
 /** Devuelve `null` si el pedido todavía no tiene ningún cobro registrado. */
@@ -212,6 +236,8 @@ export function readOrderPaymentAudit(order: Pick<Order, 'metadata'>): OrderPaym
     stockConflict: readBooleanFlag(record, 'stockConflict'),
     stockConflictReason: typeof record.stockConflictReason === 'string' ? record.stockConflictReason : null,
     needsReview: readBooleanFlag(record, 'needsReview'),
+    duplicatePayment: readBooleanFlag(record, 'duplicatePayment'),
+    receivedPaymentIds: readReceivedPaymentIds(record),
   };
 }
 

@@ -409,8 +409,26 @@ export async function POST(request: NextRequest) {
 
   const audit = readOrderPaymentAudit(order);
 
+  // Segundo Payment ID aprobado sobre un pedido YA pagado: la referencia primaria
+  // se conserva (migración 005) y ambos pagos quedan en `receivedPayments`. Exige
+  // acción humana (reembolsar el cobro duplicado), por eso se marca aparte.
+  if (audit?.duplicatePayment) {
+    console.error(
+      '[mp-webhook] DUPLICATE APPROVED PAYMENT: primary reference preserved, order already confirmed. Manual review required.',
+      {
+        paymentId: payment.id,
+        orderNumber: order.orderNumber,
+        primaryPaymentReference: order.paymentReference,
+        orderStatus: order.status,
+        paymentStatus: order.paymentStatus,
+        receivedPaymentIds: audit.receivedPaymentIds,
+        amountMismatch: audit.amountMismatch,
+      },
+    );
+  }
+
   // Un cobro real que no se pudo aplicar es lo único que exige acción humana.
-  if (audit?.needsReview || order.paymentStatus !== 'paid' || order.status !== 'confirmed') {
+  if (!audit?.duplicatePayment && (audit?.needsReview || order.paymentStatus !== 'paid' || order.status !== 'confirmed')) {
     console.error(
       '[mp-webhook] PAYMENT NEEDS MANUAL REVIEW: money was collected but the order was not confirmed',
       {
