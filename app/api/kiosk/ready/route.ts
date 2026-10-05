@@ -96,10 +96,15 @@ export async function POST(request: NextRequest) {
       { status: 200 },
     );
   } catch (error) {
-    // La base rechaza con un código legible: `invalid_order_transition`, `order_not_paid`.
+    // La base rechaza con un código legible: `invalid_order_transition`, `order_not_paid`,
+    // `order_requires_review` (conflicto de stock/revisión, migración 006).
     const engineCode = classifyCommerceError(error);
 
-    if (engineCode === 'invalid_order_transition' || engineCode === 'order_not_paid') {
+    if (
+      engineCode === 'invalid_order_transition' ||
+      engineCode === 'order_not_paid' ||
+      engineCode === 'order_requires_review'
+    ) {
       console.warn('[kiosk] no se puede preparar el pedido', { orderId, reason: engineCode });
       return NextResponse.json(
         { ok: false, code: engineCode, error: READY_FAILURE_COPY[engineCode] },

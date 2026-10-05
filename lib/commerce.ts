@@ -241,6 +241,22 @@ export function readOrderPaymentAudit(order: Pick<Order, 'metadata'>): OrderPaym
   };
 }
 
+/**
+ * ¿El fulfillment del pedido está BLOQUEADO por un conflicto de cobro?
+ *
+ * Espeja la guarda autoritativa de la migración 006 (`mark_order_ready_for_pickup`
+ * e `inventory_commit_order` elevan `order_requires_review`). Vive acá para que el
+ * UI pueda anticipar el bloqueo y para fijar la SEMÁNTICA en tests; la autoridad
+ * sigue siendo la base: esconder un botón no basta.
+ *
+ * Bloquean tanto el conflicto de stock (pago aprobado, sin stock retenido) como un
+ * `needsReview` pendiente (pago no aplicado o duplicado).
+ */
+export function isOrderFulfillmentBlocked(order: Pick<Order, 'metadata'>): boolean {
+  const audit = readOrderPaymentAudit(order);
+  return Boolean(audit?.stockConflict || audit?.needsReview);
+}
+
 // =============================================================================
 //  3. GUARDS DE RUNTIME
 // =============================================================================
@@ -767,6 +783,9 @@ export const COMMERCE_ERROR_CODES = [
   // (`redeem_pickup_code_verified`, migración 003).
   'pickup_rate_limited',
   'order_not_paid',
+  // La lanzan las guardas de 006: un pedido con `stockConflict`/`needsReview`
+  // (pago aprobado sin stock retenido) no puede prepararse ni entregarse.
+  'order_requires_review',
 ] as const;
 export type CommerceErrorCode = (typeof COMMERCE_ERROR_CODES)[number];
 
@@ -782,6 +801,8 @@ export const COMMERCE_ERROR_MESSAGES: Record<CommerceErrorCode, string> = {
   pickup_code_generation_failed: 'Could not generate a pickup code, please retry.',
   pickup_rate_limited: 'Too many attempts in a row. Wait a couple of minutes and try again.',
   order_not_paid: 'This order has not been paid yet.',
+  order_requires_review:
+    'This order is on hold: the payment was received but there is a stock issue that requires review.',
 };
 
 /** Extrae el código de error del motor a partir del mensaje crudo de Postgres. */

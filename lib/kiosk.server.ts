@@ -176,6 +176,8 @@ export const PICKUP_FAILURE_COPY: Record<string, string> = {
     '⚠ ATENCIÓN: este pedido YA se entregó antes. NO entregues nada y llama al supervisor.',
   pickup_rate_limited:
     'Demasiados intentos seguidos. Espera 2 minutos y vuelve a intentar.',
+  order_requires_review:
+    '⚠ ATENCIÓN: este pedido tiene un problema de stock/pago pendiente de revisión. NO entregues nada y llama al supervisor.',
 };
 
 /** Motivos por los que un pedido no se puede marcar como listo. */
@@ -183,6 +185,8 @@ export const READY_FAILURE_COPY: Record<string, string> = {
   invalid_order_transition:
     'Ese pedido ya no se puede preparar (puede que ya esté listo o cancelado). Actualiza la pantalla.',
   order_not_paid: 'Este pedido todavía NO está pagado. No se puede preparar mercadería sin cobrar.',
+  order_requires_review:
+    '⚠ ATENCIÓN: este pedido tiene un problema de stock/pago pendiente de revisión. NO lo prepares y llama al supervisor.',
   order_not_found: 'No encontramos ese pedido. Actualiza la pantalla y vuelve a intentar.',
 };
 

@@ -14,7 +14,10 @@
  * es SIEMPRE el SQL; si ambos divergen, hay que corregir el SQL y este modelo.
  *
  * Reglas que se espejan (migración 005):
- *   CASO A  primer pago → confirma (con re-reserva si la reserva se liberó).
+ *   CASO A  primer pago → confirma (con re-reserva si la reserva se liberó). Si la
+ *           re-reserva falla (sin stock), confirma igual, marca stockConflict=true y
+ *           —desde la migración 006— TAMBIÉN needsReview=true (el fulfillment queda
+ *           bloqueado hasta revisión humana).
  *   CASO B  reintento del MISMO pago primario → NO-OP total (sin UPDATE).
  *   CASO C  segundo pago distinto → NO confirma/NO toca stock; preserva ambos pagos
  *           en receivedPayments (dedup por id) y marca duplicatePayment/needsReview
@@ -185,7 +188,8 @@ export function confirmOrderPaymentModel(
         lastPaymentAt: now,
         amountMismatch: false,
         duplicatePayment: false,
-        needsReview: false,
+        // 006: un conflicto de stock EXIGE revisión; sin conflicto, no.
+        needsReview: stockConflict,
         stockConflict,
         stockConflictReason,
         rereservedLines,
@@ -200,7 +204,7 @@ export function confirmOrderPaymentModel(
         noop: false,
         duplicatePayment: false,
         amountMismatch: false,
-        needsReview: false,
+        needsReview: stockConflict,
         metadataUpdated: true,
         rereservedLines,
         stockConflict,

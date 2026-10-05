@@ -456,10 +456,33 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Aviso a la TIENDA (best-effort): recién ahora el pedido está pagado y suena la
-  // alarma para prepararlo. No puede hacer fallar la respuesta; `notifyNewOrderSafely`
-  // nunca lanza. La clave de idempotencia del correo evita duplicados en reintentos.
-  if (order.status === 'confirmed' && order.paymentStatus === 'paid') {
+  // DECISIÓN (006): el aviso a la TIENDA significa "pago confirmado, prepáralo".
+  // Un cobro aprobado que NO pudo retener stock (o que quedó pendiente de revisión)
+  // NO debe dispararlo: presentar el pedido como "normal listo para preparar" es
+  // exactamente el bug. En ese caso se registra un log explícito de REVIEW REQUIRED
+  // y NO se llama a `notifyNewOrderSafely`. No se crea un subsistema nuevo de emails:
+  // la alerta operativa ya va por los `console.error` de arriba (payload + stock).
+  const fulfillmentBlocked = Boolean(
+    audit?.stockConflict || audit?.needsReview || audit?.duplicatePayment,
+  );
+
+  if (fulfillmentBlocked) {
+    // Un pedido en conflicto no se prepara hasta intervención humana (migración 006
+    // bloquea ready/pickup con `order_requires_review`).
+    console.error('[mp-webhook] REVIEW REQUIRED: order NOT auto-notified to store', {
+      paymentId: payment.id,
+      orderNumber: order.orderNumber,
+      orderStatus: order.status,
+      paymentStatus: order.paymentStatus,
+      stockConflict: audit?.stockConflict ?? false,
+      stockConflictReason: audit?.stockConflictReason ?? null,
+      needsReview: audit?.needsReview ?? false,
+      duplicatePayment: audit?.duplicatePayment ?? false,
+    });
+  } else if (order.status === 'confirmed' && order.paymentStatus === 'paid') {
+    // Aviso a la TIENDA (best-effort): recién ahora el pedido está pagado y suena la
+    // alarma para prepararlo. No puede hacer fallar la respuesta; `notifyNewOrderSafely`
+    // nunca lanza. La clave de idempotencia del correo evita duplicados en reintentos.
     const storeAviso = await notifyNewOrderSafely(order.id);
     log('store-notified', { orderNumber: order.orderNumber, status: storeAviso.status });
   }
