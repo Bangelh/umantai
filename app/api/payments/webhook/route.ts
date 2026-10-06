@@ -17,6 +17,10 @@ import {
   type PaymentWebhookEventRecord,
   type WebhookObservabilityInput,
 } from '@/lib/payment-webhook-observability';
+import {
+  buildWebhookSupportCapture,
+  MP_WEBHOOK_SUPPORT_CAPTURE_ENV,
+} from '@/lib/payment-webhook-support-capture';
 import { notifyNewOrderSafely } from '@/lib/notifications.server';
 
 /**
@@ -303,6 +307,25 @@ export async function POST(request: NextRequest) {
   });
 
   if (!signature.ok) {
+    // ─── Captura TEMPORAL para soporte de Mercado Pago (ticket WCS-53484) ──────
+    // Solo diagnóstico: imprime UNA línea con los valores EXACTOS que recibe la
+    // ruta para que soporte pueda reproducir el HMAC. No calcula ni compara
+    // firmas y no altera el 401. Habilitada SOLO en Preview con
+    // `MP_WEBHOOK_SUPPORT_CAPTURE=1`; imposible en Production (gate en el helper).
+    // Eliminar cuando MP cierre el ticket.
+    const supportCapture = buildWebhookSupportCapture({
+      vercelEnv: process.env.VERCEL_ENV,
+      supportCaptureFlag: process.env[MP_WEBHOOK_SUPPORT_CAPTURE_ENV],
+      receivedAt,
+      dataIdQuery: readQueryDataId(request),
+      xRequestId,
+      xSignature,
+      userAgent: request.headers.get('user-agent'),
+    });
+    if (supportCapture) {
+      console.info(`[mp-webhook][support-capture] ${JSON.stringify(supportCapture)}`);
+    }
+
     // Se registra el motivo: `SignatureMismatch` casi siempre es el secreto mal
     // copiado; `MissingSignatureHeader` suele ser un escaneo o un ataque.
     console.error('[mp-webhook] invalid signature', {
