@@ -324,12 +324,17 @@ export class MpOrdersApiError extends Error {
   readonly field: string | null;
   /** `x-request-id` de MP: identifica la petición del lado de MP (soporte). */
   readonly mpRequestId: string | null;
+  /**
+   * Resumen sanitizado y acotado del campo `details` de MP (el que acompaña a
+   * `unsupported_properties`), o `null` si MP no lo mandó. Va SOLO al log.
+   */
+  readonly mpDetails: string | null;
 
   constructor(
     httpStatus: number,
     mpCode: string | null,
     message: string,
-    options: { field?: string | null; mpRequestId?: string | null } = {},
+    options: { field?: string | null; mpRequestId?: string | null; mpDetails?: string | null } = {},
   ) {
     super(message);
     this.name = 'MpOrdersApiError';
@@ -337,6 +342,7 @@ export class MpOrdersApiError extends Error {
     this.mpCode = mpCode;
     this.field = options.field ?? null;
     this.mpRequestId = options.mpRequestId ?? null;
+    this.mpDetails = options.mpDetails ?? null;
   }
 }
 
@@ -350,10 +356,35 @@ export class MpOrdersApiError extends Error {
 //
 //  Ahora se reconocen las tres formas y SIEMPRE se devuelve un resultado acotado y
 //  sin secretos. El cuerpo completo nunca se conserva ni se devuelve al cliente.
+//
+//  Caso aparte: `unsupported_properties` ("Properties not supported") no dice CUÁL
+//  propiedad sobra en `code`/`message` — hay que mirar `details`, que la doc oficial
+//  manda revisar. `details` tampoco tiene forma fija (array, objeto o anidado), así
+//  que se resume en `mpDetails`, acotado y sanitizado, solo para el log.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Máximo de caracteres que se conservan de un mensaje/snippet de error. */
 export const MP_ERROR_SNIPPET_MAX = 300;
+
+/**
+ * Máximo de caracteres del resumen sanitizado de `details`.
+ *
+ * `details` puede crecer mucho (una entrada por propiedad ofensora); se acota para
+ * no inundar el log ni arrastrar el cuerpo completo de la respuesta.
+ */
+export const MP_ERROR_DETAILS_MAX = 500;
+
+/** Entradas de `details` que se resumen (las demás se descartan). */
+const MP_ERROR_DETAILS_MAX_ENTRIES = 3;
+
+/** Niveles de anidamiento de `details` que se recorren. */
+const MP_ERROR_DETAILS_MAX_DEPTH = 2;
+
+/** Campos anidados de una entrada de `details` que vale la pena seguir. */
+const MP_ERROR_DETAILS_NESTED_KEYS = ['details', 'errors', 'cause'] as const;
+
+/** Tope de un valor suelto dentro de `details` (`details[].value`). */
+const MP_ERROR_DETAILS_VALUE_MAX = 160;
 
 /** Máximo para un campo corto del error (código de MP, `path`, `x-request-id`). */
 const MP_ERROR_SHORT_FIELD_MAX = 120;
@@ -439,9 +470,140 @@ function readErrorEntry(value: unknown): MpErrorEntry | null {
   return { code, message, field };
 }
 
+/** Primera entrada de una colección: sea array (`[0]`) u objeto suelto. */
+function firstRawEntry(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 /** Primera entrada de `errors`/`cause`: sea array (`errors[0]`) u objeto suelto. */
 function firstErrorEntry(value: unknown): MpErrorEntry | null {
-  return Array.isArray(value) ? readErrorEntry(value[0]) : readErrorEntry(value);
+  return readErrorEntry(firstRawEntry(value));
+}
+
+/** String de un escalar (`details[].value` puede venir como número o booleano). */
+function asScalarString(value: unknown): string | null {
+  if (typeof value === 'string') return asNonEmptyString(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return String(value);
+  return null;
+}
+
+/**
+ * `details[].value`: se conserva SOLO si no contiene nada sensible.
+ *
+ * Si la redacción cambia el texto (token `APP_USR-`/`TEST-`, `Bearer`, JWT,
+ * `access_token=…`) o el valor es demasiado largo para ser un dato de error, se
+ * descarta ENTERO: es preferible perder el valor antes que registrar un secreto
+ * parcialmente redactado.
+ */
+function safeDetailsValue(value: unknown): string | null {
+  const raw = asScalarString(value);
+  if (!raw) return null;
+  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  if (!collapsed || collapsed.length > MP_ERROR_DETAILS_VALUE_MAX) return null;
+  if (redactSensitiveText(collapsed) !== collapsed) return null;
+  return collapsed;
+}
+
+/** Pares `campo=valor` de UNA entrada de `details`, ya acotados y redactados. */
+function readDetailsEntry(value: unknown): string[] {
+  const record = asRecord(value);
+  if (!record) return [];
+
+  const code = safeShortField(asNonEmptyString(record.code) ?? asNonEmptyString(record.error));
+  const field = safeShortField(
+    asNonEmptyString(record.path) ??
+      asNonEmptyString(record.field) ??
+      asNonEmptyString(record.parameter) ??
+      asNonEmptyString(record.param) ??
+      asNonEmptyString(record.property),
+  );
+  const message = safeText(
+    asNonEmptyString(record.message) ??
+      asNonEmptyString(record.detail) ??
+      asNonEmptyString(record.description) ??
+      asNonEmptyString(record.error),
+    MP_ERROR_DETAILS_VALUE_MAX,
+  );
+  // `property` es el nombre exacto de la propiedad que MP no soporta; si coincide
+  // con el `path` ya elegido no se repite.
+  const property = safeShortField(asNonEmptyString(record.property));
+  const detailValue = safeDetailsValue(record.value);
+
+  const parts: string[] = [];
+  if (code) parts.push(`code=${code}`);
+  if (field) parts.push(`field=${field}`);
+  if (property && property !== field) parts.push(`property=${property}`);
+  if (message) parts.push(`message=${message}`);
+  if (detailValue) parts.push(`value=${detailValue}`);
+  return parts;
+}
+
+/**
+ * Último recurso para un `details` con campos que no conocemos: se registran SOLO
+ * los NOMBRES de las claves de la primera entrada (nunca valores), para no perder
+ * la pista ni filtrar contenido.
+ */
+function describeUnknownDetails(value: unknown): string | null {
+  const record = asRecord(firstRawEntry(value));
+  if (!record) {
+    return Array.isArray(value) && value.length > 0 ? `array(${value.length})` : null;
+  }
+  const keys = Object.keys(record).slice(0, 12);
+  return keys.length > 0 ? `keys=${keys.join(',')}` : null;
+}
+
+/**
+ * Resumen sanitizado y acotado del campo `details` de MP.
+ *
+ * MP lo usa para señalar la propiedad no soportada (`unsupported_properties`) y la
+ * doc oficial pide revisarlo, pero su forma no es fija: puede ser un array, un objeto,
+ * o traer otro `details`/`errors`/`cause` anidado. Acá se recorren esas variantes con
+ * tope de entradas y de profundidad, y NUNCA se vuelca el cuerpo completo. El
+ * resultado va SOLO al log del servidor (la respuesta al cliente sigue sanitizada).
+ */
+export function summarizeMpErrorDetails(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+
+  const entries = Array.isArray(value) ? value : [value];
+  const summaries: string[] = [];
+
+  const walk = (node: unknown, depth: number): void => {
+    if (summaries.length >= MP_ERROR_DETAILS_MAX_ENTRIES || depth > MP_ERROR_DETAILS_MAX_DEPTH) {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (summaries.length >= MP_ERROR_DETAILS_MAX_ENTRIES) return;
+        walk(item, depth);
+      }
+      return;
+    }
+    const record = asRecord(node);
+    if (!record) return;
+
+    const parts = readDetailsEntry(record);
+    if (parts.length > 0) summaries.push(parts.join(' '));
+
+    for (const key of MP_ERROR_DETAILS_NESTED_KEYS) {
+      const child = record[key];
+      if (child !== null && child !== undefined) walk(child, depth + 1);
+    }
+  };
+
+  for (const entry of entries) {
+    if (summaries.length >= MP_ERROR_DETAILS_MAX_ENTRIES) break;
+    walk(entry, 0);
+  }
+
+  const summary = summaries.length > 0 ? summaries.join(' | ') : describeUnknownDetails(value);
+  if (!summary) return null;
+
+  const safe = redactSensitiveText(summary).replace(/\s+/g, ' ').trim();
+  if (!safe) return null;
+  return safe.length > MP_ERROR_DETAILS_MAX
+    ? `${safe.slice(0, MP_ERROR_DETAILS_MAX - 1)}…`
+    : safe;
 }
 
 /**
@@ -450,7 +612,9 @@ function firstErrorEntry(value: unknown): MpErrorEntry | null {
  * Orden de reconocimiento:
  *   · raíz: `code`, `error` (si es string), `message`;
  *   · `errors[0]`: `code`, `message`/`detail`/`description`, `path`/`field`;
- *   · `cause[0]`: `code`, `message`/`description`, `path`/`field`.
+ *   · `cause[0]`: `code`, `message`/`description`, `path`/`field`;
+ *   · `details` (raíz, o dentro de `errors[0]`/`cause[0]`): resumido en `mpDetails`
+ *     cuando el código por sí solo no dice qué propiedad es la ofensora.
  *
  * Si el cuerpo NO era JSON se agrega un snippet acotado (`mp_request_failed: …`),
  * que va SOLO al log del servidor (la ruta responde su mensaje genérico). Si era
@@ -471,6 +635,14 @@ function describeMpError(
   const field = nested?.field ?? null;
   const message = safeText(topMessage, MP_ERROR_SNIPPET_MAX) ?? safeText(nested?.message, MP_ERROR_SNIPPET_MAX);
 
+  // `unsupported_properties` no nombra la propiedad en `code`/`message`: vive en
+  // `details`, que puede venir en la raíz o dentro de `errors[0]`/`cause[0]`.
+  const detailsValue =
+    record?.details ??
+    asRecord(firstRawEntry(record?.errors))?.details ??
+    asRecord(firstRawEntry(record?.cause))?.details;
+  const mpDetails = summarizeMpErrorDetails(detailsValue);
+
   let detail: string;
   if (code || message) {
     detail = `${code ?? 'error'}: ${message ?? ''}`;
@@ -485,6 +657,7 @@ function describeMpError(
   return new MpOrdersApiError(status, code, detail, {
     field,
     mpRequestId: safeShortField(context.mpRequestId),
+    mpDetails,
   });
 }
 

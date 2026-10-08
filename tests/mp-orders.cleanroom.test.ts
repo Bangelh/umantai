@@ -10,11 +10,13 @@ import { POST as webhookRoute } from '../app/api/mp-orders/webhook/route';
 import { GET as debugRoute } from '../app/api/mp-orders/debug/route';
 import {
   DEFAULT_QA_PAYER_EMAIL,
+  MP_ERROR_DETAILS_MAX,
   MP_ERROR_SNIPPET_MAX,
   buildMpOrdersCreateBody,
   parseAmountToCents,
   resolveMpOrdersBackUrls,
   sanitizeMpErrorSnippet,
+  summarizeMpErrorDetails,
 } from '../lib/mercadopago-orders.server';
 
 /**
@@ -599,7 +601,7 @@ test('25. los archivos nuevos solo leen MP_ORDERS_* para Mercado Pago', () => {
 });
 
 // =============================================================================
-//  OBSERVABILIDAD DEL ERROR DE MP (26-35)
+//  OBSERVABILIDAD DEL ERROR DE MP (26-41)
 //
 //  El payload de `POST /v1/orders` NO cambia: lo único que cambia es CUÁNTO se sabe
 //  del rechazo. Se fija que el motivo real llegue al log del servidor sin exponer
@@ -695,6 +697,7 @@ test('26. error con code/message en la raíz: el motivo real llega al log', asyn
     detail: 'property_value: The value of config.online.success_url is invalid',
     field: null,
     mpRequestId: REQ_MP_ID,
+    mpDetails: null,
   });
 });
 
@@ -722,6 +725,7 @@ test('27. error con errors[0].code/message/path (array y objeto)', async () => {
     detail: 'unsupported_properties: Unsupported property: items[0].total_amount',
     field: 'items[0]',
     mpRequestId: REQ_MP_ID,
+    mpDetails: null,
   });
 
   // Misma información pero con `errors` como OBJETO, no como array.
@@ -750,6 +754,7 @@ test('28. error con cause[0].code/description', async () => {
     detail: 'invalid_total_amount: total_amount does not match items',
     field: null,
     mpRequestId: null,
+    mpDetails: null,
   });
 });
 
@@ -815,8 +820,11 @@ test('32. ningún token ni cabecera sensible aparece en logs ni en la respuesta'
       'field',
       'httpStatus',
       'mpCode',
+      'mpDetails',
       'mpRequestId',
     ]);
+    // `mpDetails` llega vacío cuando MP no manda `details`.
+    assert.equal(rejectedLog(result.logs).mpDetails, null);
   }
 });
 
@@ -903,4 +911,212 @@ test('35. el payload de POST /v1/orders sigue siendo exactamente el mismo', asyn
       pending_url: 'https://preview.umantai.test/?mp_orders=pending',
     },
   });
+});
+
+// =============================================================================
+//  `details` DEL ERROR DE MP (36-41)
+//
+//  `unsupported_properties` ("Properties not supported") NO dice qué propiedad
+//  sobra en `code`/`message`: la doc oficial manda revisar `details`. Se fija que ese
+//  campo se resuma en `mpDetails` (sanitizado y acotado), que solo vaya al log, y que
+//  el payload de `POST /v1/orders` siga byte por byte igual.
+// =============================================================================
+
+test('36. details[] con property/path: la propiedad ofensora llega al log', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse(
+      {
+        code: 'unsupported_properties',
+        message: 'Properties not supported',
+        details: [
+          {
+            code: 'unsupported_properties',
+            message: 'Unsupported property',
+            path: 'config.online',
+            property: 'config.online.success_url',
+            value: 'https://preview.umantai.test/?mp_orders=success',
+          },
+        ],
+      },
+      400,
+      { 'x-request-id': REQ_MP_ID },
+    ),
+  );
+
+  assert.equal(result.status, 502);
+  assert.deepEqual(result.payload, {
+    ok: false,
+    code: 'unsupported_properties',
+    error: 'Mercado Pago rechazó la orden.',
+  });
+
+  const details = rejectedLog(result.logs);
+  assert.deepEqual(Object.keys(details).sort(), [
+    'detail',
+    'field',
+    'httpStatus',
+    'mpCode',
+    'mpDetails',
+    'mpRequestId',
+  ]);
+  assert.equal(details.httpStatus, 400);
+  assert.equal(details.mpCode, 'unsupported_properties');
+  // MP no nombró la propiedad en `errors[]`/`cause[]`: sigue siendo `null`.
+  assert.equal(details.field, null);
+  assert.equal(details.mpRequestId, REQ_MP_ID);
+  assert.equal(details.detail, 'unsupported_properties: Properties not supported');
+  assert.equal(
+    details.mpDetails,
+    'code=unsupported_properties field=config.online property=config.online.success_url ' +
+      'message=Unsupported property value=https://preview.umantai.test/?mp_orders=success',
+  );
+
+  // El cuerpo completo NUNCA viaja al cliente.
+  assert.deepEqual(Object.keys(result.payload).sort(), ['code', 'error', 'ok']);
+  assert.ok(!result.text.includes('config.online'), 'el cliente no recibe las propiedades de MP');
+  assert.ok(!result.text.includes('mpDetails'), 'el cliente no recibe `details`');
+});
+
+test('37. details como OBJETO y con anidamiento razonable', async () => {
+  const objectForm = await createErrorWithMock(
+    jsonResponse(
+      {
+        code: 'unsupported_properties',
+        details: { field: 'items[0].unit_measure', message: 'not supported' },
+      },
+      400,
+    ),
+  );
+  assert.equal(
+    rejectedLog(objectForm.logs).mpDetails,
+    'field=items[0].unit_measure message=not supported',
+  );
+
+  // Variante anidada: `details.errors[0]`.
+  const nested = await createErrorWithMock(
+    jsonResponse(
+      { code: 'unsupported_properties', details: { errors: [{ property: 'items[0].total_amount' }] } },
+      400,
+    ),
+  );
+  assert.equal(rejectedLog(nested.logs).mpDetails, 'field=items[0].total_amount');
+
+  // `details` dentro de `errors[0]` también se reconoce.
+  const insideErrors = await createErrorWithMock(
+    jsonResponse(
+      {
+        errors: [
+          {
+            code: 'unsupported_properties',
+            details: [{ property: 'payer.email', description: 'not allowed here' }],
+          },
+        ],
+      },
+      400,
+    ),
+  );
+  assert.equal(
+    rejectedLog(insideErrors.logs).mpDetails,
+    'field=payer.email message=not allowed here',
+  );
+});
+
+test('38. details con campos desconocidos: solo NOMBRES de claves, nunca valores', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse(
+      {
+        code: 'unsupported_properties',
+        details: [{ unexpected: 'VALOR-SENSIBLE-1234', otra: 'mas' }],
+      },
+      400,
+    ),
+  );
+
+  const details = rejectedLog(result.logs);
+  assert.equal(details.mpDetails, 'keys=unexpected,otra');
+  assert.ok(!JSON.stringify(result.logs).includes('VALOR-SENSIBLE-1234'), 'no se filtran valores');
+  assert.ok(!result.text.includes('VALOR-SENSIBLE-1234'));
+
+  // Sin `details` no hay resumen.
+  assert.equal(summarizeMpErrorDetails(undefined), null);
+  assert.equal(summarizeMpErrorDetails({}), null);
+});
+
+test('39. mpDetails se trunca a 500 caracteres', async () => {
+  assert.equal(MP_ERROR_DETAILS_MAX, 500);
+
+  const longDetails = [
+    { message: 'm'.repeat(300) },
+    { message: 'n'.repeat(300) },
+    { message: 'o'.repeat(300) },
+  ];
+
+  const direct = summarizeMpErrorDetails(longDetails);
+  assert.equal(direct?.length, MP_ERROR_DETAILS_MAX);
+  assert.ok(direct?.endsWith('…'), 'el resumen truncado se marca');
+
+  const result = await createErrorWithMock(
+    jsonResponse({ code: 'unsupported_properties', details: longDetails }, 400),
+  );
+  const mpDetails = rejectedLog(result.logs).mpDetails as string;
+  assert.equal(mpDetails.length, MP_ERROR_DETAILS_MAX);
+  assert.ok(mpDetails.endsWith('…'));
+});
+
+test('40. mpDetails nunca incluye tokens: el value sensible se descarta y el texto se redacta', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse(
+      {
+        code: 'unsupported_properties',
+        details: [
+          { property: 'payer.email', value: `Bearer ${ACCESS_TOKEN}` },
+          { message: `token inválido ${ACCESS_TOKEN}` },
+        ],
+      },
+      400,
+    ),
+  );
+
+  const details = rejectedLog(result.logs);
+  assert.equal(
+    details.mpDetails,
+    'field=payer.email | message=token inválido [redacted]',
+  );
+
+  const logDump = JSON.stringify(result.logs);
+  assert.ok(!logDump.includes(ACCESS_TOKEN), 'el log no debe incluir el access token');
+  assert.ok(!/bearer/i.test(logDump), 'el log no debe incluir Authorization/Bearer');
+  assert.ok(!/authorization/i.test(logDump), 'el log no debe incluir cabeceras');
+  assert.ok(!result.text.includes(ACCESS_TOKEN), 'la respuesta no debe incluir el token');
+  assert.deepEqual(Object.keys(result.payload).sort(), ['code', 'error', 'ok']);
+});
+
+test('41. el payload de POST /v1/orders sigue idéntico tras el cambio de observabilidad', async () => {
+  await createWithMock({
+    externalReference: 'UMANTAI-MP-ORDERS-QA-fixed',
+    payerEmail: 'test@testuser.com',
+  });
+
+  assert.deepEqual(JSON.parse(String(fetchCalls[0].init.body)), {
+    type: 'online',
+    processing_mode: 'manual',
+    total_amount: '1.00',
+    external_reference: 'UMANTAI-MP-ORDERS-QA-fixed',
+    payer: { email: 'test@testuser.com' },
+    items: [
+      {
+        title: 'UMANTAI MP Orders QA',
+        unit_price: '1.00',
+        quantity: 1,
+        unit_measure: 'unit',
+        total_amount: '1.00',
+      },
+    ],
+  });
+  assert.deepEqual([...sentHeaders().keys()].sort(), [
+    'accept',
+    'authorization',
+    'content-type',
+    'x-idempotency-key',
+  ]);
 });
