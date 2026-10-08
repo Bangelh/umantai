@@ -10,9 +10,11 @@ import { POST as webhookRoute } from '../app/api/mp-orders/webhook/route';
 import { GET as debugRoute } from '../app/api/mp-orders/debug/route';
 import {
   DEFAULT_QA_PAYER_EMAIL,
+  MP_ERROR_SNIPPET_MAX,
   buildMpOrdersCreateBody,
   parseAmountToCents,
   resolveMpOrdersBackUrls,
+  sanitizeMpErrorSnippet,
 } from '../lib/mercadopago-orders.server';
 
 /**
@@ -85,10 +87,14 @@ async function withFetchMock<T>(
   }
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   });
 }
 
@@ -590,4 +596,311 @@ test('25. los archivos nuevos solo leen MP_ORDERS_* para Mercado Pago', () => {
     'MP_ORDERS_BACK_URL_BASE',
     'MP_ORDERS_WEBHOOK_SECRET',
   ]);
+});
+
+// =============================================================================
+//  OBSERVABILIDAD DEL ERROR DE MP (26-35)
+//
+//  El payload de `POST /v1/orders` NO cambia: lo único que cambia es CUÁNTO se sabe
+//  del rechazo. Se fija que el motivo real llegue al log del servidor sin exponer
+//  tokens ni cabeceras, y que la respuesta al cliente siga igual de sanitizada.
+// =============================================================================
+
+const REQ_MP_ID = 'req_mp_orders_fixture_0001';
+const REJECTED_EVENT = '[mp-orders-create] mercadopago rejected the order';
+
+interface CapturedLog {
+  level: 'error' | 'info';
+  args: unknown[];
+}
+
+async function withCapturedConsole<T>(
+  fn: () => Promise<T>,
+): Promise<{ result: T; logs: CapturedLog[] }> {
+  const originalError = console.error;
+  const originalInfo = console.info;
+  const logs: CapturedLog[] = [];
+  console.error = (...args: unknown[]) => {
+    logs.push({ level: 'error', args });
+  };
+  console.info = (...args: unknown[]) => {
+    logs.push({ level: 'info', args });
+  };
+  try {
+    const result = await fn();
+    return { result, logs };
+  } finally {
+    console.error = originalError;
+    console.info = originalInfo;
+  }
+}
+
+function logText(log: CapturedLog): string {
+  return log.args
+    .map((arg) => (typeof arg === 'string' ? arg : (JSON.stringify(arg) ?? '')))
+    .join(' ');
+}
+
+function rejectedLog(logs: CapturedLog[]): Record<string, unknown> {
+  const log = logs.find((entry) => String(entry.args[0]).includes(REJECTED_EVENT));
+  assert.ok(log, 'debe registrarse el rechazo de Mercado Pago');
+  const details = log.args[1];
+  assert.ok(details && typeof details === 'object', 'el log debe traer el objeto de detalle');
+  return details as Record<string, unknown>;
+}
+
+/** Invoca la ruta con un `fetch` mockeado que devuelve `response` y captura logs. */
+async function createErrorWithMock(
+  response: Response,
+  body: Record<string, unknown> = {},
+): Promise<{
+  status: number;
+  payload: Record<string, unknown>;
+  text: string;
+  logs: CapturedLog[];
+}> {
+  const { result, logs } = await withCapturedConsole(async () =>
+    withEnv({ ...MP_ORDERS_ENV }, async () =>
+      withFetchMock(
+        () => response,
+        async () => {
+          const res = await createOrderRoute(createRequest(body));
+          const payload = (await res.json()) as Record<string, unknown>;
+          return { status: res.status, payload, text: JSON.stringify(payload) };
+        },
+      ),
+    ),
+  );
+  return { ...result, logs };
+}
+
+test('26. error con code/message en la raíz: el motivo real llega al log', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse(
+      { code: 'property_value', message: 'The value of config.online.success_url is invalid' },
+      400,
+      { 'x-request-id': REQ_MP_ID },
+    ),
+  );
+
+  assert.equal(result.status, 502);
+  assert.deepEqual(result.payload, {
+    ok: false,
+    code: 'property_value',
+    error: 'Mercado Pago rechazó la orden.',
+  });
+  assert.deepEqual(rejectedLog(result.logs), {
+    httpStatus: 400,
+    mpCode: 'property_value',
+    detail: 'property_value: The value of config.online.success_url is invalid',
+    field: null,
+    mpRequestId: REQ_MP_ID,
+  });
+});
+
+test('27. error con errors[0].code/message/path (array y objeto)', async () => {
+  const nested = await createErrorWithMock(
+    jsonResponse(
+      {
+        errors: [
+          {
+            code: 'unsupported_properties',
+            message: 'Unsupported property: items[0].total_amount',
+            path: 'items[0]',
+          },
+        ],
+      },
+      400,
+      { 'x-request-id': REQ_MP_ID },
+    ),
+  );
+  assert.equal(nested.status, 502);
+  assert.equal(nested.payload.code, 'unsupported_properties');
+  assert.deepEqual(rejectedLog(nested.logs), {
+    httpStatus: 400,
+    mpCode: 'unsupported_properties',
+    detail: 'unsupported_properties: Unsupported property: items[0].total_amount',
+    field: 'items[0]',
+    mpRequestId: REQ_MP_ID,
+  });
+
+  // Misma información pero con `errors` como OBJETO, no como array.
+  const objectForm = await createErrorWithMock(
+    jsonResponse(
+      { errors: { code: 'required_properties', message: 'payer.email is required', path: 'payer' } },
+      400,
+    ),
+  );
+  assert.equal(objectForm.payload.code, 'required_properties');
+  assert.equal(rejectedLog(objectForm.logs).field, 'payer');
+});
+
+test('28. error con cause[0].code/description', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse(
+      { cause: [{ code: 'invalid_total_amount', description: 'total_amount does not match items' }] },
+      400,
+    ),
+  );
+  assert.equal(result.status, 502);
+  assert.equal(result.payload.code, 'invalid_total_amount');
+  assert.deepEqual(rejectedLog(result.logs), {
+    httpStatus: 400,
+    mpCode: 'invalid_total_amount',
+    detail: 'invalid_total_amount: total_amount does not match items',
+    field: null,
+    mpRequestId: null,
+  });
+});
+
+test('29. cuerpo de MP NO JSON: el snippet queda solo en el log', async () => {
+  const result = await createErrorWithMock(
+    new Response('<html><body>400 Bad Request</body></html>', {
+      status: 400,
+      headers: { 'content-type': 'text/html', 'x-request-id': REQ_MP_ID },
+    }),
+  );
+
+  assert.equal(result.status, 502);
+  assert.deepEqual(result.payload, {
+    ok: false,
+    code: 'mp_orders_api_error',
+    error: 'Mercado Pago rechazó la orden.',
+  });
+  const details = rejectedLog(result.logs);
+  assert.equal(details.httpStatus, 400);
+  assert.equal(details.mpCode, null);
+  assert.equal(details.mpRequestId, REQ_MP_ID);
+  assert.equal(details.detail, 'mp_request_failed: <html><body>400 Bad Request</body></html>');
+  assert.ok(!result.text.includes('<html>'), 'el cuerpo de MP nunca llega al cliente');
+});
+
+test('30. JSON sin código reconocible: solo se registran los NOMBRES de las claves', async () => {
+  const result = await createErrorWithMock(jsonResponse({ unexpected: 'shape', status: 400 }, 400));
+
+  const details = rejectedLog(result.logs);
+  assert.equal(details.mpCode, null);
+  assert.equal(details.detail, 'mp_request_failed: json_keys=unexpected,status');
+  assert.ok(!result.text.includes('unexpected'), 'no se filtran valores del cuerpo');
+});
+
+test('31. el snippet se aplana, se redacta y se limita a 300 caracteres', () => {
+  assert.equal(MP_ERROR_SNIPPET_MAX, 300);
+  assert.equal(sanitizeMpErrorSnippet('x'.repeat(1000)).length, MP_ERROR_SNIPPET_MAX);
+  assert.equal(sanitizeMpErrorSnippet('linea1\r\n\r\nlinea2\n\tlinea3'), 'linea1 linea2 linea3');
+
+  const redacted = sanitizeMpErrorSnippet(`Bearer ${ACCESS_TOKEN} y access_token=${ACCESS_TOKEN}`);
+  assert.equal(redacted, '[redacted] y access_token=[redacted]');
+  assert.ok(!redacted.includes(ACCESS_TOKEN));
+  assert.ok(!/bearer/i.test(redacted));
+});
+
+test('32. ningún token ni cabecera sensible aparece en logs ni en la respuesta', async () => {
+  const nonJson = await createErrorWithMock(
+    new Response(`rechazado por el proxy: Bearer ${ACCESS_TOKEN}\n\nfin`, { status: 400 }),
+  );
+  const jsonBody = await createErrorWithMock(
+    jsonResponse({ code: 'property_value', message: `token ${ACCESS_TOKEN} no permitido` }, 400),
+  );
+
+  for (const result of [nonJson, jsonBody]) {
+    const text = result.logs.map(logText).join(' ');
+    assert.ok(!text.includes(ACCESS_TOKEN), 'el log no debe incluir el access token');
+    assert.ok(!/bearer/i.test(text), 'el log no debe incluir Authorization/Bearer');
+    assert.ok(!/authorization/i.test(text), 'el log no debe incluir cabeceras');
+    assert.ok(!result.text.includes(ACCESS_TOKEN), 'la respuesta no debe incluir el token');
+    assert.ok(!result.text.toLowerCase().includes('bearer'), 'la respuesta no debe incluir Bearer');
+    assert.deepEqual(Object.keys(rejectedLog(result.logs)).sort(), [
+      'detail',
+      'field',
+      'httpStatus',
+      'mpCode',
+      'mpRequestId',
+    ]);
+  }
+});
+
+test('33. el x-request-id de MP queda solo en el log del servidor', async () => {
+  const result = await createErrorWithMock(
+    jsonResponse({ code: 'property_value', message: 'valor inválido' }, 400, {
+      'x-request-id': REQ_MP_ID,
+    }),
+  );
+
+  assert.equal(rejectedLog(result.logs).mpRequestId, REQ_MP_ID);
+  assert.ok(!result.text.includes(REQ_MP_ID), 'el x-request-id no viaja al cliente');
+  assert.deepEqual(Object.keys(result.payload).sort(), ['code', 'error', 'ok']);
+});
+
+test('34. el camino exitoso no cambia (201, mismas claves, sin logs de error)', async () => {
+  const { result, logs } = await withCapturedConsole(async () =>
+    withEnv({ ...MP_ORDERS_ENV }, async () =>
+      withFetchMock(
+        () => jsonResponse(createdOrderPayload(), 201, { 'x-request-id': REQ_MP_ID }),
+        async () => {
+          const res = await createOrderRoute(createRequest());
+          return { status: res.status, payload: (await res.json()) as Record<string, unknown> };
+        },
+      ),
+    ),
+  );
+
+  assert.equal(result.status, 201);
+  assert.deepEqual(Object.keys(result.payload).sort(), [
+    'checkoutUrl',
+    'externalReference',
+    'orderId',
+    'status',
+    'totalAmount',
+  ]);
+  assert.equal(logs.filter((log) => log.level === 'error').length, 0);
+  assert.ok(logs.some((log) => String(log.args[0]).includes('[mp-orders-create] created')));
+});
+
+test('35. el payload de POST /v1/orders sigue siendo exactamente el mismo', async () => {
+  await createWithMock({
+    externalReference: 'UMANTAI-MP-ORDERS-QA-fixed',
+    payerEmail: 'test@testuser.com',
+  });
+
+  assert.deepEqual(JSON.parse(String(fetchCalls[0].init.body)), {
+    type: 'online',
+    processing_mode: 'manual',
+    total_amount: '1.00',
+    external_reference: 'UMANTAI-MP-ORDERS-QA-fixed',
+    payer: { email: 'test@testuser.com' },
+    items: [
+      {
+        title: 'UMANTAI MP Orders QA',
+        unit_price: '1.00',
+        quantity: 1,
+        unit_measure: 'unit',
+        total_amount: '1.00',
+      },
+    ],
+  });
+  // Tampoco se agregan cabeceras nuevas hacia MP.
+  assert.deepEqual([...sentHeaders().keys()].sort(), [
+    'accept',
+    'authorization',
+    'content-type',
+    'x-idempotency-key',
+  ]);
+
+  // Con base de back URLs configurada, `config.online` se arma igual que antes.
+  await withEnv({ ...MP_ORDERS_ENV, MP_ORDERS_BACK_URL_BASE: 'https://preview.umantai.test' }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        await createOrderRoute(createRequest({ externalReference: 'UMANTAI-MP-ORDERS-QA-fixed' }));
+      },
+    );
+  });
+  assert.deepEqual(JSON.parse(String(fetchCalls[0].init.body)).config, {
+    online: {
+      success_url: 'https://preview.umantai.test/?mp_orders=success',
+      failure_url: 'https://preview.umantai.test/?mp_orders=failure',
+      pending_url: 'https://preview.umantai.test/?mp_orders=pending',
+    },
+  });
 });

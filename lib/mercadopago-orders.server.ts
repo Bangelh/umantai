@@ -320,27 +320,172 @@ export function buildMpOrdersCreateBody(input: {
 export class MpOrdersApiError extends Error {
   readonly httpStatus: number;
   readonly mpCode: string | null;
+  /** Propiedad/`path` que MP señala como ofensora, si la informa. */
+  readonly field: string | null;
+  /** `x-request-id` de MP: identifica la petición del lado de MP (soporte). */
+  readonly mpRequestId: string | null;
 
-  constructor(httpStatus: number, mpCode: string | null, message: string) {
+  constructor(
+    httpStatus: number,
+    mpCode: string | null,
+    message: string,
+    options: { field?: string | null; mpRequestId?: string | null } = {},
+  ) {
     super(message);
     this.name = 'MpOrdersApiError';
     this.httpStatus = httpStatus;
     this.mpCode = mpCode;
+    this.field = options.field ?? null;
+    this.mpRequestId = options.mpRequestId ?? null;
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  OBSERVABILIDAD DEL ERROR DE MP (sanitizada)
+//
+//  Mercado Pago NO usa una sola forma de error: puede mandar `code`/`error`/`message`
+//  en la raíz, o anidar el detalle en `errors[...]` (la documentación oficial dice
+//  "Check the errors field for more information") o en `cause[...]`. Mirando solo la
+//  raíz, cualquier 4xx quedaba como `mp_request_failed` sin ninguna pista.
+//
+//  Ahora se reconocen las tres formas y SIEMPRE se devuelve un resultado acotado y
+//  sin secretos. El cuerpo completo nunca se conserva ni se devuelve al cliente.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Máximo de caracteres que se conservan de un mensaje/snippet de error. */
+export const MP_ERROR_SNIPPET_MAX = 300;
+
+/** Máximo para un campo corto del error (código de MP, `path`, `x-request-id`). */
+const MP_ERROR_SHORT_FIELD_MAX = 120;
+
+/** Credenciales con prefijo de Mercado Pago: `APP_USR-…`, `TEST-…`. */
+const MP_TOKEN_PREFIX_PATTERN = /\b(?:APP_USR|APP|TEST|TEST-USER)[-_][A-Za-z0-9._~+/=-]{6,}/gi;
+
+/** `Authorization: Bearer …` que alguna capa intermedia pudiera repetir en el error. */
+const BEARER_PATTERN = /\bBearer\s+\S+/gi;
+
+/** JWT suelto (`eyJ…`). */
+const JWT_PATTERN = /\beyJ[A-Za-z0-9._-]{10,}/g;
+
+/** Pares `access_token=…` / `"refresh_token": "…"` que pudieran aparecer en texto. */
+const TOKEN_PAIR_PATTERN =
+  /((?:['"]?)(?:access|refresh|id|client)_token(?:['"]?)\s*[:=]\s*)(?:['"]?)([^\s'",}]{4,})/gi;
+
 /**
- * Extrae `code`/`message` de un error de MP SIN arrastrar nada más.
+ * Redacta tokens reconocibles y aplana caracteres de control (CR/LF repetidos).
  *
- * Del cuerpo de error solo se conservan dos campos cortos y acotados: el token
- * nunca viaja en un cuerpo de error de MP, y así no se loguea el payload entero.
+ * No recorta longitud: eso lo decide quien la usa, porque los campos cortos y los
+ * snippets tienen topes distintos.
  */
-function describeMpError(status: number, payload: unknown): MpOrdersApiError {
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(BEARER_PATTERN, '[redacted]')
+    .replace(MP_TOKEN_PREFIX_PATTERN, '[redacted]')
+    .replace(JWT_PATTERN, '[redacted]')
+    .replace(TOKEN_PAIR_PATTERN, (_match, prefix: string) => `${prefix}[redacted]`);
+}
+
+/** Recorta, aplana y redacta un texto de error. `null` si queda vacío. */
+function safeText(value: string | null | undefined, max: number): string | null {
+  const string = asNonEmptyString(value);
+  if (!string) return null;
+  const safe = redactSensitiveText(string).replace(/\s+/g, ' ').trim();
+  return safe ? safe.slice(0, max) : null;
+}
+
+/** Campo corto y seguro (código de MP, `path`, `x-request-id`). */
+function safeShortField(value: string | null | undefined): string | null {
+  return safeText(value, MP_ERROR_SHORT_FIELD_MAX);
+}
+
+/**
+ * Snippet seguro de un cuerpo de error que NO es JSON.
+ *
+ * Es lo ÚNICO que se conserva del cuerpo: una línea, con secretos redactados y
+ * acotado a `MP_ERROR_SNIPPET_MAX` caracteres. Se usa solo para el log del
+ * servidor; jamás se devuelve al cliente.
+ */
+export function sanitizeMpErrorSnippet(raw: string): string {
+  return redactSensitiveText(raw).replace(/\s+/g, ' ').trim().slice(0, MP_ERROR_SNIPPET_MAX);
+}
+
+/** Campos que puede traer una entrada de `errors[]`/`cause[]`. */
+interface MpErrorEntry {
+  code: string | null;
+  message: string | null;
+  field: string | null;
+}
+
+/** Extrae lo poco que interesa de UNA entrada de error, sin asumir su forma. */
+function readErrorEntry(value: unknown): MpErrorEntry | null {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const code = safeShortField(asNonEmptyString(record.code) ?? asNonEmptyString(record.error));
+  const message =
+    asNonEmptyString(record.message) ??
+    asNonEmptyString(record.detail) ??
+    asNonEmptyString(record.description) ??
+    asNonEmptyString(record.error);
+  const field = safeShortField(
+    asNonEmptyString(record.path) ??
+      asNonEmptyString(record.field) ??
+      asNonEmptyString(record.parameter) ??
+      asNonEmptyString(record.param),
+  );
+
+  if (!code && !message && !field) return null;
+  return { code, message, field };
+}
+
+/** Primera entrada de `errors`/`cause`: sea array (`errors[0]`) u objeto suelto. */
+function firstErrorEntry(value: unknown): MpErrorEntry | null {
+  return Array.isArray(value) ? readErrorEntry(value[0]) : readErrorEntry(value);
+}
+
+/**
+ * Describe un error de MP SIN arrastrar el cuerpo completo.
+ *
+ * Orden de reconocimiento:
+ *   · raíz: `code`, `error` (si es string), `message`;
+ *   · `errors[0]`: `code`, `message`/`detail`/`description`, `path`/`field`;
+ *   · `cause[0]`: `code`, `message`/`description`, `path`/`field`.
+ *
+ * Si el cuerpo NO era JSON se agrega un snippet acotado (`mp_request_failed: …`),
+ * que va SOLO al log del servidor (la ruta responde su mensaje genérico). Si era
+ * JSON pero sin ningún código reconocible se registran únicamente los NOMBRES de
+ * las claves de primer nivel: nunca valores.
+ */
+function describeMpError(
+  status: number,
+  payload: unknown,
+  context: { mpRequestId?: string | null; rawBody?: string | null } = {},
+): MpOrdersApiError {
   const record = asRecord(payload);
-  const code = asNonEmptyString(record?.code) ?? asNonEmptyString(record?.error);
-  const message = asNonEmptyString(record?.message) ?? asNonEmptyString(record?.error);
-  const detail = code || message ? `${code ?? 'error'}: ${(message ?? '').slice(0, 300)}` : 'mp_request_failed';
-  return new MpOrdersApiError(status, code, detail);
+  const topCode = safeShortField(asNonEmptyString(record?.code) ?? asNonEmptyString(record?.error));
+  const topMessage = asNonEmptyString(record?.message) ?? asNonEmptyString(record?.error);
+  const nested = firstErrorEntry(record?.errors) ?? firstErrorEntry(record?.cause);
+
+  const code = topCode ?? nested?.code ?? null;
+  const field = nested?.field ?? null;
+  const message = safeText(topMessage, MP_ERROR_SNIPPET_MAX) ?? safeText(nested?.message, MP_ERROR_SNIPPET_MAX);
+
+  let detail: string;
+  if (code || message) {
+    detail = `${code ?? 'error'}: ${message ?? ''}`;
+  } else if (payload === null) {
+    const snippet = context.rawBody ? sanitizeMpErrorSnippet(context.rawBody) : '';
+    detail = snippet ? `mp_request_failed: ${snippet}` : 'mp_request_failed';
+  } else {
+    const keys = record ? Object.keys(record).slice(0, 12).join(',') : 'non_object';
+    detail = `mp_request_failed: json_keys=${keys}`;
+  }
+
+  return new MpOrdersApiError(status, code, detail, {
+    field,
+    mpRequestId: safeShortField(context.mpRequestId),
+  });
 }
 
 async function mpFetch(path: string, init: RequestInit, accessToken: string): Promise<unknown> {
@@ -372,7 +517,13 @@ async function mpFetch(path: string, init: RequestInit, accessToken: string): Pr
     }
   }
 
-  if (!response.ok) throw describeMpError(response.status, payload);
+  // `x-request-id` de MP: identifica la petición del lado de Mercado Pago. Se adjunta
+  // SOLO al error (y de ahí al log del servidor); nunca viaja al cliente.
+  const mpRequestId = response.headers.get('x-request-id');
+
+  if (!response.ok) {
+    throw describeMpError(response.status, payload, { mpRequestId, rawBody: raw });
+  }
   return payload;
 }
 

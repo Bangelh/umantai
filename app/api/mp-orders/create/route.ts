@@ -39,6 +39,12 @@ import {
  *   · `externalReference` — referencia externa (máx. 64 caracteres). Por defecto
  *     `UMANTAI-MP-ORDERS-QA-<uuid>`, única por creación.
  *
+ * ─── DIAGNÓSTICO DEL RECHAZO ────────────────────────────────────────────────
+ *  Si MP rechaza la orden, el log del servidor registra exactamente
+ *  `{ httpStatus, mpCode, detail, field, mpRequestId }` —con el código real de MP,
+ *  la propiedad ofensora (si MP la informa) y el `x-request-id` de MP— y la respuesta
+ *  al cliente sigue siendo la genérica y sanitizada (`ok:false`, `code`, `error`).
+ *
  * Respuestas: 201 creada · 400 body inválido · 503 sin `MP_ORDERS_ACCESS_TOKEN`
  * (fail-closed) · 502 si MP rechaza o no responde.
  */
@@ -150,11 +156,15 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     if (error instanceof MpOrdersApiError) {
-      // Se registra SOLO el código y el mensaje acotado de MP; nunca el token.
+      // Se registran SOLO campos acotados y sanitizados de MP: código, detalle,
+      // propiedad ofensora y el `x-request-id` de MP. Nunca el token, ni cabeceras,
+      // ni el cuerpo completo (el detalle ya viene redactado por la librería).
       console.error('[mp-orders-create] mercadopago rejected the order', {
         httpStatus: error.httpStatus,
         mpCode: error.mpCode,
         detail: error.message,
+        field: error.field,
+        mpRequestId: error.mpRequestId,
       });
       return NextResponse.json(
         { ok: false, code: error.mpCode ?? 'mp_orders_api_error', error: 'Mercado Pago rechazó la orden.' },
