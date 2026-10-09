@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { purchaseAvailability, variantsFor } from '../lib/catalogAvailability';
-import { enumerateVariantKeys, type ProductOption } from '../lib/commerce';
+import {
+  COMMERCE_ERROR_MESSAGES,
+  classifyCommerceError,
+  enumerateVariantKeys,
+  type ProductOption,
+} from '../lib/commerce';
 import { baseProductsData, getProductOptions } from '../lib/products';
 
 /**
@@ -114,4 +119,26 @@ test('catálogo real: producto con variantes respeta el variantKey elegido', () 
   // La variante silver no tiene fila: agotada (no "hereda" las 4 de gold).
   assert.equal(purchaseAvailability(oura, variants, { color: 'silver' }).available, 0);
   assert.equal(purchaseAvailability(oura, variants, { color: 'silver' }).canAdd, false);
+});
+
+// =============================================================================
+//  El servidor sigue siendo la autoridad de la venta
+// =============================================================================
+
+test('checkout server-side: el stock insuficiente sigue rechazándose con el mismo contrato', () => {
+  // El motor PL/pgSQL lanza `RAISE EXCEPTION 'insufficient_stock'` (23514). La ruta
+  // (`POST /api/orders`) lo clasifica y responde 409 con ese `code`; el carrito muestra
+  // `payload.error`. Esta comprobación fija ese contrato: el frontend NO lo reemplaza.
+  const stockFailure = Object.assign(new Error('insufficient_stock'), { code: '23514' });
+  assert.equal(classifyCommerceError(stockFailure), 'insufficient_stock');
+
+  // El mensaje que ve el comprador no cambió. Si el frontend empezara a bloquear el
+  // checkout por su cuenta, el servidor seguiría rechazando igual por detrás.
+  assert.equal(
+    COMMERCE_ERROR_MESSAGES.insufficient_stock,
+    'Sorry, some items just sold out. Please review your cart.',
+  );
+
+  // Un error que no es de stock no se confunde con falta de stock.
+  assert.equal(classifyCommerceError(new Error('boom')), null);
 });
