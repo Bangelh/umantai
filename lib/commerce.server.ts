@@ -52,6 +52,7 @@ import {
   type OrderRow,
   type OrderStatus,
   type OrderWithItems,
+  type PaymentStatus,
   type PickupCode,
   type PickupCodeRow,
   type ProductVariant,
@@ -66,6 +67,13 @@ import {
   type AdminReservationHolderView,
   type AdminReservationLineInput,
 } from './admin-order-view';
+import {
+  classifyReservationLines,
+  reconcileReservedDeltas,
+  type InventoryMovementAudit,
+  type ReservationLineAudit,
+  type ReservedReconciliation,
+} from './inventory-audit';
 
 // =============================================================================
 //  0. CLIENTE Y GUARDS
@@ -649,8 +657,7 @@ export async function listAdminOrders(
  * El JSON agregado ya viene en camelCase (lo arma `json_build_object`).
  */
 interface ReservationItemRow extends OrderItemRow {
-  has_reservation: boolean;
-  has_release_or_sale: boolean;
+  is_live_reservation: boolean;
   movements: AdminInventoryMovementView[] | null;
 }
 
@@ -669,10 +676,14 @@ export interface ListReservationHoldersOptions {
  * muestra (`pending_payment`, `expired`, `cancelled`, `picked_up`…).
  *
  * ─── CUÁL ES LA AUTORIDAD ───────────────────────────────────────────────────
- * `inventory_movements`, no `orders.status`. Una línea retiene stock si tiene un
- * movimiento `reservation` y NINGÚN `reservation_release`/`sale`. Es EXACTAMENTE el
- * predicado que usa `inventory_release_order()` para decidir qué liberar, así que esta
- * consulta y el motor de liberación siempre coinciden.
+ * `inventory_movements`, no `orders.status`. Una línea retiene stock si el ÚLTIMO
+ * movimiento de su ciclo (`reservation`/`reservation_release`/`sale`) es `reservation`.
+ * Es la MISMA definición que usa `inventory_rereserve_order()`.
+ *
+ * ⚠️ NO alcanza con "existe `reservation` y nunca hubo `release`/`sale`": una línea
+ * liberada (p. ej. por el reaper) y RE-RESERVADA por un pago tardío vuelve a retener
+ * stock aunque tenga un `reservation_release` anterior. Ese predicado más débil (el que
+ * usa hoy `inventory_release_order()`) es justamente el que deja reservas varadas.
  *
  * No es un export libre: misma lista blanca que el listado (`AdminOrderView`), sin
  * `public_token`, PIN, `payment_reference`, `idempotency_key` ni `metadata` cruda.
@@ -700,14 +711,14 @@ export async function listOrdersWithActiveReservations(
          FROM order_items oi
         WHERE oi.order_id = o.id
           AND (${productSlug}::text IS NULL OR oi.product_slug = ${productSlug})
-          AND EXISTS (
-                SELECT 1 FROM inventory_movements m
+          AND (
+                SELECT m.movement_type
+                  FROM inventory_movements m
                  WHERE m.order_item_id = oi.id
-                   AND m.movement_type = 'reservation')
-          AND NOT EXISTS (
-                SELECT 1 FROM inventory_movements m
-                 WHERE m.order_item_id = oi.id
-                   AND m.movement_type IN ('reservation_release', 'sale'))
+                   AND m.movement_type IN ('reservation', 'reservation_release', 'sale')
+                 ORDER BY m.created_at DESC, m.id DESC
+                 LIMIT 1
+              ) = 'reservation'
      )
      ORDER BY created_at DESC
      LIMIT ${limit}
@@ -721,14 +732,14 @@ export async function listOrdersWithActiveReservations(
     [
       sql`
         SELECT oi.*,
-               EXISTS (
-                 SELECT 1 FROM inventory_movements m
+               (
+                 SELECT m.movement_type
+                   FROM inventory_movements m
                   WHERE m.order_item_id = oi.id
-                    AND m.movement_type = 'reservation') AS has_reservation,
-               EXISTS (
-                 SELECT 1 FROM inventory_movements m
-                  WHERE m.order_item_id = oi.id
-                    AND m.movement_type IN ('reservation_release', 'sale')) AS has_release_or_sale,
+                    AND m.movement_type IN ('reservation', 'reservation_release', 'sale')
+                  ORDER BY m.created_at DESC, m.id DESC
+                  LIMIT 1
+               ) = 'reservation' AS is_live_reservation,
                COALESCE((
                  SELECT json_agg(json_build_object(
                           'id', m.id::text,
@@ -757,8 +768,7 @@ export async function listOrdersWithActiveReservations(
     const bucket = linesByOrder.get(row.order_id) ?? [];
     bucket.push({
       item: row,
-      hasReservation: Boolean(row.has_reservation),
-      hasReleaseOrSale: Boolean(row.has_release_or_sale),
+      isLiveReservation: Boolean(row.is_live_reservation),
       movements: Array.isArray(row.movements) ? row.movements : [],
     });
     linesByOrder.set(row.order_id, bucket);
@@ -778,6 +788,191 @@ export async function listOrdersWithActiveReservations(
       codesByOrder.get(row.id) ?? [],
     ),
   );
+}
+
+// =============================================================================
+//  3.d AUDITORÍA DEL LEDGER DE INVENTARIO (solo lectura)
+//
+//  Existe para reconciliar `inventory.quantity_reserved` contra `inventory_movements`
+//  cuando ambos no cuadran. NO escribe nada.
+// =============================================================================
+
+/** Tope defensivo: la auditoría es diagnóstica, no un export del ledger completo. */
+const INVENTORY_MOVEMENTS_MAX_LIMIT = 2000;
+const INVENTORY_MOVEMENTS_DEFAULT_LIMIT = 500;
+
+export interface ListInventoryMovementsOptions {
+  /** Slug del producto a auditar (obligatorio). */
+  productSlug: string;
+  /** `variant_key` opcional; sin él se auditan TODAS las variantes del producto. */
+  variantKey?: string;
+  locationCode?: string;
+  limit?: number;
+}
+
+export interface InventoryAuditRowView {
+  variantKey: string;
+  onHand: number;
+  reserved: number;
+  available: number;
+  updatedAt: string;
+}
+
+export interface InventoryOrderAuditView {
+  orderId: string;
+  orderNumber: string;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  reservationReleased: boolean;
+  createdAt: string;
+}
+
+export interface InventoryMovementsAudit {
+  productSlug: string;
+  variantKey: string | null;
+  locationCode: string;
+  /** `true` si el tope de movimientos pudo truncar la lectura (reconciliación incompleta). */
+  truncated: boolean;
+  inventory: InventoryAuditRowView[];
+  reconciliations: ReservedReconciliation[];
+  lines: ReservationLineAudit[];
+  /** Movimientos sin `order_item_id`: no atribuibles a ninguna línea. */
+  unattributed: { count: number; reservedDeltaSum: number };
+  movements: InventoryMovementAudit[];
+  orders: InventoryOrderAuditView[];
+}
+
+/**
+ * Ledger del SKU (todos sus movimientos) + reconciliación de `reserved`, en solo lectura.
+ *
+ * Devuelve TODO lo que hace falta para decidir A/B/C/D/E de una reserva huérfana:
+ * la secuencia de movimientos, si el último del ciclo es `reservation`, y el primer
+ * punto donde la suma corrida diverge de `inventory.quantity_reserved`.
+ */
+export async function listInventoryMovements(
+  options: ListInventoryMovementsOptions,
+): Promise<InventoryMovementsAudit> {
+  const sql = requireSql();
+
+  const productSlug = options.productSlug.trim();
+  const variantKey = options.variantKey?.trim() ? options.variantKey.trim() : null;
+  const locationCode = options.locationCode?.trim() || 'MAIN';
+  const requestedLimit = Number(options.limit);
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, INVENTORY_MOVEMENTS_MAX_LIMIT)
+      : INVENTORY_MOVEMENTS_DEFAULT_LIMIT;
+
+  const inventoryRows = (await sql`
+    SELECT * FROM inventory
+     WHERE product_slug = ${productSlug}
+       AND location_code = ${locationCode}
+       AND (${variantKey}::text IS NULL OR variant_key = ${variantKey})
+     ORDER BY variant_key
+  `) as unknown as InventoryRow[];
+
+  const movementRows = (await sql`
+    SELECT m.id::text AS id, m.order_id, m.order_item_id, m.movement_type,
+           m.on_hand_delta, m.reserved_delta, m.on_hand_after, m.reserved_after,
+           m.idempotency_key, m.reason, m.performed_by, m.created_at,
+           i.variant_key
+      FROM inventory_movements m
+      JOIN inventory i ON i.id = m.inventory_id
+     WHERE i.product_slug = ${productSlug}
+       AND i.location_code = ${locationCode}
+       AND (${variantKey}::text IS NULL OR i.variant_key = ${variantKey})
+     ORDER BY m.created_at, m.id
+     LIMIT ${limit + 1}
+  `) as unknown as Array<{
+    id: string;
+    order_id: string | null;
+    order_item_id: string | null;
+    movement_type: string;
+    on_hand_delta: number;
+    reserved_delta: number;
+    on_hand_after: number;
+    reserved_after: number;
+    idempotency_key: string | null;
+    reason: string | null;
+    performed_by: string | null;
+    created_at: string;
+    variant_key: string;
+  }>;
+
+  // Leemos uno de más para saber si el tope truncó (y no mentir en la reconciliación).
+  const truncated = movementRows.length > limit;
+  const movements: InventoryMovementAudit[] = movementRows.slice(0, limit).map((row) => ({
+    id: row.id,
+    orderId: row.order_id,
+    orderItemId: row.order_item_id,
+    movementType: row.movement_type,
+    onHandDelta: Number(row.on_hand_delta),
+    reservedDelta: Number(row.reserved_delta),
+    onHandAfter: Number(row.on_hand_after),
+    reservedAfter: Number(row.reserved_after),
+    idempotencyKey: row.idempotency_key,
+    reason: row.reason,
+    performedBy: row.performed_by,
+    createdAt: row.created_at,
+    variantKey: row.variant_key,
+  }));
+
+  const reconciliations = inventoryRows.map((row) =>
+    reconcileReservedDeltas(
+      movements.filter((movement) => movement.variantKey === row.variant_key),
+      Number(row.quantity_reserved),
+      row.variant_key,
+    ),
+  );
+
+  const { lines, unattributed } = classifyReservationLines(movements);
+  const unattributedReservedSum = unattributed.reduce((sum, m) => sum + m.reservedDelta, 0);
+
+  const orderIds = [
+    ...new Set(movements.map((m) => m.orderId).filter((id): id is string => Boolean(id))),
+  ];
+
+  const orderRows =
+    orderIds.length > 0
+      ? ((await sql`
+          SELECT id, order_number, status, payment_status, reservation_released, created_at
+            FROM orders
+           WHERE id = ANY(${orderIds}::uuid[])
+        `) as unknown as Array<{
+          id: string;
+          order_number: string;
+          status: OrderStatus;
+          payment_status: PaymentStatus;
+          reservation_released: boolean;
+          created_at: string;
+        }>)
+      : [];
+
+  return {
+    productSlug,
+    variantKey,
+    locationCode,
+    truncated,
+    inventory: inventoryRows.map((row) => ({
+      variantKey: row.variant_key,
+      onHand: Number(row.quantity_on_hand),
+      reserved: Number(row.quantity_reserved),
+      available: Number(row.quantity_available),
+      updatedAt: row.updated_at,
+    })),
+    reconciliations,
+    lines,
+    unattributed: { count: unattributed.length, reservedDeltaSum: unattributedReservedSum },
+    movements,
+    orders: orderRows.map((row) => ({
+      orderId: row.id,
+      orderNumber: row.order_number,
+      status: row.status,
+      paymentStatus: row.payment_status,
+      reservationReleased: row.reservation_released,
+      createdAt: row.created_at,
+    })),
+  };
 }
 
 export interface QaOrderCancelResult {

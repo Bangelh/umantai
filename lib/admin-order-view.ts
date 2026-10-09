@@ -210,17 +210,18 @@ export interface AdminInventoryMovementView {
   createdAt: string;
 }
 
-/** Los dos hechos del ledger que deciden si una línea está retenida hoy. */
-export interface AdminReservationLineFacts {
-  /** Existe un movimiento `reservation` para la línea. */
-  hasReservation: boolean;
-  /** Existe un `reservation_release` o un `sale`: la retención ya no está viva. */
-  hasReleaseOrSale: boolean;
-}
-
-/** Entrada del mapper: la línea del pedido + lo que dice el ledger sobre ella. */
-export interface AdminReservationLineInput extends AdminReservationLineFacts {
+/**
+ * Entrada del mapper: la línea del pedido + lo que dice el ledger sobre ella.
+ *
+ * `isLiveReservation` lo resuelve la query con la MISMA definición que
+ * `inventory_rereserve_order()`: el ÚLTIMO movimiento del ciclo
+ * (`reservation`/`reservation_release`/`sale`) es `reservation`. No basta con
+ * "existe un reservation": una línea liberada y RE-RESERVADA por un pago tardío vuelve
+ * a estar viva aunque antes tuviera un `reservation_release`.
+ */
+export interface AdminReservationLineInput {
   item: OrderItemRow;
+  isLiveReservation: boolean;
   movements: AdminInventoryMovementView[];
 }
 
@@ -246,11 +247,11 @@ export interface AdminReservationHolderView extends AdminOrderView {
 }
 
 /**
- * Predicado de "reserva viva": espejo EXACTO de la guarda de `inventory_release_order()`.
- * La query ya lo calcula en SQL; esta función pura fija la semántica y la cubre con tests.
+ * Predicado de "reserva viva". La autoridad es el ledger y la decide la query
+ * (`isLiveReservation`); acá sólo se filtra, para dejar explícito de dónde viene.
  */
-export function isActivelyReservedLine(facts: AdminReservationLineFacts): boolean {
-  return facts.hasReservation && !facts.hasReleaseOrSale;
+export function isActivelyReservedLine(line: { isLiveReservation: boolean }): boolean {
+  return line.isLiveReservation;
 }
 
 /**

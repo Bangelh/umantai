@@ -849,11 +849,9 @@ function movement(overrides: Partial<AdminInventoryMovementView> = {}): AdminInv
   };
 }
 
-test('reserva viva: sólo cuenta con `reservation` y SIN `reservation_release`/`sale`', () => {
-  assert.equal(isActivelyReservedLine({ hasReservation: true, hasReleaseOrSale: false }), true);
-  assert.equal(isActivelyReservedLine({ hasReservation: true, hasReleaseOrSale: true }), false);
-  assert.equal(isActivelyReservedLine({ hasReservation: false, hasReleaseOrSale: false }), false);
-  assert.equal(isActivelyReservedLine({ hasReservation: false, hasReleaseOrSale: true }), false);
+test('reserva viva: el filtro sigue la liveness del ledger (`isLiveReservation`)', () => {
+  assert.equal(isActivelyReservedLine({ isLiveReservation: true }), true);
+  assert.equal(isActivelyReservedLine({ isLiveReservation: false }), false);
 });
 
 test('vista de reservas: identifica el pedido que retiene, su línea y sus movimientos', () => {
@@ -868,15 +866,13 @@ test('vista de reservas: identifica el pedido que retiene, su línea y sus movim
 
   const liveLine: AdminReservationLineInput = {
     item: itemRow(),
-    hasReservation: true,
-    hasReleaseOrSale: false,
+    isLiveReservation: true,
     movements: [movement()],
   };
-  // Segunda línea del mismo pedido: ya liberada (no debe contar como retención viva).
+  // Segunda línea del mismo pedido: ya no retiene stock (su último movimiento la cerró).
   const releasedLine: AdminReservationLineInput = {
     item: { ...itemRow(), id: '66666666-6666-4666-8666-666666666666' },
-    hasReservation: true,
-    hasReleaseOrSale: true,
+    isLiveReservation: false,
     movements: [
       movement(),
       movement({ id: '2', movementType: 'reservation_release', reservedDelta: -1, reason: 'qa_cleanup' }),
