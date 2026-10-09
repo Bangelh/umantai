@@ -112,47 +112,61 @@ export function applyMovement(
   return { ok: true, movement, deduped: false };
 }
 
-/** ¿Esta línea tiene reserva viva? (mismo predicado que usa `inventory_release_order`). */
+const LIFECYCLE_TYPES = ['reservation', 'reservation_release', 'sale'];
+
+/**
+ * ¿Esta línea tiene reserva viva? — Definición AUTORITATIVA (migración 007 y, antes,
+ * `inventory_rereserve_order`): el ÚLTIMO movimiento del ciclo debe ser `reservation`.
+ * Una línea `reservation → reservation_release → reservation` (re-reserva por pago
+ * tardío) vuelve a estar viva.
+ */
 export function hasLiveReservation(state: InventoryState, orderItemId: string): boolean {
-  const reserved = state.movements.some(
-    (m) => m.orderItemId === orderItemId && m.movementType === 'reservation',
+  const lifecycle = state.movements.filter(
+    (m) => m.orderItemId === orderItemId && LIFECYCLE_TYPES.includes(m.movementType),
   );
-  const settled = state.movements.some(
-    (m) =>
-      m.orderItemId === orderItemId &&
-      (m.movementType === 'reservation_release' || m.movementType === 'sale'),
-  );
-  return reserved && !settled;
+  const last = lifecycle.at(-1);
+  return last?.movementType === 'reservation';
 }
 
 /**
- * Espeja `inventory_release_order()`: suelta `reserved` de las líneas con reserva viva,
- * con clave de idempotencia `release:<orderId>:<itemId>`. NO toca `on_hand`.
+ * Espeja `inventory_release_order()` (migración 007): suelta `reserved` de las líneas
+ * con reserva viva. NO toca `on_hand`.
+ *
+ * Clave de idempotencia por evento: la PRIMERA liberación usa `release:<order>:<item>`
+ * (formato histórico) y las posteriores a una re-reserva usan
+ * `release:<order>:<item>:<n>`, para que el movimiento SÍ se aplique también cuando la
+ * línea ya tenía un `reservation_release` anterior.
  */
 export function releaseOrder(
   state: InventoryState,
   orderId: string,
   lines: OrderLine[],
   reason = 'qa_cleanup',
-): { releasedLines: number } {
+): { releasedLines: number; orderReservationReleased: boolean } {
   let releasedLines = 0;
 
   for (const line of lines) {
-    // Mismo predicado que el `WHERE` del SQL: reserva viva y sin liquidar.
     if (!hasLiveReservation(state, line.orderItemId)) continue;
+
+    const priorReleases = state.movements.filter(
+      (m) => m.orderItemId === line.orderItemId && m.movementType === 'reservation_release',
+    ).length;
 
     applyMovement(state, {
       movementType: 'reservation_release',
       reservedDelta: -line.quantity,
       orderId,
       orderItemId: line.orderItemId,
-      idempotencyKey: `release:${orderId}:${line.orderItemId}`,
+      idempotencyKey:
+        priorReleases > 0
+          ? `release:${orderId}:${line.orderItemId}:${priorReleases + 1}`
+          : `release:${orderId}:${line.orderItemId}`,
       reason,
     });
     releasedLines += 1;
   }
 
-  return { releasedLines };
+  return { releasedLines, orderReservationReleased: releasedLines > 0 };
 }
 
 /**
