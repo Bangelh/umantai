@@ -495,11 +495,39 @@ export async function transitionOrderStatus(
 }
 
 /**
- * Cancela el pedido y libera el stock retenido, atómicamente.
+ * Revoca los PINs vigentes de un pedido.
+ *
+ * Devuelve la sentencia (no la ejecuta) para poder meterla en la MISMA transacción que
+ * libera el stock y transiciona el estado: o se revoca y se libera, o no pasa nada.
+ *
+ * POR QUÉ ES OBLIGATORIO EN CUALQUIER CANCELACIÓN: `redeem_pickup_code()` NO mira el
+ * estado del pedido, así que un pedido cancelado con el PIN todavía `issued` conserva un
+ * PIN vivo. Al teclearlo, `redeem_pickup_code_verified()` llama a
+ * `inventory_commit_order()` sobre una reserva ya liberada y el CHECK
+ * `quantity_reserved >= 0` aborta la transacción: el kiosco ve un error interno en vez
+ * de "ese PIN ya venció". Revocar antes de liberar cierra ese hueco.
+ *
+ * Idempotente: solo toca `status = 'issued'` y no sobrescribe un motivo ya registrado.
+ */
+function revokeIssuedPickupCodes(sql: NeonQuery, orderId: string, reason: string) {
+  return sql`
+    UPDATE pickup_codes
+       SET status = 'revoked',
+           revoked_at = COALESCE(revoked_at, NOW()),
+           revocation_reason = COALESCE(revocation_reason, ${reason})
+     WHERE order_id = ${orderId}::uuid
+       AND status = 'issued'
+    RETURNING id
+  `;
+}
+
+/**
+ * Cancela el pedido: revoca sus PINs, libera el stock retenido y transiciona, atómicamente.
  *
  * `inventory_release_order()` es un no-op si no hay reserva viva, así que se puede
  * llamar sin condiciones. Si el cambio de estado fuera inválido, el rollback también
- * revierte la liberación de stock (nunca queda stock "liberado" en un pedido vivo).
+ * revierte la revocación del PIN y la liberación de stock (nunca queda stock "liberado"
+ * ni un PIN revocado en un pedido vivo).
  */
 export async function cancelOrder(
   orderId: string,
@@ -510,6 +538,8 @@ export async function cancelOrder(
 
   const results = (await sql.transaction([
     sql`SELECT set_config('app.actor', ${options.actor ?? 'system'}, true)`,
+    // El PIN se revoca ANTES de liberar: un canje posterior no puede llegar al commit.
+    revokeIssuedPickupCodes(sql, orderId, reason),
     sql`SELECT inventory_release_order(${orderId}::uuid, ${reason}) AS released_lines`,
     sql`
       UPDATE orders
@@ -520,7 +550,7 @@ export async function cancelOrder(
     `,
   ])) as unknown as TransactionResults;
 
-  const orderRow = rowAt<OrderRow>(results, 2);
+  const orderRow = rowAt<OrderRow>(results, 3);
   if (!orderRow) throw new Error(`cancelOrder: pedido ${orderId} no encontrado`);
   return toOrder(orderRow);
 }
@@ -621,13 +651,14 @@ export interface QaOrderCancelResult {
 /**
  * Cierra un pedido QA: revoca su PIN, libera su reserva y lo pasa a `cancelled`.
  *
- * ─── POR QUÉ NO REUSA `cancelOrder()` ────────────────────────────────────────
- * `cancelOrder()` libera stock y transiciona, pero NO toca `pickup_codes`. Un pedido
- * en `ready_for_pickup` con PIN vigente quedaría cancelado **con un PIN usable**:
- * `redeem_pickup_code()` no mira el estado del pedido, y `redeem_pickup_code_verified()`
- * llamaría a `inventory_commit_order()` sobre una reserva ya liberada → el CHECK
- * `quantity_reserved >= 0` aborta la transacción y el kiosco ve un error interno.
- * Revocar el PIN ANTES de liberar cierra ese hueco.
+ * ─── POR QUÉ ES UNA FUNCIÓN PROPIA ───────────────────────────────────────────
+ * Hace exactamente lo mismo que `cancelOrder()` (revocar PINs → liberar stock →
+ * transicionar, todo en una transacción) pero REPORTA los conteos
+ * (`releasedLines` / `revokedCodes`) y el estado previo, que es lo que necesita una
+ * limpieza por lote para demostrar qué hizo en cada pedido. `cancelOrder()` devuelve
+ * solo el pedido, así que no alcanza para auditar el lote.
+ *
+ * El hueco de `pickup_codes` está cerrado en LAS DOS: `cancelOrder()` también revoca.
  *
  * ─── ATOMICIDAD E IDEMPOTENCIA ──────────────────────────────────────────────
  * Las cuatro sentencias van en UNA transacción: si la transición no es válida, el
@@ -665,15 +696,7 @@ export async function cancelOrderForQa(
     sql`SELECT set_config('app.actor', 'qa:order-cleanup', true)`,
     // 1) Revocar PINs vigentes. Antes de liberar stock: si la transición falla, el
     //    rollback deshace esto también.
-    sql`
-      UPDATE pickup_codes
-         SET status = 'revoked',
-             revoked_at = COALESCE(revoked_at, NOW()),
-             revocation_reason = COALESCE(revocation_reason, ${reason})
-       WHERE order_id = ${orderId}::uuid
-         AND status = 'issued'
-      RETURNING id
-    `,
+    revokeIssuedPickupCodes(sql, orderId, reason),
     // 2) Soltar la reserva por el motor del ledger (no-op si ya se soltó o se vendió).
     sql`SELECT inventory_release_order(${orderId}::uuid, ${reason}) AS released_lines`,
     // 3) Transición válida; el trigger sella `cancelled_at`, sube `version` y escribe
