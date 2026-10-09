@@ -106,6 +106,19 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
+/**
+ * ¿Este pago lo aprobó el SIMULADOR QA y no Mercado Pago?
+ *
+ * Lo marca `orders.metadata.payment.source === 'simulation'` (lo escribe
+ * `applyApprovedPayment`). Sin cambios de esquema: reutiliza la estructura de
+ * metadata que ya existe. Nunca se muestra como un pago real de Mercado Pago.
+ */
+function isSimulatedPayment(order: Pick<OrderWithItems, 'metadata'>): boolean {
+  const payment = order.metadata?.payment;
+  if (!payment || typeof payment !== "object" || Array.isArray(payment)) return false;
+  return (payment as Record<string, unknown>).source === "simulation";
+}
+
 function formatDateTime(value: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
@@ -307,6 +320,7 @@ export default async function OrderStatusPage({
   // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
   const payability = evaluateOrderPayability(order);
   const canPay = payability === "payable";
+  const simulated = isSimulatedPayment(order);
 
   // El aviso de regreso solo se muestra si el pago sigue pendiente: si el pedido ya
   // está confirmado, el badge de estado cuenta la historia y el aviso sobra.
@@ -325,6 +339,14 @@ export default async function OrderStatusPage({
             {order.orderNumber}
           </h1>
           <span className={`rounded-full border px-4 py-1 text-sm ${statusTone}`}>{statusLabel}</span>
+          {simulated && (
+            <span
+              className="rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-1 text-sm text-fuchsia-200"
+              title="Payment approved by the QA simulator, not by Mercado Pago"
+            >
+              Pago simulado — QA
+            </span>
+          )}
         </div>
 
         <p className="mt-3 text-sm text-white/50">

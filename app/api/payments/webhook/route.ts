@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readOrderPaymentAudit } from '@/lib/commerce';
 import {
-  confirmOrderPayment,
   isCommerceDbConfigured,
   recordPaymentWebhookEvent,
 } from '@/lib/commerce.server';
+import { applyApprovedPayment } from '@/lib/payment-confirmation.server';
 import {
   fetchMercadoPagoPayment,
   isMercadoPagoConfigured,
@@ -21,7 +20,6 @@ import {
   buildWebhookSupportCapture,
   MP_WEBHOOK_SUPPORT_CAPTURE_ENV,
 } from '@/lib/payment-webhook-support-capture';
-import { notifyNewOrderSafely } from '@/lib/notifications.server';
 
 /**
  * POST /api/payments/webhook — la verdad absoluta sobre el estado de un cobro.
@@ -394,21 +392,24 @@ export async function POST(request: NextRequest) {
   }
 
   // ---- 4. Confirmar el pedido (atómico e idempotente) ----------------------
-  let order;
+  //
+  // La validación externa terminó acá: `applyApprovedPayment` es la MISMA función
+  // interna que usa el simulador QA, para no duplicar ni una regla de negocio.
+  let applied;
   try {
-    order = await confirmOrderPayment({
+    applied = await applyApprovedPayment({
       orderNumber: payment.externalReference,
       paymentId: payment.id,
       paymentMethod: payment.paymentMethodId,
       paidAmount: payment.transactionAmount,
       currency: payment.currencyId,
+      liveMode: payment.liveMode,
+      source: 'mercadopago',
       paymentMetadata: {
-        status: payment.status,
         statusDetail: payment.statusDetail,
         paymentMethodId: payment.paymentMethodId,
         paymentTypeId: payment.paymentTypeId,
         dateApproved: payment.dateApproved,
-        liveMode: payment.liveMode,
       },
     });
   } catch (error) {
@@ -420,7 +421,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Could not confirm the order' }, { status: 500 });
   }
 
-  if (!order) {
+  if (!applied) {
     // Pago aprobado cuyo `external_reference` no es de esta base: casi siempre una
     // credencial de prueba apuntando a un webhook de producción.
     console.error('[mp-webhook] approved payment for an unknown order number', {
@@ -430,7 +431,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, ignored: 'unknown_order' }, { status: 200 });
   }
 
-  const audit = readOrderPaymentAudit(order);
+  const { order, audit, fulfillmentBlocked, storeNotification } = applied;
 
   // Segundo Payment ID aprobado sobre un pedido YA pagado: la referencia primaria
   // se conserva (migración 005) y ambos pagos quedan en `receivedPayments`. Exige
@@ -482,13 +483,10 @@ export async function POST(request: NextRequest) {
   // DECISIÓN (006): el aviso a la TIENDA significa "pago confirmado, prepáralo".
   // Un cobro aprobado que NO pudo retener stock (o que quedó pendiente de revisión)
   // NO debe dispararlo: presentar el pedido como "normal listo para preparar" es
-  // exactamente el bug. En ese caso se registra un log explícito de REVIEW REQUIRED
-  // y NO se llama a `notifyNewOrderSafely`. No se crea un subsistema nuevo de emails:
-  // la alerta operativa ya va por los `console.error` de arriba (payload + stock).
-  const fulfillmentBlocked = Boolean(
-    audit?.stockConflict || audit?.needsReview || audit?.duplicatePayment,
-  );
-
+  // exactamente el bug. La decisión y el aviso viven en `applyApprovedPayment`;
+  // acá solo se registra el log explícito de REVIEW REQUIRED. No se crea un
+  // subsistema nuevo de emails: la alerta operativa ya va por los `console.error`
+  // de arriba (payload + stock).
   if (fulfillmentBlocked) {
     // Un pedido en conflicto no se prepara hasta intervención humana (migración 006
     // bloquea ready/pickup con `order_requires_review`).
@@ -502,12 +500,11 @@ export async function POST(request: NextRequest) {
       needsReview: audit?.needsReview ?? false,
       duplicatePayment: audit?.duplicatePayment ?? false,
     });
-  } else if (order.status === 'confirmed' && order.paymentStatus === 'paid') {
+  } else if (storeNotification) {
     // Aviso a la TIENDA (best-effort): recién ahora el pedido está pagado y suena la
     // alarma para prepararlo. No puede hacer fallar la respuesta; `notifyNewOrderSafely`
     // nunca lanza. La clave de idempotencia del correo evita duplicados en reintentos.
-    const storeAviso = await notifyNewOrderSafely(order.id);
-    log('store-notified', { orderNumber: order.orderNumber, status: storeAviso.status });
+    log('store-notified', { orderNumber: order.orderNumber, status: storeNotification.status });
   }
 
   // Reintento sobre un pedido ya pagado: no es un error, es idempotencia funcionando.

@@ -9,7 +9,7 @@
     "build:cloudflare": "npx @opennextjs/cloudflare build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test tests/commerce.variants.test.ts tests/commerce.reservations.test.ts tests/mercadopago.observability.test.ts tests/mercadopago.webhook-signature.test.ts tests/mercadopago.webhook-observability.test.ts tests/mercadopago.webhook-support-capture.test.ts tests/mercadopago.identity.test.ts tests/mercadopago.notification-routing.test.ts tests/commerce.duplicate-payments.test.ts tests/commerce.stock-conflict-fulfillment.test.ts tests/mp-orders.cleanroom.test.ts",
+    "test": "node --import tsx --test tests/commerce.variants.test.ts tests/commerce.reservations.test.ts tests/mercadopago.observability.test.ts tests/mercadopago.webhook-signature.test.ts tests/mercadopago.webhook-observability.test.ts tests/mercadopago.webhook-support-capture.test.ts tests/mercadopago.identity.test.ts tests/mercadopago.notification-routing.test.ts tests/commerce.duplicate-payments.test.ts tests/commerce.stock-conflict-fulfillment.test.ts tests/mp-orders.cleanroom.test.ts tests/payment-simulation.qa.test.ts",
     "preview": "npx wrangler pages dev .open-next",
     "deploy:cloudflare": "npm run build:cloudflare && npx wrangler pages deploy .open-next",
     "cms": "next dev",
