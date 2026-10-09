@@ -7,11 +7,10 @@ import { getProductBySlug, getProductOptions } from "@/lib/products";
 import { useAdminProductStore } from "@/lib/adminProductStore";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
-import { variantKeyForSelection, type ProductVariant } from "@/lib/commerce";
+import type { ProductVariant } from "@/lib/commerce";
+import { purchaseAvailability, variantsFor } from "@/lib/catalogAvailability";
+import { useCatalogAvailability } from "@/lib/useCatalogAvailability";
 import { toast } from "sonner";
-
-/** Disponibilidad por variante devuelta por /api/catalog/availability. */
-type VariantAvailability = Record<string, number>;
 
 export default function ProductPage() {
   const { loadFromDatabase } = useAdminProductStore();
@@ -25,32 +24,13 @@ export default function ProductPage() {
   const product = getProductBySlug(params.slug);
 
   const options = useMemo(() => (product ? getProductOptions(product) : []), [product]);
-  const hasOptions = options.length > 0;
 
   const [selection, setSelection] = useState<Record<string, string>>({});
-  const [availability, setAvailability] = useState<VariantAvailability | null>(null);
 
-  // Disponibilidad real por variante (autoridad: `inventory`). Si falla, se conserva
-  // la disponibilidad de presentación del catálogo; el servidor sigue siendo el que
-  // autoriza la venta.
-  useEffect(() => {
-    if (!product) return;
-    let active = true;
-
-    fetch(`/api/catalog/availability?slug=${encodeURIComponent(product.slug)}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => {
-        if (!active || !data?.availability?.[product.slug]) return;
-        setAvailability(data.availability[product.slug].variants as VariantAvailability);
-      })
-      .catch(() => {
-        /* sin datos de inventario: la venta la sigue validando el servidor */
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [product]);
+  // Disponibilidad REAL por variante (autoridad: `inventory`). Mientras no haya
+  // respuesta el botón queda deshabilitado: si el inventario contradice al catálogo,
+  // manda el inventario, y no autorizamos una compra con datos de presentación.
+  const availability = useCatalogAvailability(product ? [product.slug] : []);
 
   if (!product) {
     return (
@@ -66,26 +46,25 @@ export default function ProductPage() {
     );
   }
 
-  // `variant_key` canónico de la selección actual, o `null` si está incompleta.
-  const selectionKey = variantKeyForSelection(options, selection);
-  const isSelectionComplete = selectionKey !== null;
-
-  // Cuánto queda de la variante elegida. `null` = todavía no sabemos (sin inventario).
-  const selectedAvailable =
-    availability && selectionKey !== null ? availability[selectionKey] ?? 0 : null;
-
-  const catalogStock = product.inStock; // solo presentación, no autoridad
-  const isOutOfStock =
-    isSelectionComplete && selectedAvailable !== null && selectedAvailable <= 0;
-  const canAdd = isSelectionComplete && !isOutOfStock;
+  // Decisión derivada del inventario real. `product.inStock` NO participa: si
+  // contradice a `inventory`, manda `inventory`.
+  const purchase = purchaseAvailability(
+    product,
+    variantsFor(availability, product.slug),
+    selection,
+  );
 
   const selectOption = (name: string, value: string) => {
     setSelection((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAddToCart = () => {
-    if (!canAdd || selectionKey === null) {
+    if (purchase.label === "select-options") {
       toast.error("Please select every option first.");
+      return;
+    }
+    if (!purchase.canAdd) {
+      toast.error("This item is out of stock right now.");
       return;
     }
     const variant = Object.keys(selection).length > 0 ? (selection as ProductVariant) : undefined;
@@ -141,19 +120,17 @@ export default function ProductPage() {
 
             <div className="text-4xl font-medium tracking-tighter mt-4">${product.price}</div>
 
-            {/* Disponibilidad: real por variante cuando se pudo leer el inventario. */}
-            {!isSelectionComplete && hasOptions ? (
+            {/* Disponibilidad: SIEMPRE la del inventario real, por variante. */}
+            {purchase.label === "select-options" ? (
               <div className="mt-2 text-sm text-white/60">Select your options to see availability</div>
-            ) : isOutOfStock ? (
+            ) : purchase.label === "checking" ? (
+              <div className="mt-2 text-sm text-white/60">Checking availability…</div>
+            ) : purchase.label === "out-of-stock" ? (
               <div className="mt-2 text-sm text-red-400 font-medium">Currently out of stock</div>
-            ) : selectedAvailable !== null ? (
-              <div className="mt-2 text-sm text-emerald-400">
-                In stock • {selectedAvailable} available
-              </div>
-            ) : catalogStock > 0 ? (
-              <div className="mt-2 text-sm text-emerald-400">In stock</div>
             ) : (
-              <div className="mt-2 text-sm text-red-400 font-medium">Currently out of stock</div>
+              <div className="mt-2 text-sm text-emerald-400">
+                In stock • {purchase.available} available
+              </div>
             )}
 
             <div className="flex items-center gap-2 mt-3">
@@ -202,14 +179,16 @@ export default function ProductPage() {
             <div className="flex gap-4 mt-8">
               <button
                 onClick={handleAddToCart}
-                disabled={!canAdd}
+                disabled={!purchase.canAdd}
                 className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors disabled:bg-white/50 disabled:text-black/50 disabled:cursor-not-allowed"
               >
-                {isOutOfStock
+                {purchase.label === "out-of-stock"
                   ? "Out of Stock"
-                  : !isSelectionComplete && hasOptions
+                  : purchase.label === "select-options"
                     ? "Select options"
-                    : "Add to Cart"}
+                    : purchase.label === "checking"
+                      ? "Checking…"
+                      : "Add to Cart"}
               </button>
               <button
                 onClick={() => {

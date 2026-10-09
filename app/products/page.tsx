@@ -8,6 +8,8 @@ import { useAdminProductStore } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
+import { purchaseAvailability, variantsFor } from "@/lib/catalogAvailability";
+import { useCatalogAvailability } from "@/lib/useCatalogAvailability";
 import { toast } from "sonner";
 import { FilterDrawer } from "../components/FilterDrawer";
 
@@ -37,6 +39,17 @@ export default function ProductsPage() {
   const [sortMode, setSortMode] = useState<"featured" | "price-low" | "price-high" | "rating">("featured");
 
   const availableProducts = getAvailableProducts();
+
+  // Disponibilidad REAL por variante de todo lo visible (autoridad: `inventory`).
+  // El botón de la tarjeta se decide con esto, no con `product.inStock`.
+  const availability = useCatalogAvailability(availableProducts.map((product) => product.slug));
+
+  /** Producto con ejes de variación: no se puede agregar desde la tarjeta. */
+  const hasVariantOptions = (product: Product) => getProductOptions(product).length > 0;
+
+  /** Decisión de compra de un producto sin opciones (selección vacía = `variant_key ''`). */
+  const purchaseOf = (product: Product) =>
+    purchaseAvailability(product, variantsFor(availability, product.slug), {});
 
   // Count how many *in-stock* products are in each subcategory (for accurate badges)
   const subcategoryCounts = useMemo(() => {
@@ -365,16 +378,27 @@ export default function ProductsPage() {
                             e.preventDefault();
                             // Un producto con opciones no se puede agregar sin elegir variante:
                             // se manda a la página de detalle, donde la selección es obligatoria.
-                            if (getProductOptions(product).length > 0) {
+                            if (hasVariantOptions(product)) {
                               router.push(`/products/${product.slug}`);
+                              return;
+                            }
+                            if (!purchaseOf(product).canAdd) {
+                              toast.error("This item is out of stock right now.");
                               return;
                             }
                             useCartStore.getState().addItem(product);
                             toast.success(`Added ${product.name} to cart`);
                           }}
-                          className="text-sm px-4 py-1 rounded-full border border-white/20 hover:bg-white/5 transition-colors"
+                          disabled={!hasVariantOptions(product) && !purchaseOf(product).canAdd}
+                          className="text-sm px-4 py-1 rounded-full border border-white/20 hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {getProductOptions(product).length > 0 ? "Choose options" : "Add to Cart"}
+                          {hasVariantOptions(product)
+                            ? "Choose options"
+                            : purchaseOf(product).label === "out-of-stock"
+                              ? "Out of Stock"
+                              : purchaseOf(product).label === "checking"
+                                ? "Checking…"
+                                : "Add to Cart"}
                         </button>
                         <button
                           onClick={(e) => {
