@@ -58,6 +58,7 @@ import {
   type RedeemPickupCodeResult,
 } from './commerce';
 import type { PaymentWebhookEventRecord } from './payment-webhook-observability';
+import { toAdminOrderView, type AdminOrderView } from './admin-order-view';
 
 // =============================================================================
 //  0. CLIENTE Y GUARDS
@@ -522,6 +523,186 @@ export async function cancelOrder(
   const orderRow = rowAt<OrderRow>(results, 2);
   if (!orderRow) throw new Error(`cancelOrder: pedido ${orderId} no encontrado`);
   return toOrder(orderRow);
+}
+
+// =============================================================================
+//  3.c LIMPIEZA QA DE PEDIDOS (solo Preview — ver lib/qa-order-cleanup.server.ts)
+//
+//  Dos operaciones, ninguna borra nada:
+//    · LISTAR  → vista administrativa REDACTADA (sin token público ni PIN).
+//    · CANCELAR → cerrar un pedido operativo liberando su reserva y revocando su PIN.
+// =============================================================================
+
+/** Estados que aparecen (o pueden aparecer) en la cola del kiosco. */
+const DEFAULT_ADMIN_ORDER_STATUSES: readonly OrderStatus[] = [
+  'confirmed',
+  'preparing',
+  'ready_for_pickup',
+];
+
+/** Tope defensivo del listado: es una pantalla de diagnóstico, no un export. */
+const ADMIN_ORDER_LIST_MAX_LIMIT = 200;
+const ADMIN_ORDER_LIST_DEFAULT_LIMIT = 50;
+
+export interface ListAdminOrdersOptions {
+  /** Estados a incluir. Por defecto, los operativos. */
+  statuses?: OrderStatus[];
+  limit?: number;
+}
+
+/**
+ * Pedidos para el diagnóstico administrativo, con líneas y estado del PIN.
+ *
+ * Lee en dos pasos (cabeceras, y después líneas + códigos de ESOS pedidos) para no
+ * hacer N+1 ni arrastrar `orders` a una agregación. Todo va en una transacción de
+ * solo lectura para que el listado sea consistente consigo mismo.
+ */
+export async function listAdminOrders(
+  options: ListAdminOrdersOptions = {},
+): Promise<AdminOrderView[]> {
+  const sql = requireSql();
+
+  const statuses = options.statuses?.length ? options.statuses : [...DEFAULT_ADMIN_ORDER_STATUSES];
+  const requestedLimit = Number(options.limit);
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, ADMIN_ORDER_LIST_MAX_LIMIT)
+      : ADMIN_ORDER_LIST_DEFAULT_LIMIT;
+
+  const orderRows = (await sql`
+    SELECT * FROM orders
+     WHERE status = ANY(${statuses}::order_status[])
+     ORDER BY created_at DESC
+     LIMIT ${limit}
+  `) as unknown as OrderRow[];
+
+  if (orderRows.length === 0) return [];
+
+  const orderIds = orderRows.map((row) => row.id);
+
+  const results = (await sql.transaction(
+    [
+      sql`SELECT * FROM order_items WHERE order_id = ANY(${orderIds}::uuid[]) ORDER BY line_number`,
+      sql`SELECT * FROM pickup_codes WHERE order_id = ANY(${orderIds}::uuid[]) ORDER BY created_at DESC`,
+    ],
+    { readOnly: true },
+  )) as unknown as TransactionResults;
+
+  const itemsByOrder = new Map<string, OrderItemRow[]>();
+  for (const item of rowsAt<OrderItemRow>(results, 0)) {
+    const bucket = itemsByOrder.get(item.order_id) ?? [];
+    bucket.push(item);
+    itemsByOrder.set(item.order_id, bucket);
+  }
+
+  const codesByOrder = new Map<string, PickupCodeRow[]>();
+  for (const code of rowsAt<PickupCodeRow>(results, 1)) {
+    const bucket = codesByOrder.get(code.order_id) ?? [];
+    bucket.push(code);
+    codesByOrder.set(code.order_id, bucket);
+  }
+
+  return orderRows.map((row) =>
+    toAdminOrderView(row, itemsByOrder.get(row.id) ?? [], codesByOrder.get(row.id) ?? []),
+  );
+}
+
+export interface QaOrderCancelResult {
+  orderNumber: string;
+  previousStatus: OrderStatus;
+  status: OrderStatus;
+  /** Líneas cuya reserva se soltó AHORA (0 en un no-op idempotente). */
+  releasedLines: number;
+  /** PINs vigentes revocados AHORA (0 si ya estaban revocados). */
+  revokedCodes: number;
+  alreadyCancelled: boolean;
+}
+
+/**
+ * Cierra un pedido QA: revoca su PIN, libera su reserva y lo pasa a `cancelled`.
+ *
+ * ─── POR QUÉ NO REUSA `cancelOrder()` ────────────────────────────────────────
+ * `cancelOrder()` libera stock y transiciona, pero NO toca `pickup_codes`. Un pedido
+ * en `ready_for_pickup` con PIN vigente quedaría cancelado **con un PIN usable**:
+ * `redeem_pickup_code()` no mira el estado del pedido, y `redeem_pickup_code_verified()`
+ * llamaría a `inventory_commit_order()` sobre una reserva ya liberada → el CHECK
+ * `quantity_reserved >= 0` aborta la transacción y el kiosco ve un error interno.
+ * Revocar el PIN ANTES de liberar cierra ese hueco.
+ *
+ * ─── ATOMICIDAD E IDEMPOTENCIA ──────────────────────────────────────────────
+ * Las cuatro sentencias van en UNA transacción: si la transición no es válida, el
+ * trigger la rechaza y el rollback deshace TAMBIÉN la revocación del PIN y la
+ * liberación de stock (nunca queda medio limpiado).
+ *
+ * La segunda corrida es un no-op limpio:
+ *   · la revocación solo toca `status = 'issued'` (ya no hay ninguna),
+ *   · `inventory_release_order()` tiene guardas + clave de idempotencia
+ *     (`release:<orderId>:<itemId>`), así que no duplica movimientos,
+ *   · el UPDATE de estado no cambia nada si ya estaba `cancelled` (el trigger no
+ *     escribe historial ni sube la versión),
+ *   · `cancelled_reason` no se sobrescribe si ya tenía un motivo.
+ *
+ * El estado se lee ANTES de la transacción solo para reportar `previousStatus` y el
+ * no-op idempotente. Si el estado cambiara en el medio, la autoridad sigue siendo el
+ * trigger: la transición inválida revierte todo.
+ */
+export async function cancelOrderForQa(
+  orderId: string,
+  reason = 'qa_cleanup',
+): Promise<QaOrderCancelResult> {
+  const sql = requireSql();
+
+  const before = (await sql`
+    SELECT status FROM orders WHERE id = ${orderId}::uuid LIMIT 1
+  `) as unknown as Array<{ status: OrderStatus }>;
+
+  const previousStatus = before[0]?.status;
+  if (!previousStatus) {
+    throw new Error(`cancelOrderForQa: pedido ${orderId} no encontrado`);
+  }
+
+  const results = (await sql.transaction([
+    sql`SELECT set_config('app.actor', 'qa:order-cleanup', true)`,
+    // 1) Revocar PINs vigentes. Antes de liberar stock: si la transición falla, el
+    //    rollback deshace esto también.
+    sql`
+      UPDATE pickup_codes
+         SET status = 'revoked',
+             revoked_at = COALESCE(revoked_at, NOW()),
+             revocation_reason = COALESCE(revocation_reason, ${reason})
+       WHERE order_id = ${orderId}::uuid
+         AND status = 'issued'
+      RETURNING id
+    `,
+    // 2) Soltar la reserva por el motor del ledger (no-op si ya se soltó o se vendió).
+    sql`SELECT inventory_release_order(${orderId}::uuid, ${reason}) AS released_lines`,
+    // 3) Transición válida; el trigger sella `cancelled_at`, sube `version` y escribe
+    //    `order_status_history` con `app.actor`.
+    sql`
+      UPDATE orders
+         SET status = 'cancelled'::order_status,
+             cancelled_reason = COALESCE(cancelled_reason, ${reason})
+       WHERE id = ${orderId}::uuid
+      RETURNING *
+    `,
+  ])) as unknown as TransactionResults;
+
+  const revokedCodes = rowsAt<{ id: string }>(results, 1).length;
+  const releasedLines = Number(
+    rowAt<{ released_lines: number }>(results, 2)?.released_lines ?? 0,
+  );
+
+  const orderRow = rowAt<OrderRow>(results, 3);
+  if (!orderRow) throw new Error(`cancelOrderForQa: pedido ${orderId} no encontrado`);
+
+  return {
+    orderNumber: orderRow.order_number,
+    previousStatus,
+    status: orderRow.status,
+    releasedLines,
+    revokedCodes,
+    alreadyCancelled: previousStatus === 'cancelled',
+  };
 }
 
 /**
