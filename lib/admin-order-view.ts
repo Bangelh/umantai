@@ -182,3 +182,106 @@ export function toAdminOrderView(
     hasActivePickupCode: codeViews.some((code) => code.isActive),
   };
 }
+
+// =============================================================================
+//  RESERVA VIVA (auditoría READ-ONLY del ledger)
+//
+//  La autoridad de "qué pedido retiene stock" NO es `orders.status`: es el LEDGER.
+//  Una línea tiene reserva viva si existe un movimiento `reservation` para ella y
+//  NINGÚN `reservation_release`/`sale`. Ese es el predicado exacto de
+//  `inventory_release_order()` (001_commerce_core.sql), y por eso una reserva puede
+//  sobrevivir en un pedido `cancelled`/`expired`/`pending_payment` invisible al kiosco.
+//
+//  Este módulo NO descubre nada nuevo: reutiliza la lista blanca de `AdminOrderView`
+//  (sin token público, PIN, referencia de pago ni metadata) y le agrega las líneas
+//  retenidas + los movimientos de inventario que las explican.
+// =============================================================================
+
+/** Un movimiento del ledger, tal como se muestra en la auditoría (sin `inventory_id`). */
+export interface AdminInventoryMovementView {
+  id: string;
+  movementType: string;
+  onHandDelta: number;
+  reservedDelta: number;
+  onHandAfter: number;
+  reservedAfter: number;
+  reason: string | null;
+  performedBy: string | null;
+  createdAt: string;
+}
+
+/** Los dos hechos del ledger que deciden si una línea está retenida hoy. */
+export interface AdminReservationLineFacts {
+  /** Existe un movimiento `reservation` para la línea. */
+  hasReservation: boolean;
+  /** Existe un `reservation_release` o un `sale`: la retención ya no está viva. */
+  hasReleaseOrSale: boolean;
+}
+
+/** Entrada del mapper: la línea del pedido + lo que dice el ledger sobre ella. */
+export interface AdminReservationLineInput extends AdminReservationLineFacts {
+  item: OrderItemRow;
+  movements: AdminInventoryMovementView[];
+}
+
+export interface AdminReservationLineView {
+  orderItemId: string;
+  productSlug: string;
+  productName: string;
+  variantKey: string;
+  quantity: number;
+  /** Movimientos del ledger de ESTA línea, más reciente primero. */
+  movements: AdminInventoryMovementView[];
+}
+
+/**
+ * Vista de un pedido que retiene stock AHORA. Extiende `AdminOrderView` (misma
+ * redacción) y agrega solo lo que la auditoría necesita para explicar la retención.
+ */
+export interface AdminReservationHolderView extends AdminOrderView {
+  /** Líneas con reserva viva (reserva sin liberar ni vender). */
+  reservationLines: AdminReservationLineView[];
+  /** Unidades retenidas ahora (suma de `quantity` de esas líneas). */
+  reservedUnits: number;
+}
+
+/**
+ * Predicado de "reserva viva": espejo EXACTO de la guarda de `inventory_release_order()`.
+ * La query ya lo calcula en SQL; esta función pura fija la semántica y la cubre con tests.
+ */
+export function isActivelyReservedLine(facts: AdminReservationLineFacts): boolean {
+  return facts.hasReservation && !facts.hasReleaseOrSale;
+}
+
+/**
+ * Vista de un pedido que retiene stock. `lines` debe traer TODAS las líneas del pedido
+ * (con sus hechos del ledger); las que no están vivas igual aparecen en `items`.
+ */
+export function toAdminReservationHolderView(
+  order: OrderRow,
+  lines: AdminReservationLineInput[],
+  pickupCodes: PickupCodeRow[] = [],
+  now: Date = new Date(),
+): AdminReservationHolderView {
+  const base = toAdminOrderView(
+    order,
+    lines.map((line) => line.item),
+    pickupCodes,
+    now,
+  );
+
+  const active = lines.filter(isActivelyReservedLine);
+
+  return {
+    ...base,
+    reservationLines: active.map((line) => ({
+      orderItemId: line.item.id,
+      productSlug: line.item.product_slug,
+      productName: line.item.product_name,
+      variantKey: line.item.variant_key,
+      quantity: line.item.quantity,
+      movements: line.movements,
+    })),
+    reservedUnits: active.reduce((sum, line) => sum + line.item.quantity, 0),
+  };
+}

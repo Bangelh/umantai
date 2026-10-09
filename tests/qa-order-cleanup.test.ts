@@ -3,10 +3,19 @@ import './helpers/preview-env';
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { NextRequest } from 'next/server';
 import { GET as listOrdersRoute } from '../app/api/admin/orders/route';
 import { POST as cancelRoute } from '../app/api/admin/orders/cancel/route';
-import type { AdminOrderView } from '../lib/admin-order-view';
-import { toAdminOrderView } from '../lib/admin-order-view';
+import type {
+  AdminInventoryMovementView,
+  AdminOrderView,
+  AdminReservationLineInput,
+} from '../lib/admin-order-view';
+import {
+  isActivelyReservedLine,
+  toAdminOrderView,
+  toAdminReservationHolderView,
+} from '../lib/admin-order-view';
 import type { OrderItemRow, OrderRow, OrderStatus, OrderWithItems, PickupCodeRow } from '../lib/commerce';
 import {
   QA_CLEANUP_ENV,
@@ -815,4 +824,133 @@ test('vista admin: sin PINs, el pedido igual se lista', () => {
   const view = toAdminOrderView(orderRow(), [itemRow()], [], new Date(NOW));
   assert.equal(view.pickupCode, null);
   assert.equal(view.hasActivePickupCode, false);
+});
+
+// =============================================================================
+//  7. RESERVA VIVA — auditoría READ-ONLY del ledger
+//
+//  La autoridad de "qué pedido retiene stock" es `inventory_movements`, no el estado.
+//  Acá se cubre el predicado puro y el redactado de la vista de reservas; el SQL que lo
+//  alimenta se ejecuta contra Postgres en tiempo de petición (no hay Postgres en tests).
+// =============================================================================
+
+function movement(overrides: Partial<AdminInventoryMovementView> = {}): AdminInventoryMovementView {
+  return {
+    id: '1',
+    movementType: 'reservation',
+    onHandDelta: 0,
+    reservedDelta: 1,
+    onHandAfter: 5,
+    reservedAfter: 1,
+    reason: 'order reservation',
+    performedBy: 'system',
+    createdAt: '2026-10-08T11:59:00.000Z',
+    ...overrides,
+  };
+}
+
+test('reserva viva: sólo cuenta con `reservation` y SIN `reservation_release`/`sale`', () => {
+  assert.equal(isActivelyReservedLine({ hasReservation: true, hasReleaseOrSale: false }), true);
+  assert.equal(isActivelyReservedLine({ hasReservation: true, hasReleaseOrSale: true }), false);
+  assert.equal(isActivelyReservedLine({ hasReservation: false, hasReleaseOrSale: false }), false);
+  assert.equal(isActivelyReservedLine({ hasReservation: false, hasReleaseOrSale: true }), false);
+});
+
+test('vista de reservas: identifica el pedido que retiene, su línea y sus movimientos', () => {
+  const order = orderRow({
+    status: 'pending_payment',
+    payment_status: 'pending',
+    reservation_expires_at: '2026-10-08T12:30:00.000Z',
+    reservation_released: false,
+    confirmed_at: null,
+    ready_at: null,
+  });
+
+  const liveLine: AdminReservationLineInput = {
+    item: itemRow(),
+    hasReservation: true,
+    hasReleaseOrSale: false,
+    movements: [movement()],
+  };
+  // Segunda línea del mismo pedido: ya liberada (no debe contar como retención viva).
+  const releasedLine: AdminReservationLineInput = {
+    item: { ...itemRow(), id: '66666666-6666-4666-8666-666666666666' },
+    hasReservation: true,
+    hasReleaseOrSale: true,
+    movements: [
+      movement(),
+      movement({ id: '2', movementType: 'reservation_release', reservedDelta: -1, reason: 'qa_cleanup' }),
+    ],
+  };
+
+  const view = toAdminReservationHolderView(order, [liveLine, releasedLine], [pickupRow()], new Date(NOW));
+
+  assert.equal(view.orderId, ORDER_READY);
+  assert.equal(view.orderNumber, 'QA-3');
+  assert.equal(view.status, 'pending_payment', 'el estado real se conserva (no se normaliza)');
+  assert.equal(view.paymentStatus, 'pending');
+  assert.equal(view.createdAt, '2026-10-08T11:59:00.000Z');
+  assert.equal(view.reservationReleased, false);
+  assert.equal(view.reservationExpiresAt, '2026-10-08T12:30:00.000Z');
+
+  assert.equal(view.reservationLines.length, 1, 'sólo la línea con reserva viva');
+  assert.equal(view.reservationLines[0].productSlug, 'dyson-v15-detect');
+  assert.equal(view.reservationLines[0].variantKey, '');
+  assert.equal(view.reservationLines[0].quantity, 1);
+  assert.equal(view.reservedUnits, 1);
+  assert.equal(view.reservationLines[0].movements[0].movementType, 'reservation');
+
+  // `items` es la vista base completa: las dos líneas siguen visibles.
+  assert.equal(view.items.length, 2);
+
+  // Redacción: la vista de reservas hereda la lista blanca.
+  const serialized = JSON.stringify(view);
+  assert.ok(!serialized.includes(PUBLIC_TOKEN), 'no filtra el token público');
+  assert.ok(!serialized.includes(PIN), 'no filtra el PIN');
+  assert.ok(!serialized.includes(PAYMENT_REF), 'no filtra la referencia de pago');
+  assert.ok(!serialized.includes('12345678'), 'no filtra el documento del comprador');
+});
+
+test('filtro reservationActive: sólo "1" enciende la auditoría (cualquier otro valor → 400)', async () => {
+  await withEnv({ ADMIN_API_SECRET: ADMIN_SECRET }, async () => {
+    for (const value of ['0', 'true', 'yes', '2']) {
+      const response = await listOrdersRoute(
+        new NextRequest(`http://localhost/api/admin/orders?reservationActive=${value}`, {
+          headers: { 'x-admin-token': ADMIN_SECRET },
+        }) as unknown as ListRequest,
+      );
+      assert.equal(response.status, 400, `valor rechazado: ${value}`);
+      assert.equal((await response.json()).code, 'invalid_reservation_active');
+    }
+  });
+});
+
+test('filtro reservationActive: exige token (401) y no acepta status (400)', async () => {
+  await withEnv({ ADMIN_API_SECRET: ADMIN_SECRET }, async () => {
+    const noToken = await listOrdersRoute(
+      new NextRequest('http://localhost/api/admin/orders?reservationActive=1') as unknown as ListRequest,
+    );
+    assert.equal(noToken.status, 401);
+    assert.equal((await noToken.json()).code, 'admin_unauthorized');
+
+    const withStatus = await listOrdersRoute(
+      new NextRequest('http://localhost/api/admin/orders?reservationActive=1&status=confirmed', {
+        headers: { 'x-admin-token': ADMIN_SECRET },
+      }) as unknown as ListRequest,
+    );
+    assert.equal(withStatus.status, 400);
+    assert.equal((await withStatus.json()).code, 'invalid_filter');
+  });
+});
+
+test('filtro reservationActive: limit fuera de rango se rechaza (400) antes de tocar la base', async () => {
+  await withEnv({ ADMIN_API_SECRET: ADMIN_SECRET }, async () => {
+    const response = await listOrdersRoute(
+      new NextRequest('http://localhost/api/admin/orders?reservationActive=1&limit=999', {
+        headers: { 'x-admin-token': ADMIN_SECRET },
+      }) as unknown as ListRequest,
+    );
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).code, 'invalid_limit');
+  });
 });

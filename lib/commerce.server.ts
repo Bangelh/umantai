@@ -58,7 +58,14 @@ import {
   type RedeemPickupCodeResult,
 } from './commerce';
 import type { PaymentWebhookEventRecord } from './payment-webhook-observability';
-import { toAdminOrderView, type AdminOrderView } from './admin-order-view';
+import {
+  toAdminOrderView,
+  toAdminReservationHolderView,
+  type AdminInventoryMovementView,
+  type AdminOrderView,
+  type AdminReservationHolderView,
+  type AdminReservationLineInput,
+} from './admin-order-view';
 
 // =============================================================================
 //  0. CLIENTE Y GUARDS
@@ -634,6 +641,142 @@ export async function listAdminOrders(
 
   return orderRows.map((row) =>
     toAdminOrderView(row, itemsByOrder.get(row.id) ?? [], codesByOrder.get(row.id) ?? []),
+  );
+}
+
+/**
+ * Fila cruda de una línea con lo que el ledger dice de ella (`SELECT oi.*` + columnas).
+ * El JSON agregado ya viene en camelCase (lo arma `json_build_object`).
+ */
+interface ReservationItemRow extends OrderItemRow {
+  has_reservation: boolean;
+  has_release_or_sale: boolean;
+  movements: AdminInventoryMovementView[] | null;
+}
+
+export interface ListReservationHoldersOptions {
+  /** Filtra por slug de producto (p. ej. `dyson-v15-detect`). Sin filtro = todos los SKUs. */
+  productSlug?: string;
+  limit?: number;
+}
+
+/**
+ * Pedidos que RETIENEN stock AHORA, según el LEDGER (solo lectura).
+ *
+ * ─── POR QUÉ NO SE PUEDE USAR `listAdminOrders()` ───────────────────────────
+ * Ese listado filtra por `status` (los 3 operativos del kiosco) y por eso es CIEGO a
+ * las únicas reservas que importan acá: las que quedaron en estados que el kiosco no
+ * muestra (`pending_payment`, `expired`, `cancelled`, `picked_up`…).
+ *
+ * ─── CUÁL ES LA AUTORIDAD ───────────────────────────────────────────────────
+ * `inventory_movements`, no `orders.status`. Una línea retiene stock si tiene un
+ * movimiento `reservation` y NINGÚN `reservation_release`/`sale`. Es EXACTAMENTE el
+ * predicado que usa `inventory_release_order()` para decidir qué liberar, así que esta
+ * consulta y el motor de liberación siempre coinciden.
+ *
+ * No es un export libre: misma lista blanca que el listado (`AdminOrderView`), sin
+ * `public_token`, PIN, `payment_reference`, `idempotency_key` ni `metadata` cruda.
+ */
+export async function listOrdersWithActiveReservations(
+  options: ListReservationHoldersOptions = {},
+): Promise<AdminReservationHolderView[]> {
+  const sql = requireSql();
+
+  const productSlug = options.productSlug?.trim() ? options.productSlug.trim() : null;
+  const requestedLimit = Number(options.limit);
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, ADMIN_ORDER_LIST_MAX_LIMIT)
+      : ADMIN_ORDER_LIST_DEFAULT_LIMIT;
+
+  // `reservation_released = FALSE` es redundante con el predicado del ledger (una
+  // reserva viva implica que no se liberó), pero se deja explícito: es la condición
+  // que pidió la auditoría y hace la intención legible en la consulta.
+  const orderRows = (await sql`
+    SELECT * FROM orders o
+     WHERE o.reservation_released = FALSE
+       AND EXISTS (
+       SELECT 1
+         FROM order_items oi
+        WHERE oi.order_id = o.id
+          AND (${productSlug}::text IS NULL OR oi.product_slug = ${productSlug})
+          AND EXISTS (
+                SELECT 1 FROM inventory_movements m
+                 WHERE m.order_item_id = oi.id
+                   AND m.movement_type = 'reservation')
+          AND NOT EXISTS (
+                SELECT 1 FROM inventory_movements m
+                 WHERE m.order_item_id = oi.id
+                   AND m.movement_type IN ('reservation_release', 'sale'))
+     )
+     ORDER BY created_at DESC
+     LIMIT ${limit}
+  `) as unknown as OrderRow[];
+
+  if (orderRows.length === 0) return [];
+
+  const orderIds = orderRows.map((row) => row.id);
+
+  const results = (await sql.transaction(
+    [
+      sql`
+        SELECT oi.*,
+               EXISTS (
+                 SELECT 1 FROM inventory_movements m
+                  WHERE m.order_item_id = oi.id
+                    AND m.movement_type = 'reservation') AS has_reservation,
+               EXISTS (
+                 SELECT 1 FROM inventory_movements m
+                  WHERE m.order_item_id = oi.id
+                    AND m.movement_type IN ('reservation_release', 'sale')) AS has_release_or_sale,
+               COALESCE((
+                 SELECT json_agg(json_build_object(
+                          'id', m.id::text,
+                          'movementType', m.movement_type,
+                          'onHandDelta', m.on_hand_delta,
+                          'reservedDelta', m.reserved_delta,
+                          'onHandAfter', m.on_hand_after,
+                          'reservedAfter', m.reserved_after,
+                          'reason', m.reason,
+                          'performedBy', m.performed_by,
+                          'createdAt', m.created_at)
+                        ORDER BY m.created_at DESC)
+                   FROM inventory_movements m
+                  WHERE m.order_item_id = oi.id), '[]'::json) AS movements
+          FROM order_items oi
+         WHERE oi.order_id = ANY(${orderIds}::uuid[])
+         ORDER BY oi.order_id, oi.line_number
+      `,
+      sql`SELECT * FROM pickup_codes WHERE order_id = ANY(${orderIds}::uuid[]) ORDER BY created_at DESC`,
+    ],
+    { readOnly: true },
+  )) as unknown as TransactionResults;
+
+  const linesByOrder = new Map<string, AdminReservationLineInput[]>();
+  for (const row of rowsAt<ReservationItemRow>(results, 0)) {
+    const bucket = linesByOrder.get(row.order_id) ?? [];
+    bucket.push({
+      item: row,
+      hasReservation: Boolean(row.has_reservation),
+      hasReleaseOrSale: Boolean(row.has_release_or_sale),
+      movements: Array.isArray(row.movements) ? row.movements : [],
+    });
+    linesByOrder.set(row.order_id, bucket);
+  }
+
+  const codesByOrder = new Map<string, PickupCodeRow[]>();
+  for (const code of rowsAt<PickupCodeRow>(results, 1)) {
+    const bucket = codesByOrder.get(code.order_id) ?? [];
+    bucket.push(code);
+    codesByOrder.set(code.order_id, bucket);
+  }
+
+  return orderRows.map((row) =>
+    toAdminReservationHolderView(
+      row,
+      linesByOrder.get(row.id) ?? [],
+      codesByOrder.get(row.id) ?? [],
+    ),
   );
 }
 
