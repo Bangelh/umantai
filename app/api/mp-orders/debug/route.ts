@@ -3,6 +3,7 @@ import { requireAdminToken } from '@/lib/admin.server';
 import {
   getMpOrdersBackUrlBase,
   isMpOrdersConfigured,
+  isMpOrdersQaPayerEmailConfigured,
   isMpOrdersWebhookConfigured,
 } from '@/lib/mercadopago-orders.server';
 
@@ -10,8 +11,9 @@ import {
  * GET /api/mp-orders/debug — diagnóstico PREVIEW-ONLY de la integración clean-room.
  *
  * Responde SOLO booleanos y etiquetas: nunca valores de variables, ni prefijos de
- * tokens, ni longitudes, ni cookies, ni el secreto. El objetivo es comprobar que
- * Preview ve las tres variables NUEVAS (`MP_ORDERS_*`) y que NO toca las legacy.
+ * tokens, ni longitudes, ni cookies, ni el secreto, ni el email del comprador QA
+ * (de `MP_ORDERS_QA_PAYER_EMAIL` solo se publica si EXISTE). El objetivo es comprobar
+ * que Preview ve las variables NUEVAS (`MP_ORDERS_*`) y que NO toca las legacy.
  *
  * Candados (TODOS obligatorios; falla cerrado):
  *   1. `VERCEL_ENV === 'preview'` — Production y desarrollo local NUNCA lo habilitan.
@@ -51,6 +53,8 @@ export async function GET(request: Request) {
       accessTokenConfigured: isMpOrdersConfigured(),
       webhookSecretConfigured: isMpOrdersWebhookConfigured(),
       backUrlConfigured: getMpOrdersBackUrlBase().length > 0,
+      // Solo PRESENCIA: el email del comprador QA jamás se devuelve.
+      qaPayerEmailConfigured: isMpOrdersQaPayerEmailConfigured(),
       implementation: 'orders-cleanroom',
       // Estructuralmente falso: los módulos clean-room leen `process.env` de forma
       // explícita y solo consultan las variables `MP_ORDERS_*` (ver tests de

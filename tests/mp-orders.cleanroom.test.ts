@@ -9,15 +9,22 @@ import { POST as createOrderRoute } from '../app/api/mp-orders/create/route';
 import { POST as webhookRoute } from '../app/api/mp-orders/webhook/route';
 import { GET as debugRoute } from '../app/api/mp-orders/debug/route';
 import {
-  DEFAULT_QA_PAYER_EMAIL,
+  DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE,
   MP_ERROR_DETAILS_MAX,
   MP_ERROR_SNIPPET_MAX,
+  MP_ORDERS_QA_PAYER_EMAIL_ENV,
   buildMpOrdersCreateBody,
+  getMpOrdersQaPayerEmail,
+  isMpOrdersQaPayerEmailConfigured,
   parseAmountToCents,
   resolveMpOrdersBackUrls,
   sanitizeMpErrorSnippet,
   summarizeMpErrorDetails,
 } from '../lib/mercadopago-orders.server';
+import {
+  isProductionRuntime,
+  resolveRuntimeEnvironment,
+} from '../lib/runtime-environment.server';
 
 /**
  * Integración CLEAN-ROOM de Mercado Pago Orders — tests de AISLAMIENTO y CONTRATO.
@@ -36,6 +43,11 @@ const LEGACY_TOKEN = 'legacy-access-token-must-not-be-used';
 const LEGACY_SECRET = 'legacy-webhook-secret-must-not-be-used';
 const ACCESS_TOKEN = 'TEST-mp-orders-cleanroom-token-should-never-leak';
 const ADMIN_SECRET = 'test-admin-secret-0123456789';
+/**
+ * Comprador QA de los fixtures. Es un valor de PRUEBA: el real vive SOLO en
+ * `MP_ORDERS_QA_PAYER_EMAIL` (la cuenta de prueba comprador de la aplicación).
+ */
+const QA_PAYER_EMAIL = 'comprador-qa-orders@testuser.com';
 const ORDER_ID = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
 const REQUEST_ID = '2066ca19-c6f1-498a-be75-1923005edd06';
 const TS = '1742505638683';
@@ -112,7 +124,7 @@ function orderPayload() {
     total_paid_amount: '1.00',
     user_id: '3228895377',
     integration_data: { application_id: '8511029186095338' },
-    payer: { email: DEFAULT_QA_PAYER_EMAIL },
+    payer: { email: QA_PAYER_EMAIL },
     transactions: { payments: [{ id: 'PAY01', status: 'processed', status_detail: 'accredited' }] },
   };
 }
@@ -147,6 +159,8 @@ function validSignature(dataId: string = ORDER_ID, secret: string = FIXTURE_SECR
 function webhookRequest(
   options: {
     dataId?: string | null;
+    /** Id del BODY, independiente del del query (para probar el respaldo). */
+    bodyDataId?: string | null;
     xRequestId?: string | null;
     xSignature?: string | null;
     type?: string | null;
@@ -165,6 +179,8 @@ function webhookRequest(
   if (xSignature !== null) headers.set('x-signature', xSignature);
   headers.set('user-agent', 'mp-orders-test-agent/1.0');
 
+  const bodyDataId = options.bodyDataId === undefined ? dataId : options.bodyDataId;
+
   return new Request(`https://preview.umantai.test/api/mp-orders/webhook?${params.toString()}`, {
     method: 'POST',
     headers,
@@ -172,15 +188,27 @@ function webhookRequest(
       action: 'order.processed',
       type: 'order',
       live_mode: false,
-      data: { id: dataId },
+      data: { id: bodyDataId },
     }),
   });
 }
 
-function createRequest(body: Record<string, unknown> = {}): Request {
+/**
+ * Petición a la ruta de creación.
+ *
+ * Lleva el token admin por defecto (la ruta lo exige). `adminToken: null` lo omite,
+ * para poder probar el rechazo sin autenticación.
+ */
+function createRequest(
+  body: Record<string, unknown> = {},
+  options: { adminToken?: string | null } = {},
+): Request {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const adminToken = options.adminToken === undefined ? ADMIN_SECRET : options.adminToken;
+  if (adminToken !== null) headers['x-admin-token'] = adminToken;
   return new Request('https://preview.umantai.test/api/mp-orders/create', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -193,10 +221,13 @@ const MP_ORDERS_ENV: EnvMap = {
   MP_ORDERS_ACCESS_TOKEN: ACCESS_TOKEN,
   MP_ORDERS_WEBHOOK_SECRET: FIXTURE_SECRET,
   MP_ORDERS_BACK_URL_BASE: undefined,
+  MP_ORDERS_QA_PAYER_EMAIL: QA_PAYER_EMAIL,
   MERCADOPAGO_ACCESS_TOKEN: undefined,
   MERCADOPAGO_WEBHOOK_SECRET: undefined,
   MERCADOPAGO_BACK_URL_BASE: undefined,
   ADMIN_API_SECRET: ADMIN_SECRET,
+  // Entorno no productivo: la creación lo exige (decisión centralizada).
+  VERCEL_ENV: 'preview',
 };
 
 // =============================================================================
@@ -285,12 +316,15 @@ test('5. Preview + admin token válido devuelve solo booleanos seguros', async (
       accessTokenConfigured: true,
       webhookSecretConfigured: true,
       backUrlConfigured: false,
+      qaPayerEmailConfigured: true,
       implementation: 'orders-cleanroom',
       legacyVariablesUsed: false,
     });
     const raw = JSON.stringify(body);
     assert.ok(!raw.includes(ACCESS_TOKEN), 'el debug no filtra el access token');
     assert.ok(!raw.includes(FIXTURE_SECRET), 'el debug no filtra el webhook secret');
+    assert.ok(!raw.includes(QA_PAYER_EMAIL), 'el debug no filtra el comprador QA');
+    assert.ok(!raw.includes('@'), 'el debug no publica ningún email');
   });
 });
 
@@ -351,10 +385,11 @@ test('8-9-10. la orden enviada cumple el contrato (online / manual / total = sum
   await createWithMock();
   const body = sentBody();
   const items = body.items as Array<{
+    title: string;
     unit_price: string;
     quantity: number;
-    total_amount: string;
-    unit_measure: string;
+    unit_measure?: string;
+    total_amount?: string;
   }>;
   assert.equal(body.type, 'online');
   assert.equal(body.processing_mode, 'manual');
@@ -365,16 +400,19 @@ test('8-9-10. la orden enviada cumple el contrato (online / manual / total = sum
   );
   assert.equal(parseAmountToCents(String(body.total_amount)), itemsTotal);
   assert.equal(String(body.total_amount), '1.00');
-  assert.equal(items[0].total_amount, '1.00');
-  assert.equal(items[0].unit_measure, 'unit');
-  assert.deepEqual(body.payer, { email: DEFAULT_QA_PAYER_EMAIL });
+  // Modo por defecto: MINIMAL (solo `title` / `unit_price` / `quantity` por ítem).
+  assert.deepEqual(items, [
+    { title: 'UMANTAI MP Orders QA', unit_price: '1.00', quantity: 1 },
+  ]);
+  assert.deepEqual(body.payer, { email: QA_PAYER_EMAIL });
   assert.equal(resolveMpOrdersBackUrls(''), null);
   assert.equal(body.config, undefined, 'sin MP_ORDERS_BACK_URL_BASE no se inventa config');
 
-  // Aritmética en centavos (sin floats) con varios ítems.
+  // Aritmética en centavos (sin floats) con varios ítems, en modo DOCUMENTED.
   const multi = buildMpOrdersCreateBody({
     externalReference: 'UMANTAI-MP-ORDERS-QA-multi',
-    payerEmail: DEFAULT_QA_PAYER_EMAIL,
+    payerEmail: QA_PAYER_EMAIL,
+    payloadMode: 'documented',
     items: [
       { title: 'A', unitPrice: '19.90', quantity: 3 },
       { title: 'B', unitPrice: '0.30', quantity: 1 },
@@ -382,7 +420,7 @@ test('8-9-10. la orden enviada cumple el contrato (online / manual / total = sum
   });
   assert.equal(multi.total_amount, '60.00');
   assert.deepEqual(
-    multi.items.map((item) => item.total_amount),
+    multi.items.map((item) => (item as { total_amount: string }).total_amount),
     ['59.70', '0.30'],
   );
 });
@@ -596,8 +634,11 @@ test('25. los archivos nuevos solo leen MP_ORDERS_* para Mercado Pago', () => {
   assert.deepEqual([...mpOrdersNames].sort(), [
     'MP_ORDERS_ACCESS_TOKEN',
     'MP_ORDERS_BACK_URL_BASE',
+    'MP_ORDERS_QA_PAYER_EMAIL',
     'MP_ORDERS_WEBHOOK_SECRET',
   ]);
+  // La constante que usan los mensajes de error apunta al MISMO nombre que se lee.
+  assert.equal(MP_ORDERS_QA_PAYER_EMAIL_ENV, 'MP_ORDERS_QA_PAYER_EMAIL');
 });
 
 // =============================================================================
@@ -698,6 +739,8 @@ test('26. error con code/message en la raíz: el motivo real llega al log', asyn
     field: null,
     mpRequestId: REQ_MP_ID,
     mpDetails: null,
+    itemsPayloadMode: 'minimal',
+    backUrlsConfigured: false,
   });
 });
 
@@ -726,6 +769,8 @@ test('27. error con errors[0].code/message/path (array y objeto)', async () => {
     field: 'items[0]',
     mpRequestId: REQ_MP_ID,
     mpDetails: null,
+    itemsPayloadMode: 'minimal',
+    backUrlsConfigured: false,
   });
 
   // Misma información pero con `errors` como OBJETO, no como array.
@@ -755,6 +800,8 @@ test('28. error con cause[0].code/description', async () => {
     field: null,
     mpRequestId: null,
     mpDetails: null,
+    itemsPayloadMode: 'minimal',
+    backUrlsConfigured: false,
   });
 });
 
@@ -816,9 +863,11 @@ test('32. ningún token ni cabecera sensible aparece en logs ni en la respuesta'
     assert.ok(!result.text.includes(ACCESS_TOKEN), 'la respuesta no debe incluir el token');
     assert.ok(!result.text.toLowerCase().includes('bearer'), 'la respuesta no debe incluir Bearer');
     assert.deepEqual(Object.keys(rejectedLog(result.logs)).sort(), [
+      'backUrlsConfigured',
       'detail',
       'field',
       'httpStatus',
+      'itemsPayloadMode',
       'mpCode',
       'mpDetails',
       'mpRequestId',
@@ -865,27 +914,16 @@ test('34. el camino exitoso no cambia (201, mismas claves, sin logs de error)', 
   assert.ok(logs.some((log) => String(log.args[0]).includes('[mp-orders-create] created')));
 });
 
-test('35. el payload de POST /v1/orders sigue siendo exactamente el mismo', async () => {
-  await createWithMock({
-    externalReference: 'UMANTAI-MP-ORDERS-QA-fixed',
-    payerEmail: 'test@testuser.com',
-  });
+test('35. el payload de POST /v1/orders es el MINIMAL documentado (sin config si no hay base)', async () => {
+  await createWithMock({ externalReference: 'UMANTAI-MP-ORDERS-QA-fixed' });
 
   assert.deepEqual(JSON.parse(String(fetchCalls[0].init.body)), {
     type: 'online',
     processing_mode: 'manual',
     total_amount: '1.00',
     external_reference: 'UMANTAI-MP-ORDERS-QA-fixed',
-    payer: { email: 'test@testuser.com' },
-    items: [
-      {
-        title: 'UMANTAI MP Orders QA',
-        unit_price: '1.00',
-        quantity: 1,
-        unit_measure: 'unit',
-        total_amount: '1.00',
-      },
-    ],
+    payer: { email: QA_PAYER_EMAIL },
+    items: [{ title: 'UMANTAI MP Orders QA', unit_price: '1.00', quantity: 1 }],
   });
   // Tampoco se agregan cabeceras nuevas hacia MP.
   assert.deepEqual([...sentHeaders().keys()].sort(), [
@@ -895,7 +933,7 @@ test('35. el payload de POST /v1/orders sigue siendo exactamente el mismo', asyn
     'x-idempotency-key',
   ]);
 
-  // Con base de back URLs configurada, `config.online` se arma igual que antes.
+  // Con base de back URLs configurada, `config.online` incluye `auto_return`.
   await withEnv({ ...MP_ORDERS_ENV, MP_ORDERS_BACK_URL_BASE: 'https://preview.umantai.test' }, async () => {
     await withFetchMock(
       () => jsonResponse(createdOrderPayload(), 201),
@@ -909,6 +947,7 @@ test('35. el payload de POST /v1/orders sigue siendo exactamente el mismo', asyn
       success_url: 'https://preview.umantai.test/?mp_orders=success',
       failure_url: 'https://preview.umantai.test/?mp_orders=failure',
       pending_url: 'https://preview.umantai.test/?mp_orders=pending',
+      auto_return: 'approved',
     },
   });
 });
@@ -952,9 +991,11 @@ test('36. details[] con property/path: la propiedad ofensora llega al log', asyn
 
   const details = rejectedLog(result.logs);
   assert.deepEqual(Object.keys(details).sort(), [
+    'backUrlsConfigured',
     'detail',
     'field',
     'httpStatus',
+    'itemsPayloadMode',
     'mpCode',
     'mpDetails',
     'mpRequestId',
@@ -1091,27 +1132,16 @@ test('40. mpDetails nunca incluye tokens: el value sensible se descarta y el tex
   assert.deepEqual(Object.keys(result.payload).sort(), ['code', 'error', 'ok']);
 });
 
-test('41. el payload de POST /v1/orders sigue idéntico tras el cambio de observabilidad', async () => {
-  await createWithMock({
-    externalReference: 'UMANTAI-MP-ORDERS-QA-fixed',
-    payerEmail: 'test@testuser.com',
-  });
+test('41. la observabilidad extra no cambió el payload ni las cabeceras', async () => {
+  await createWithMock({ externalReference: 'UMANTAI-MP-ORDERS-QA-fixed' });
 
   assert.deepEqual(JSON.parse(String(fetchCalls[0].init.body)), {
     type: 'online',
     processing_mode: 'manual',
     total_amount: '1.00',
     external_reference: 'UMANTAI-MP-ORDERS-QA-fixed',
-    payer: { email: 'test@testuser.com' },
-    items: [
-      {
-        title: 'UMANTAI MP Orders QA',
-        unit_price: '1.00',
-        quantity: 1,
-        unit_measure: 'unit',
-        total_amount: '1.00',
-      },
-    ],
+    payer: { email: QA_PAYER_EMAIL },
+    items: [{ title: 'UMANTAI MP Orders QA', unit_price: '1.00', quantity: 1 }],
   });
   assert.deepEqual([...sentHeaders().keys()].sort(), [
     'accept',
@@ -1119,4 +1149,278 @@ test('41. el payload de POST /v1/orders sigue idéntico tras el cambio de observ
     'content-type',
     'x-idempotency-key',
   ]);
+});
+
+// =============================================================================
+//  PRIMERA CORRECCIÓN CONTROLADA (42-58)
+//
+//  · el comprador QA viene SIEMPRE del entorno (nunca un placeholder, nunca del
+//    cliente) y su ausencia falla cerrado;
+//  · `/create` exige entorno no productivo + admin auth + access token + comprador;
+//  · los dos modos de payload (MINIMAL/DOCUMENTED) y `auto_return`;
+//  · el webhook prefiere el `data.id` del query y usa el del body solo como respaldo.
+// =============================================================================
+
+test('42. sin MP_ORDERS_QA_PAYER_EMAIL, create falla cerrado (503) y no llama a MP', async () => {
+  await withEnv({ ...MP_ORDERS_ENV, MP_ORDERS_QA_PAYER_EMAIL: undefined }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(createRequest());
+        assert.equal(res.status, 503);
+        assert.deepEqual(await res.json(), {
+          ok: false,
+          code: 'mp_orders_qa_payer_email_missing',
+          error: `Falta ${MP_ORDERS_QA_PAYER_EMAIL_ENV} en el entorno del servidor.`,
+        });
+        assert.equal(fetchCalls.length, 0, 'no debe llamarse a Mercado Pago');
+      },
+    );
+  });
+});
+
+test('43. no existe placeholder de comprador: ni en el código, ni como default', async () => {
+  for (const file of NEW_FILES) {
+    const source = readSource(file);
+    assert.ok(
+      !source.includes('qa.mp.orders@testuser.com'),
+      `${file} todavía contiene el email placeholder`,
+    );
+    assert.ok(!source.includes('DEFAULT_QA_PAYER_EMAIL'), `${file} usa un default de comprador`);
+  }
+
+  // Sin la variable en el proceso, no hay comprador y el builder NO inventa uno.
+  assert.equal(isMpOrdersQaPayerEmailConfigured(), false);
+  assert.equal(getMpOrdersQaPayerEmail(), '');
+  assert.throws(
+    () =>
+      buildMpOrdersCreateBody({
+        externalReference: 'UMANTAI-MP-ORDERS-QA-sin-comprador',
+        payerEmail: '',
+        items: [{ title: 'QA', unitPrice: '1.00', quantity: 1 }],
+      }),
+    /mp_orders_qa_payer_email_missing/,
+  );
+});
+
+test('44. payer.email sale del entorno, no del cliente', async () => {
+  const fromEnv = 'comprador-real-del-entorno@testuser.com';
+  await withEnv({ ...MP_ORDERS_ENV, MP_ORDERS_QA_PAYER_EMAIL: fromEnv }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(createRequest());
+        assert.equal(res.status, 201);
+        assert.deepEqual(sentBody().payer, { email: fromEnv });
+      },
+    );
+  });
+});
+
+test('45. payerEmail en el body → 400 (el cliente no elige al comprador)', async () => {
+  await withEnv({ ...MP_ORDERS_ENV }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(
+          createRequest({ payerEmail: 'atacante@testuser.com' }),
+        );
+        assert.equal(res.status, 400);
+        assert.equal((await res.json()).code, 'payer_email_from_body_not_allowed');
+        assert.equal(fetchCalls.length, 0);
+      },
+    );
+  });
+});
+
+test('46. create sin admin auth → 401 y no llama a MP', async () => {
+  await withEnv({ ...MP_ORDERS_ENV }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(createRequest({}, { adminToken: null }));
+        assert.equal(res.status, 401);
+        assert.equal((await res.json()).code, 'admin_unauthorized');
+        assert.equal(fetchCalls.length, 0);
+      },
+    );
+  });
+});
+
+test('47. create con admin token inválido → 401', async () => {
+  await withEnv({ ...MP_ORDERS_ENV }, async () => {
+    const res = await createOrderRoute(createRequest({}, { adminToken: 'token-equivocado' }));
+    assert.equal(res.status, 401);
+    assert.equal((await res.json()).code, 'admin_unauthorized');
+  });
+});
+
+test('48. create sin ADMIN_API_SECRET configurado → 503 (falla cerrado)', async () => {
+  await withEnv({ ...MP_ORDERS_ENV, ADMIN_API_SECRET: undefined }, async () => {
+    const res = await createOrderRoute(createRequest({}, { adminToken: null }));
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).code, 'admin_not_configured');
+  });
+});
+
+test('49. create en Producción → 404 aunque el entorno tenga todo lo demás', async () => {
+  await withEnv({ ...MP_ORDERS_ENV, VERCEL_ENV: 'production' }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(createRequest());
+        assert.equal(res.status, 404);
+        assert.equal((await res.json()).code, 'mp_orders_create_unavailable');
+        assert.equal(fetchCalls.length, 0);
+      },
+    );
+  });
+});
+
+test('50. APP_ENV=production gana sobre VERCEL_ENV=preview → 404', async () => {
+  await withEnv({ ...MP_ORDERS_ENV, VERCEL_ENV: 'preview', APP_ENV: 'production' }, async () => {
+    const res = await createOrderRoute(createRequest());
+    assert.equal(res.status, 404);
+    assert.equal((await res.json()).code, 'mp_orders_create_unavailable');
+  });
+});
+
+test('51. el entorno se decide en el helper central (create no lo lee por su cuenta)', () => {
+  const createRoute = readSource('app/api/mp-orders/create/route.ts');
+  assert.ok(!createRoute.includes('VERCEL_ENV'), 'create no debe leer VERCEL_ENV directamente');
+  assert.ok(!createRoute.includes('NODE_ENV'), 'create no debe leer NODE_ENV directamente');
+
+  // Función pura: cada combinación se puede fijar sin tocar el proceso.
+  assert.deepEqual(resolveRuntimeEnvironment({}), {
+    name: 'development',
+    isProduction: false,
+    source: 'default',
+  });
+  assert.deepEqual(resolveRuntimeEnvironment({ VERCEL_ENV: 'preview' }), {
+    name: 'preview',
+    isProduction: false,
+    source: 'VERCEL_ENV',
+  });
+  assert.equal(isProductionRuntime({ VERCEL_ENV: 'production' }), true);
+  assert.equal(isProductionRuntime({ NODE_ENV: 'production' }), true);
+  assert.equal(isProductionRuntime({ APP_ENV: 'staging' }), false);
+  // Fail-closed: un APP_ENV no reconocido se trata como Producción.
+  assert.equal(isProductionRuntime({ APP_ENV: 'banana', VERCEL_ENV: 'preview' }), true);
+});
+
+test('52. MINIMAL por defecto y DOCUMENTED a pedido (mismos montos)', async () => {
+  assert.equal(DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE, 'minimal');
+
+  await createWithMock();
+  assert.deepEqual(sentBody().items, [
+    { title: 'UMANTAI MP Orders QA', unit_price: '1.00', quantity: 1 },
+  ]);
+
+  await createWithMock({ payloadMode: 'documented' });
+  assert.deepEqual(sentBody().items, [
+    {
+      title: 'UMANTAI MP Orders QA',
+      unit_price: '1.00',
+      quantity: 1,
+      unit_measure: 'unit',
+      total_amount: '1.00',
+    },
+  ]);
+  assert.equal(sentBody().total_amount, '1.00');
+});
+
+test('53. payloadMode inválido → 400 sin llamar a MP', async () => {
+  await withEnv({ ...MP_ORDERS_ENV }, async () => {
+    await withFetchMock(
+      () => jsonResponse(createdOrderPayload(), 201),
+      async () => {
+        const res = await createOrderRoute(createRequest({ payloadMode: 'todo-lo-posible' }));
+        assert.equal(res.status, 400);
+        assert.equal((await res.json()).code, 'invalid_payload_mode');
+        assert.equal(fetchCalls.length, 0);
+      },
+    );
+  });
+});
+
+test('54. auto_return solo cuando hay success_url válida', async () => {
+  assert.equal(resolveMpOrdersBackUrls(''), null);
+  assert.equal(resolveMpOrdersBackUrls('no-es-una-url'), null);
+  assert.deepEqual(resolveMpOrdersBackUrls('https://preview.umantai.test/'), {
+    online: {
+      success_url: 'https://preview.umantai.test/?mp_orders=success',
+      failure_url: 'https://preview.umantai.test/?mp_orders=failure',
+      pending_url: 'https://preview.umantai.test/?mp_orders=pending',
+      auto_return: 'approved',
+    },
+  });
+
+  await withEnv({ ...MP_ORDERS_ENV }, async () => {
+    await createWithMock();
+    assert.equal(sentBody().config, undefined);
+  });
+});
+
+test('55. ni el comprador QA ni el token admin aparecen en la respuesta o en los logs', async () => {
+  const { result, logs } = await withCapturedConsole(async () =>
+    withEnv({ ...MP_ORDERS_ENV }, async () =>
+      withFetchMock(
+        () => jsonResponse(createdOrderPayload(), 201),
+        async () => {
+          const res = await createOrderRoute(createRequest());
+          return { status: res.status, text: JSON.stringify(await res.json()) };
+        },
+      ),
+    ),
+  );
+
+  assert.equal(result.status, 201);
+  const logDump = logs.map(logText).join(' ');
+  for (const dump of [result.text, logDump]) {
+    assert.ok(!dump.includes(QA_PAYER_EMAIL), 'no debe filtrarse el comprador QA');
+    assert.ok(!dump.includes(ADMIN_SECRET), 'no debe filtrarse el token admin');
+    assert.ok(!dump.includes(ACCESS_TOKEN), 'no debe filtrarse el access token');
+    assert.ok(!/bearer|authorization/i.test(dump), 'no debe filtrarse Authorization');
+  }
+  // Lo que SÍ queda registrado es de dónde salió el comprador y el modo de payload.
+  const created = logs.find((entry) => String(entry.args[0]).includes('[mp-orders-create] created'));
+  assert.ok(created);
+  assert.equal((created.args[1] as Record<string, unknown>).payerSource, 'env');
+  assert.equal((created.args[1] as Record<string, unknown>).itemsPayloadMode, 'minimal');
+});
+
+test('56. el webhook prefiere el data.id del QUERY sobre el del body', async () => {
+  const otherId = 'ORD01BODYID00000000000000000000';
+  const result = await webhookWithMock(webhookRequest({ bodyDataId: otherId }));
+
+  assert.equal(result.status, 200);
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, `https://api.mercadopago.com/v1/orders/${ORDER_ID}`);
+  assert.equal(result.payload.orderId, ORDER_ID);
+});
+
+test('57. el webhook usa body.data.id SOLO cuando el query no lo trae', async () => {
+  const result = await webhookWithMock(
+    webhookRequest({ dataId: null, bodyDataId: ORDER_ID, xSignature: validSignature(ORDER_ID) }),
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, `https://api.mercadopago.com/v1/orders/${ORDER_ID}`);
+});
+
+test('58. el respaldo del body NO debilita la firma ni el fail-closed', async () => {
+  // Firma calculada para OTRO id: el respaldo no puede abrir la puerta.
+  const forged = await webhookWithMock(
+    webhookRequest({ dataId: null, bodyDataId: ORDER_ID, xSignature: validSignature('ORD-OTRO') }),
+  );
+  assert.equal(forged.status, 401);
+  assert.equal(forged.payload.reason, 'SignatureMismatch');
+  assert.equal(fetchCalls.length, 0);
+
+  // Sin id en ninguna de las dos fuentes: sigue siendo 401.
+  const missing = await webhookWithMock(webhookRequest({ dataId: null, bodyDataId: null }));
+  assert.equal(missing.status, 401);
+  assert.deepEqual(missing.payload.missing, ['data.id']);
+  assert.equal(fetchCalls.length, 0);
 });

@@ -117,6 +117,53 @@ MERCADOPAGO_STATEMENT_DESCRIPTOR=UMANTAI
 > Mercado Pago needs both the notification URL and the signature secret configured
 > in Your integrations → Webhooks.
 
+### Mercado Pago Orders API (experimento QA — NO productivo)
+
+Estas variables son SOLO para el experimento aislado `mp-orders` (Checkout Pro vía
+Orders API). No las usan la tienda ni el flujo legacy de Preferences: son un juego
+separado de credenciales, con su propio access token y su propio webhook secret.
+
+```env
+# Access token de la aplicación de Mercado Pago del experimento Orders (backend only).
+# Si falta, POST /api/mp-orders/create responde 503 (fail-closed, nunca cae al legacy).
+MP_ORDERS_ACCESS_TOKEN=APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# Secreto de firma del webhook de la aplicación Orders (el que genera Mercado Pago al
+# guardar la config de Webhooks con el evento "Order (Mercado Pago)"). Sin él, el
+# receptor responde 503: no hay forma de distinguir un aviso real de una invención.
+MP_ORDERS_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Base absoluta (con https) de las URLs de retorno de la order: se derivan
+# <base>/?mp_orders=success|failure|pending y se añade auto_return=approved.
+# Si falta, la order se crea SIN config: es opcional y no se inventan URLs.
+MP_ORDERS_BACK_URL_BASE=https://<tu-preview>.vercel.app
+
+# Email de la CUENTA DE PRUEBA COMPRADOR de la aplicación (la que Mercado Pago crea
+# junto a la app; se ve en Tus integraciones → Cuentas de prueba → Comprador).
+# NO es un email inventado que "parezca" de sandbox: si no es el de esa cuenta, la
+# order se crea (201) pero el checkout hospedado no puede resolver al comprador y
+# muestra un error genérico. Si falta, la creación falla cerrado con 503
+# (mp_orders_qa_payer_email_missing). Nunca se loguea ni se devuelve en una respuesta.
+MP_ORDERS_QA_PAYER_EMAIL=test_user_xxxxxxx@testuser.com
+```
+
+> **Candados de la ruta de creación** (`POST /api/mp-orders/create`): entorno NO
+> productivo + `x-admin-token` válido + `MP_ORDERS_ACCESS_TOKEN` + el comprador QA.
+> El `payer.email` NO se acepta desde el body (responde 400): el comprador lo define
+> el servidor. En Producción la ruta responde 404.
+
+### Entorno de ejecución (opcional pero recomendado)
+
+```env
+# Señal EXPLÍCITA del entorno, independiente del hosting. Es la primera que se mira
+# (ver `lib/runtime-environment.server.ts`). Valores: production | staging | preview |
+# development. Si no está, se usa VERCEL_ENV y, fuera de Vercel, NODE_ENV.
+# FAIL-CLOSED: un valor no reconocido se trata como Producción.
+# Sirve para que los gates "solo fuera de Producción" sigan funcionando al migrar el
+# runtime (p. ej. Railway), donde VERCEL_ENV no existe.
+APP_ENV=preview
+```
+
 ### Kiosco (panel de la operaria)
 ```env
 # Shared secret that unlocks /admin/kiosco. Verified SERVER-SIDE (never in the bundle):

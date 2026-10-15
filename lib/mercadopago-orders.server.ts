@@ -15,10 +15,11 @@
  *
  *  ─── AISLAMIENTO TOTAL (regla dura de este módulo) ──────────────────────────
  *  · Este archivo NUNCA importa `lib/mercadopago.server.ts` ni `lib/env.ts`.
- *  · Lee SOLO tres variables, con lectura EXPLÍCITA de `process.env`:
+ *  · Lee SOLO cuatro variables, con lectura EXPLÍCITA de `process.env`:
  *        MP_ORDERS_ACCESS_TOKEN
  *        MP_ORDERS_WEBHOOK_SECRET
  *        MP_ORDERS_BACK_URL_BASE
+ *        MP_ORDERS_QA_PAYER_EMAIL   (email REAL de la cuenta de prueba comprador)
  *  · NO usa `getPrefixedEnv`, NO acepta prefijos inyectados por integraciones y NO
  *    cae a las variables del flujo legacy (nombrarlas acá sería documentar una
  *    dependencia que no existe: este archivo no las menciona ni las lee). Si falta
@@ -53,15 +54,21 @@ const MERCADOPAGO_API_BASE = 'https://api.mercadopago.com';
 const API_TIMEOUT_MS = 10_000;
 
 /**
- * Email de comprador por defecto para la orden QA.
+ * Variable con el email del comprador de la orden QA.
  *
- * La referencia oficial de `Create order` documenta el error `invalid_email_for_sandbox`:
- *   "Email format is invalid for sandbox environment, must contain @testuser.com".
- * Por eso el default termina en `@testuser.com` (ajuste exigido por la doc) y NO el
- * `qa.mp.sandbox@example.com` del borrador. Se puede sobrescribir desde el body del
- * endpoint de creación sin tocar código.
+ * ─── POR QUÉ NO HAY UN DEFAULT ──────────────────────────────────────────────
+ *  La doc oficial de Checkout Pro vía Orders (`integration-test-introduction`) es
+ *  explícita: *"Asegúrate de incluir como email del pagador el correo electrónico de
+ *  la cuenta de prueba comprador"*. Un email inventado que solo cumple el formato
+ *  `@testuser.com` (el que exige `invalid_email_for_sandbox`) hace que la order se cree
+ *  igual —201 + `checkout_url`— pero el checkout HOSPEDADO no puede resolver al
+ *  comprador y muestra un error genérico.
+ *
+ *  Por eso el valor viene SIEMPRE de esta variable: no hay placeholder por defecto,
+ *  no se acepta desde el body del cliente y, si falta, el creador falla cerrado
+ *  (`mp_orders_qa_payer_email_missing`) en vez de inventar un comprador.
  */
-export const DEFAULT_QA_PAYER_EMAIL = 'qa.mp.orders@testuser.com';
+export const MP_ORDERS_QA_PAYER_EMAIL_ENV = 'MP_ORDERS_QA_PAYER_EMAIL';
 
 /** Prefijo de la referencia externa de las órdenes QA clean-room. */
 export const QA_EXTERNAL_REFERENCE_PREFIX = 'UMANTAI-MP-ORDERS-QA-';
@@ -92,6 +99,23 @@ export function getMpOrdersWebhookSecret(): string {
 
 export function getMpOrdersBackUrlBase(): string {
   return readExactEnv('MP_ORDERS_BACK_URL_BASE');
+}
+
+/**
+ * Email REAL de la cuenta de prueba comprador. Cadena vacía si no está configurada.
+ *
+ * Solo se usa server-side: nunca se loguea, nunca se devuelve en una respuesta y
+ * nunca se expone en un endpoint de diagnóstico (ahí solo se publica si EXISTE).
+ */
+export function getMpOrdersQaPayerEmail(): string {
+  // Se lee por LITERAL (no por la constante) para que el test de aislamiento pueda
+  // comprobar, leyendo el código, exactamente qué variables consulta este módulo.
+  return readExactEnv('MP_ORDERS_QA_PAYER_EMAIL');
+}
+
+/** ¿Tenemos el comprador QA configurado? Si no, la creación falla cerrada (503). */
+export function isMpOrdersQaPayerEmailConfigured(): boolean {
+  return getMpOrdersQaPayerEmail().length > 0;
 }
 
 /** ¿Podemos llamar a la API de Orders? Si no, las rutas responden 503. */
@@ -188,6 +212,41 @@ function asNonEmptyString(value: unknown): string | null {
 //  4. CONSTRUCCIÓN DEL BODY DE LA ORDEN (puro, sin red)
 // =============================================================================
 
+/**
+ * Modo del ítem dentro del payload de creación. SOLO diagnóstico controlado.
+ *
+ *  · `minimal`    → `{ title, unit_price, quantity }`.
+ *  · `documented` → añade `unit_measure` y `total_amount`, exactamente como los
+ *                   muestra la guía oficial de `Create order` para Checkout Pro.
+ *
+ * Existe porque hay una inconsistencia histórica SIN ATRIBUIR: en su momento Mercado
+ * Pago respondió `unsupported_properties` con `field: null` y nunca se supo qué
+ * propiedad sobraba. Con los dos modos se puede replicar primero el payload mínimo
+ * (el que sí funcionó) y, solo si crea la orden, comparar el documentado, midiendo la
+ * MISMA respuesta de MP. No es una opción pública: la ruta que la expone es
+ * administrativa y solo corre fuera de Producción.
+ */
+export type MpOrdersItemPayloadMode = 'minimal' | 'documented';
+
+/** Modo por defecto: el mínimo que ya creó órdenes con éxito. */
+export const DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE: MpOrdersItemPayloadMode = 'minimal';
+
+/** Ítem en el modo `minimal`. */
+export interface MpOrdersMinimalItem {
+  title: string;
+  unit_price: string;
+  quantity: number;
+}
+
+/** Ítem en el modo `documented` (la guía oficial incluye `unit_measure`/`total_amount`). */
+export interface MpOrdersDocumentedItem extends MpOrdersMinimalItem {
+  unit_measure: string;
+  total_amount: string;
+}
+
+/** Ítem de la orden ya armado, según el modo elegido. */
+export type MpOrdersItemBody = MpOrdersMinimalItem | MpOrdersDocumentedItem;
+
 /** Body de `POST /v1/orders` en la forma exacta que documenta la referencia. */
 export interface MpOrdersCreateBody {
   type: 'online';
@@ -195,18 +254,17 @@ export interface MpOrdersCreateBody {
   total_amount: string;
   external_reference: string;
   payer: { email: string };
-  items: Array<{
-    title: string;
-    unit_price: string;
-    quantity: number;
-    unit_measure: string;
-    total_amount: string;
-  }>;
+  items: MpOrdersItemBody[];
   config?: {
     online: {
       success_url: string;
       failure_url: string;
       pending_url: string;
+      /**
+       * Redirección automática. La doc (`configure-back-urls`) exige que, si se usa,
+       * se envíe `success_url` en la misma solicitud: acá van siempre juntas.
+       */
+      auto_return: 'approved';
     };
   };
 }
@@ -223,6 +281,16 @@ export class MpOrdersValidationError extends Error {
  *
  * Si la base no está configurada (o no es una URL absoluta válida) se devuelve
  * `null` y la orden se crea SIN `config`: es un campo opcional y no inventamos URLs.
+ *
+ * `auto_return: "approved"` se añade SOLO acá, donde ya existe una `success_url`
+ * válida: la doc (`configure-back-urls`) documenta `auto_return` con los valores
+ * `approved`/`all` y exige `success_url` en la misma solicitud. Es el único campo
+ * nuevo: no se agregan campos arbitrarios.
+ *
+ * PENDIENTE (decisión de negocio, NO implementado): `expiration_time` de la order
+ * (la doc acepta ISO 8601, p. ej. `P1D`). No se envía hasta alinear la expiración de
+ * la order con la reserva de stock de UMANTAI, para que la order no siga viva cuando
+ * el inventario ya se liberó (o al revés).
  */
 export function resolveMpOrdersBackUrls(
   backUrlBase: string,
@@ -240,6 +308,7 @@ export function resolveMpOrdersBackUrls(
       success_url: `${base}/?mp_orders=success`,
       failure_url: `${base}/?mp_orders=failure`,
       pending_url: `${base}/?mp_orders=pending`,
+      auto_return: 'approved',
     },
   };
 }
@@ -252,7 +321,12 @@ export function resolveMpOrdersBackUrls(
  *     válidos en Checkout Pro.
  *   · `total_amount` debe ser EXACTAMENTE la suma de `unit_price × quantity`.
  *     La aritmética va en centavos enteros para no arrastrar errores de float.
- *   · `payer.email` es obligatorio dentro de `payer`.
+ *   · `payer.email` es obligatorio dentro de `payer` y debe ser el de la cuenta de
+ *     prueba comprador: acá NO hay default, si falta se falla cerrado.
+ *
+ * `payloadMode` (`minimal` por defecto, `documented` a pedido) decide si cada ítem
+ * lleva solo `{ title, unit_price, quantity }` o además `unit_measure`/`total_amount`
+ * como en la guía oficial. Es una palanca de DIAGNÓSTICO, no una opción pública.
  *
  * NO se envía `notification_url`: la Orders API no lo acepta; los webhooks se
  * configuran a nivel de APLICACIÓN (Tus integraciones → Webhooks → tópico Order).
@@ -263,21 +337,27 @@ export function buildMpOrdersCreateBody(input: {
   payerEmail: string;
   items: readonly MpOrdersItemInput[];
   backUrlBase?: string;
+  payloadMode?: MpOrdersItemPayloadMode;
 }): MpOrdersCreateBody {
   const externalReference = input.externalReference.trim();
   if (!externalReference) throw new MpOrdersValidationError('external_reference_required');
   // La doc acota `external_reference` a 64 caracteres.
   if (externalReference.length > 64) throw new MpOrdersValidationError('external_reference_too_long');
 
+  // Sin comprador QA configurado NO se inventa uno: es el error que la ruta traduce
+  // a un 503 explícito (`mp_orders_qa_payer_email_missing`).
   const payerEmail = input.payerEmail.trim();
+  if (!payerEmail) throw new MpOrdersValidationError('mp_orders_qa_payer_email_missing');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payerEmail)) {
     throw new MpOrdersValidationError('payer_email_invalid');
   }
 
   if (input.items.length === 0) throw new MpOrdersValidationError('items_required');
 
+  const payloadMode = input.payloadMode ?? DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE;
+
   let totalCents = 0;
-  const items = input.items.map((item) => {
+  const items: MpOrdersItemBody[] = input.items.map((item) => {
     const title = item.title.trim();
     if (!title) throw new MpOrdersValidationError('item_title_required');
 
@@ -290,10 +370,16 @@ export function buildMpOrdersCreateBody(input: {
     const itemTotalCents = unitCents * item.quantity;
     totalCents += itemTotalCents;
 
-    return {
+    const minimal: MpOrdersMinimalItem = {
       title,
       unit_price: formatCents(unitCents),
       quantity: item.quantity,
+    };
+
+    if (payloadMode === 'minimal') return minimal;
+
+    return {
+      ...minimal,
       unit_measure: 'unit',
       total_amount: formatCents(itemTotalCents),
     };

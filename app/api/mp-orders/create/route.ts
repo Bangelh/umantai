@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
+import { requireAdminToken } from '@/lib/admin.server';
+import { isProductionRuntime } from '@/lib/runtime-environment.server';
 import {
-  DEFAULT_QA_PAYER_EMAIL,
-  QA_EXTERNAL_REFERENCE_PREFIX,
+  DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE,
+  MP_ORDERS_QA_PAYER_EMAIL_ENV,
   MpOrdersApiError,
   MpOrdersValidationError,
+  QA_EXTERNAL_REFERENCE_PREFIX,
   buildMpOrdersCreateBody,
   createMpOrdersOrder,
   getMpOrdersAccessToken,
   getMpOrdersBackUrlBase,
+  getMpOrdersQaPayerEmail,
   isMpOrdersConfigured,
+  isMpOrdersQaPayerEmailConfigured,
   type MpOrdersItemInput,
+  type MpOrdersItemPayloadMode,
 } from '@/lib/mercadopago-orders.server';
 
 /**
@@ -20,35 +26,32 @@ import {
  * `checkout_url`. NO toca las tablas de UMANTAI: ni `orders`, ni `inventory`, ni
  * `inventory_movements`, ni `pickup`. Es un experimento aislado.
  *
- * ─── QUÉ NO HACE ────────────────────────────────────────────────────────────
- *  · NO reutiliza el access token ni ningún helper de la integración vieja
- *    (`lib/mercadopago.server.ts`): lee únicamente las variables `MP_ORDERS_*`.
- *  · NO envía `notification_url`: la Orders API no lo acepta; el webhook del
- *    tópico `order` se configura a nivel de aplicación en Mercado Pago.
- *  · NO confirma pedidos ni escribe en la base.
+ * ─── CANDADOS (los cuatro, en orden, sin fallback) ───────────────────────────
+ *   1. Entorno NO productivo (fail-closed por `lib/runtime-environment.server.ts`).
+ *   2. Autenticación administrativa (`x-admin-token`).
+ *   3. `MP_ORDERS_ACCESS_TOKEN` configurado.
+ *   4. `MP_ORDERS_QA_PAYER_EMAIL` configurado (el comprador QA REAL).
  *
- * ─── CREDENCIALES ───────────────────────────────────────────────────────────
- *  El access token viaja SOLO en la cabecera `Authorization` hacia MP. La respuesta
- *  contiene exclusivamente `orderId`, `status`, `checkoutUrl`, `externalReference` y
- *  `totalAmount`; nunca el token ni cabeceras de autorización.
+ * Si el entorno es Producción → 404 (la ruta "no existe" ahí; no se revela nada más).
+ * Si falta o es inválido el token admin → 503/401. Si falta el access token → 503.
+ * Si falta el email del comprador QA → 503 `mp_orders_qa_payer_email_missing`.
  *
- * Body opcional (JSON, todos los campos opcionales):
- *   · `payerEmail` — email del comprador. Por defecto `qa.mp.orders@testuser.com`
- *     porque la doc exige `@testuser.com` en sandbox (`invalid_email_for_sandbox`).
- *   · `totalAmount` — monto de la orden en formato decimal. Por defecto `"1.00"`.
- *   · `externalReference` — referencia externa (máx. 64 caracteres). Por defecto
- *     `UMANTAI-MP-ORDERS-QA-<uuid>`, única por creación.
+ * ─── QUIÉN ELIGE AL COMPRADOR ───────────────────────────────────────────────
+ *  NADIE del cliente. El `payer.email` sale SIEMPRE de `MP_ORDERS_QA_PAYER_EMAIL`
+ *  (la cuenta de prueba comprador que exige la doc de Checkout Pro). Enviarlo en el
+ *  body devuelve 400 `payer_email_from_body_not_allowed`: no hay forma accidental de
+ *  crear una orden con un comprador elegido por el llamador.
  *
- * ─── DIAGNÓSTICO DEL RECHAZO ────────────────────────────────────────────────
- *  Si MP rechaza la orden, el log del servidor registra exactamente
- *  `{ httpStatus, mpCode, detail, field, mpRequestId, mpDetails }` —con el código real
- *  de MP, la propiedad ofensora (si MP la informa), el `x-request-id` de MP y un
- *  resumen sanitizado de `details` (el campo que la doc de MP manda revisar cuando el
- *  código es `unsupported_properties`)— y la respuesta al cliente sigue siendo la
- *  genérica y sanitizada (`ok:false`, `code`, `error`).
+ * ─── MODO DE PAYLOAD (diagnóstico controlado) ───────────────────────────────
+ *  `payloadMode` (opcional, interno): `minimal` (por defecto, el payload que ya creó
+ *  órdenes) o `documented` (añade `unit_measure`/`total_amount` por ítem, como la guía
+ *  oficial). Sirve para atribuir el `unsupported_properties` histórico comparando la
+ *  MISMA respuesta de Mercado Pago. No se acepta ningún otro valor.
  *
- * Respuestas: 201 creada · 400 body inválido · 503 sin `MP_ORDERS_ACCESS_TOKEN`
- * (fail-closed) · 502 si MP rechaza o no responde.
+ * Body opcional (JSON): `totalAmount`, `externalReference`, `payloadMode`.
+ * Respuestas: 201 creada · 400 body/parámetros inválidos · 401/503 sin admin auth
+ * · 404 fuera de entorno no productivo · 503 sin access token o sin comprador QA
+ * · 502 si Mercado Pago rechaza o no responde · 500 fallo inesperado.
  */
 
 /** Monto por defecto de la orden QA (PEN). La doc no fija un mínimo para Checkout Pro. */
@@ -57,18 +60,50 @@ const QA_TOTAL_AMOUNT = '1.00';
 /** Título del ítem QA. */
 const QA_ITEM_TITLE = 'UMANTAI MP Orders QA';
 
+/** Modos aceptados (lista cerrada: nada fuera de esto llega al payload). */
+const PAYLOAD_MODES: readonly MpOrdersItemPayloadMode[] = ['minimal', 'documented'];
+
 function log(event: string, details: Record<string, unknown>) {
   console.info(`[mp-orders-create] ${event}`, details);
 }
 
 export async function POST(request: Request) {
+  // ─── 1. Entorno (fail-closed, decisión centralizada) ────────────────────────
+  if (isProductionRuntime()) {
+    return NextResponse.json(
+      { ok: false, code: 'mp_orders_create_unavailable', error: 'No disponible.' },
+      { status: 404 },
+    );
+  }
+
+  // ─── 2. Autenticación administrativa ────────────────────────────────────────
+  const access = requireAdminToken(request);
+  if (!access.ok) {
+    return NextResponse.json(
+      { ok: false, code: access.code, error: access.message },
+      { status: access.status },
+    );
+  }
+
+  // ─── 3. Access token propio (NUNCA se cae al flujo legacy) ──────────────────
   if (!isMpOrdersConfigured()) {
-    // Fail-closed: sin token propio no se intenta nada (y NO se cae al legacy).
     return NextResponse.json(
       {
         ok: false,
         code: 'mp_orders_not_configured',
         error: 'Falta MP_ORDERS_ACCESS_TOKEN en el entorno del servidor.',
+      },
+      { status: 503 },
+    );
+  }
+
+  // ─── 4. Comprador QA real ───────────────────────────────────────────────────
+  if (!isMpOrdersQaPayerEmailConfigured()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'mp_orders_qa_payer_email_missing',
+        error: `Falta ${MP_ORDERS_QA_PAYER_EMAIL_ENV} en el entorno del servidor.`,
       },
       { status: 503 },
     );
@@ -95,8 +130,34 @@ export async function POST(request: Request) {
     }
   }
 
-  const payerEmail =
-    typeof payload.payerEmail === 'string' ? payload.payerEmail : DEFAULT_QA_PAYER_EMAIL;
+  // El comprador NO se negocia: si el llamador lo intenta, se rechaza explícitamente
+  // en vez de ignorarlo (un default silencioso es justo el error que estamos cerrando).
+  if (payload.payerEmail !== undefined) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'payer_email_from_body_not_allowed',
+        error: `El comprador lo define el servidor (${MP_ORDERS_QA_PAYER_EMAIL_ENV}).`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const requestedPayloadMode = payload.payloadMode;
+  if (
+    requestedPayloadMode !== undefined &&
+    (typeof requestedPayloadMode !== 'string' ||
+      !PAYLOAD_MODES.includes(requestedPayloadMode as MpOrdersItemPayloadMode))
+  ) {
+    return NextResponse.json(
+      { ok: false, code: 'invalid_payload_mode', error: 'payloadMode debe ser minimal o documented.' },
+      { status: 400 },
+    );
+  }
+  const payloadMode =
+    (requestedPayloadMode as MpOrdersItemPayloadMode | undefined) ??
+    DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE;
+
   const totalAmount =
     typeof payload.totalAmount === 'string' ? payload.totalAmount : QA_TOTAL_AMOUNT;
   const externalReference =
@@ -112,15 +173,17 @@ export async function POST(request: Request) {
   try {
     body = buildMpOrdersCreateBody({
       externalReference,
-      payerEmail,
+      // Único origen posible del comprador: el entorno del servidor.
+      payerEmail: getMpOrdersQaPayerEmail(),
       items,
       backUrlBase: getMpOrdersBackUrlBase(),
+      payloadMode,
     });
   } catch (error) {
     if (error instanceof MpOrdersValidationError) {
       return NextResponse.json(
         { ok: false, code: error.message, error: 'Parámetros de la orden inválidos.' },
-        { status: 400 },
+        { status: error.message === 'mp_orders_qa_payer_email_missing' ? 503 : 400 },
       );
     }
     throw error;
@@ -137,12 +200,15 @@ export async function POST(request: Request) {
       accessToken: getMpOrdersAccessToken(),
     });
 
+    // NUNCA se loguea el email del comprador: solo de dónde salió (`env`).
     log('created', {
       orderId: order.orderId,
       status: order.status,
       externalReference: order.externalReference,
       totalAmount: order.totalAmount,
       processingMode: body.processing_mode,
+      itemsPayloadMode: payloadMode,
+      payerSource: 'env',
       backUrlsConfigured: Boolean(body.config),
     });
 
@@ -162,7 +228,7 @@ export async function POST(request: Request) {
       // propiedad ofensora, `x-request-id` de MP y el resumen de `details` (que es
       // donde `unsupported_properties` nombra la propiedad no soportada). Nunca el
       // token, ni cabeceras, ni el cuerpo completo (todo viene redactado y acotado
-      // por la librería).
+      // por la librería). Se añade el modo de payload para poder comparar intentos.
       console.error('[mp-orders-create] mercadopago rejected the order', {
         httpStatus: error.httpStatus,
         mpCode: error.mpCode,
@@ -170,6 +236,8 @@ export async function POST(request: Request) {
         field: error.field,
         mpRequestId: error.mpRequestId,
         mpDetails: error.mpDetails,
+        itemsPayloadMode: payloadMode,
+        backUrlsConfigured: Boolean(body.config),
       });
       return NextResponse.json(
         { ok: false, code: error.mpCode ?? 'mp_orders_api_error', error: 'Mercado Pago rechazó la orden.' },

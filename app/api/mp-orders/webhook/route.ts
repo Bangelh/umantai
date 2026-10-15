@@ -21,10 +21,12 @@ import {
  *   X-Signature: ts=1742505638683,v1=<hmac>
  *   body: { action: "order.processed", type: "order", data: { id: "ORD..." }, ... }
  *
- * El `data.id` llega en el QUERY STRING (no en el body) y ES un id de Order. La
- * documentación del tópico usa `data.id` — a diferencia del flujo viejo de pagos,
- * donde además aparecía un `id` suelto. Por eso acá NO se acepta el fallback `id`:
- * la forma verificada en la doc es `data.id` y cualquier otra cosa falla cerrado.
+ * El `data.id` ES un id de Order y se lee del QUERY STRING, porque es lo que Mercado
+ * Pago **firma** (la firma se calcula sobre los parámetros de la URL). Como respaldo,
+ * y SOLO si el query no lo trae, se acepta `body.data.id`: la doc del tópico muestra
+ * el id en el query y también dentro de `data` en el body, así que un aviso legítimo
+ * sin el parámetro no debe perderse. NO se acepta el `id` suelto del flujo viejo de
+ * pagos: la forma verificada es `data.id` y cualquier otra cosa falla cerrado.
  *
  * ─── REGLAS ─────────────────────────────────────────────────────────────────
  *   · Sin `MP_ORDERS_WEBHOOK_SECRET` → 503 (no hay forma de autenticar; MP reintenta).
@@ -87,8 +89,7 @@ export async function POST(request: Request) {
 
   const xSignature = request.headers.get('x-signature');
   const xRequestId = request.headers.get('x-request-id');
-  // Doc verificada: el tópico `order` manda el id del recurso en `data.id`.
-  const dataId = url.searchParams.get('data.id');
+  const queryDataId = url.searchParams.get('data.id');
   const queryType = url.searchParams.get('type') ?? url.searchParams.get('topic');
 
   const rawBody = await request.text();
@@ -100,6 +101,12 @@ export async function POST(request: Request) {
       // Un cuerpo no-JSON no impide validar: la firma se calcula sobre el query string.
     }
   }
+
+  // El QUERY manda (es lo que MP firma); `body.data.id` es respaldo y solo se usa
+  // cuando el parámetro no vino. El id elegido es el que se valida contra la firma.
+  const bodyDataId = firstString(asRecord(body.data)?.id);
+  const dataId = queryDataId ?? bodyDataId;
+  const dataIdSource: 'query' | 'body' | null = queryDataId ? 'query' : bodyDataId ? 'body' : null;
 
   const bodyType = firstString(body.type) ?? firstString(body.topic);
   const action = firstString(body.action);
@@ -113,6 +120,7 @@ export async function POST(request: Request) {
     type: notificationType,
     action,
     dataId,
+    dataIdSource,
     xRequestIdPresent: Boolean(xRequestId),
     xRequestIdLength: xRequestId ? xRequestId.length : null,
     xSignaturePresent: signature.present,
