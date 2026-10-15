@@ -152,6 +152,14 @@ MP_ORDERS_QA_PAYER_EMAIL=test_user_xxxxxxx@testuser.com
 > El `payer.email` NO se acepta desde el body (responde 400): el comprador lo define
 > el servidor. En Producción la ruta responde 404.
 
+> 🔒 **EXPERIMENTO CONGELADO (2026-10-15):** la creación y la lectura de la Order
+> (201 / 200, `status: created`, `errors: null`, back_urls correctas) funcionan, pero
+> el **checkout hospedado de Mercado Pago falla antes del login del comprador** y
+> redirige a `/checkout/v1/payment/redirect/exception` (código `COW00-W6GQPYJPOVPZ`).
+> Hay ticket abierto con soporte. No se crean más Orders ni se cambian payloads,
+> credenciales, webhooks, Preferences ni Producción. Detalle completo en
+> `MP_ORDERS_STATUS.md` (incluye la ruta read-only `GET /api/admin/qa/mp-orders/[orderId]`).
+
 ### Entorno de ejecución (opcional pero recomendado)
 
 ```env
