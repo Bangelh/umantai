@@ -149,6 +149,14 @@ export interface MpOrdersCreatedOrder {
   totalAmount: string;
 }
 
+/** Un pago de `transactions.payments`, reducido a lo NO sensible. */
+export interface MpOrdersOrderPaymentView {
+  id: string | null;
+  status: string | null;
+  statusDetail: string | null;
+  amount: string | null;
+}
+
 /** Lo mínimo que nos interesa de una orden al consultarla tras el webhook. */
 export interface MpOrdersOrderSnapshot {
   orderId: string;
@@ -167,6 +175,43 @@ export interface MpOrdersOrderSnapshot {
   /** Estado del pago dentro de la orden (si la orden trae `transactions.payments`). */
   paymentStatus: string | null;
   paymentStatusDetail: string | null;
+
+  // ─── CAMPOS AÑADIDOS PARA LA INSPECCIÓN QA (SOLO LECTURA) ──────────────────
+  //
+  // Los usa `GET /api/admin/qa/mp-orders/[orderId]` para poder MIRAR una Order ya
+  // creada sin abrir una segunda vía de acceso a la API de Orders: salen de la
+  // MISMA respuesta del GET que esta función ya hacía, así que no hay petición
+  // extra y el flujo del webhook sigue leyendo exactamente lo de siempre.
+  //
+  // Nada de esto es un secreto: no hay tokens, ni la URL completa de checkout, ni
+  // el email del comprador (solo su forma enmascarada).
+
+  /** HTTP status REAL de la respuesta de MP (200 cuando la Order se pudo leer). */
+  httpStatus: number;
+  /**
+   * `x-request-id` de MP: identifica la petición del lado de Mercado Pago (soporte).
+   * NO es un secreto. El webhook no lo devuelve al cliente: solo lo usa la ruta QA.
+   */
+  mpRequestId: string | null;
+  createdDate: string | null;
+  lastUpdatedDate: string | null;
+  expirationTime: string | null;
+  countryCode: string | null;
+  currency: string | null;
+  /** `live_mode` de la Order: `false` significa orden de PRUEBA. `null` si MP no lo manda. */
+  liveMode: boolean | null;
+  /** Todo booleano de primer nivel que hable de modo (`live_mode`, `sandbox`, …). */
+  modeFlags: Record<string, boolean>;
+  /** ¿La respuesta trae `checkout_url`? La URL COMPLETA nunca se devuelve. */
+  checkoutUrlPresent: boolean;
+  /** Host de `checkout_url` (sin path ni query). `null` si no hay o no es absoluta. */
+  checkoutUrlHost: string | null;
+  /** `config.online` reducido a datos NO sensibles (hosts de back_urls y flags). */
+  configOnline: Record<string, string | boolean> | null;
+  payerId: string | null;
+  /** Email del comprador ENMASCARADO (`c***@te***.com`). Nunca el valor completo. */
+  payerEmailMasked: string | null;
+  payments: MpOrdersOrderPaymentView[];
 }
 
 /** Resultado de validar la firma. No lanza: la ruta traduce a HTTP. */
@@ -747,7 +792,18 @@ function describeMpError(
   });
 }
 
-async function mpFetch(path: string, init: RequestInit, accessToken: string): Promise<unknown> {
+/** Lo que `mpFetch` conserva de la respuesta: estado, `x-request-id` y cuerpo crudo. */
+interface MpFetchResult {
+  status: number;
+  requestId: string | null;
+  payload: unknown;
+}
+
+async function mpFetch(
+  path: string,
+  init: RequestInit,
+  accessToken: string,
+): Promise<MpFetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   let response: Response;
@@ -783,7 +839,7 @@ async function mpFetch(path: string, init: RequestInit, accessToken: string): Pr
   if (!response.ok) {
     throw describeMpError(response.status, payload, { mpRequestId, rawBody: raw });
   }
-  return payload;
+  return { status: response.status, requestId: mpRequestId, payload };
 }
 
 /**
@@ -797,7 +853,7 @@ export async function createMpOrdersOrder(options: {
   idempotencyKey: string;
   accessToken: string;
 }): Promise<MpOrdersCreatedOrder> {
-  const payload = await mpFetch(
+  const { payload } = await mpFetch(
     '/v1/orders',
     {
       method: 'POST',
@@ -824,28 +880,162 @@ export async function createMpOrdersOrder(options: {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  VISTA SANITIZADA DE UNA ORDER EXISTENTE (pura, sin red)
+//
+//  Lo que consume la ruta QA de inspección. Se calcula SIEMPRE sobre la respuesta
+//  del mismo GET: nunca se pide nada más a Mercado Pago y nunca sale de acá un dato
+//  sensible (token, URL completa de checkout, email completo, headers).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Caracteres de la parte local del email que se conservan antes del `***`. */
+const EMAIL_LOCAL_MASK_VISIBLE = 1;
+
+/** Caracteres del dominio que se conservan antes del `***`. */
+const EMAIL_DOMAIN_MASK_VISIBLE = 2;
+
+/** Tope de un valor suelto de `config.online` que no sea URL. */
+const CONFIG_ONLINE_VALUE_MAX = 120;
+
+/** Claves de modo que se publican como booleanos (`live_mode`, `sandbox`, …). */
+const MODE_FLAG_PATTERN = /(live|sandbox|test)/i;
+
+/**
+ * Enmascara un email conservando lo mínimo para reconocerlo: `test@testuser.com`
+ * → `t***@te***.com`. Nunca se devuelve el valor completo.
+ *
+ * Recibe `unknown` a propósito: la entrada viene del payload de Mercado Pago (puede
+ * no ser un string) y acá se sanitiza en vez de confiar en la forma.
+ */
+export function maskEmail(value: unknown): string | null {
+  const email = asNonEmptyString(value);
+  if (!email) return null;
+
+  const at = email.lastIndexOf('@');
+  if (at <= 0 || at === email.length - 1) return '***';
+
+  const local = maskEmailSegment(email.slice(0, at), EMAIL_LOCAL_MASK_VISIBLE);
+  const domain = email.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  const label = dot > 0 ? domain.slice(0, dot) : domain;
+  const tld = dot > 0 ? domain.slice(dot) : '';
+
+  return `${local}@${maskEmailSegment(label, EMAIL_DOMAIN_MASK_VISIBLE)}${tld}`;
+}
+
+/** Primeros `visible` caracteres de un segmento + `***` (nunca el segmento entero). */
+function maskEmailSegment(segment: string, visible: number): string {
+  const chars = [...segment];
+  if (chars.length === 0) return '***';
+  const shown = Math.min(visible, Math.max(1, chars.length - 1));
+  return `${chars.slice(0, shown).join('')}***`;
+}
+
+/** Host de una URL absoluta; `null` si el valor no es una URL válida. */
+function urlHostOf(value: string): string | null {
+  try {
+    return new URL(value).host || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reduce `config.online` a datos NO sensibles.
+ *
+ * · Un valor que sea URL absoluta se publica SOLO como host: la URL completa puede
+ *   llevar query con identificadores y no hace falta para diagnosticar.
+ * · Los booleanos se conservan tal cual (son flags de configuración).
+ * · Cualquier otro valor se acota; si la redacción lo cambia (olor a credencial) se
+ *   descarta entero.
+ *
+ * Acepta el objeto con o sin el envoltorio `config.online`.
+ */
+export function sanitizeMpOrdersConfigOnline(
+  value: unknown,
+): Record<string, string | boolean> | null {
+  const online = asRecord(asRecord(value)?.online) ?? asRecord(value);
+  if (!online) return null;
+
+  const safe: Record<string, string | boolean> = {};
+  for (const [key, raw] of Object.entries(online)) {
+    if (typeof raw === 'boolean') {
+      safe[key] = raw;
+      continue;
+    }
+    const text = asScalarString(raw);
+    if (!text) continue;
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    if (!collapsed) continue;
+
+    const host = urlHostOf(collapsed);
+    if (host) {
+      safe[key] = host;
+      continue;
+    }
+    if (collapsed.length > CONFIG_ONLINE_VALUE_MAX) continue;
+    if (redactSensitiveText(collapsed) !== collapsed) continue;
+    safe[key] = collapsed;
+  }
+
+  return Object.keys(safe).length > 0 ? safe : null;
+}
+
+/** Booleanos de primer nivel que hablan del modo de la orden (test/live/sandbox). */
+function collectModeFlags(record: Record<string, unknown> | null): Record<string, boolean> {
+  const flags: Record<string, boolean> = {};
+  if (!record) return flags;
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value === 'boolean' && MODE_FLAG_PATTERN.test(key)) flags[key] = value;
+  }
+  return flags;
+}
+
+/**
+ * Pagos de `transactions.payments`, ya sanitizados.
+ *
+ * Si el campo no es un array se devuelve una lista vacía: es lo mismo que veía el
+ * webhook (que solo miraba el primer elemento de un array).
+ */
+function readPaymentViews(value: unknown): MpOrdersOrderPaymentView[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => {
+    const payment = asRecord(entry);
+    return {
+      id: asScalarString(payment?.id),
+      status: asNonEmptyString(payment?.status),
+      statusDetail: asNonEmptyString(payment?.status_detail),
+      amount: asScalarString(payment?.amount) ?? asScalarString(payment?.total_paid_amount),
+    };
+  });
+}
+
 /**
  * Consulta una orden por id (`GET /v1/orders/{id}`).
  *
  * Este es el recurso correcto tras el webhook del tópico `order`: el `data.id` que
  * llega ES un id de Order, y la doc recomienda este GET para completar los datos.
  * NO se usa `Payment.get` (eso es la semántica de la integración vieja).
+ *
+ * La MISMA respuesta alimenta dos lecturas: los campos que necesita el webhook
+ * (los de siempre) y la vista sanitizada de inspección que expone la ruta QA. Así
+ * no existe una segunda ruta de acceso a la API de Orders ni una petición extra.
  */
 export async function fetchMpOrdersOrder(options: {
   orderId: string;
   accessToken: string;
 }): Promise<MpOrdersOrderSnapshot> {
-  const payload = await mpFetch(
+  const result = await mpFetch(
     `/v1/orders/${encodeURIComponent(options.orderId)}`,
     { method: 'GET' },
     options.accessToken,
   );
 
-  const record = asRecord(payload);
+  const record = asRecord(result.payload);
   const integrationData = asRecord(record?.integration_data);
   const payer = asRecord(record?.payer);
-  const payments = asRecord(asRecord(record?.transactions)?.payments);
-  const firstPayment = Array.isArray(payments) ? asRecord(payments[0]) : null;
+  const payments = readPaymentViews(asRecord(record?.transactions)?.payments);
+  const checkoutUrl = asNonEmptyString(record?.checkout_url);
 
   return {
     orderId: asNonEmptyString(record?.id) ?? options.orderId,
@@ -859,8 +1049,25 @@ export async function fetchMpOrdersOrder(options: {
     applicationId: asNonEmptyString(integrationData?.application_id),
     collectorId: asNonEmptyString(record?.user_id),
     payerEmailPresent: asNonEmptyString(payer?.email) !== null,
-    paymentStatus: asNonEmptyString(firstPayment?.status),
-    paymentStatusDetail: asNonEmptyString(firstPayment?.status_detail),
+    paymentStatus: payments[0]?.status ?? null,
+    paymentStatusDetail: payments[0]?.statusDetail ?? null,
+
+    httpStatus: result.status,
+    mpRequestId: result.requestId,
+    createdDate: asNonEmptyString(record?.created_date) ?? asNonEmptyString(record?.date_created),
+    lastUpdatedDate:
+      asNonEmptyString(record?.last_updated_date) ?? asNonEmptyString(record?.last_updated),
+    expirationTime: asNonEmptyString(record?.expiration_time),
+    countryCode: asNonEmptyString(record?.country_code),
+    currency: asNonEmptyString(record?.currency) ?? asNonEmptyString(record?.currency_id),
+    liveMode: typeof record?.live_mode === 'boolean' ? record.live_mode : null,
+    modeFlags: collectModeFlags(record),
+    checkoutUrlPresent: checkoutUrl !== null,
+    checkoutUrlHost: checkoutUrl ? urlHostOf(checkoutUrl) : null,
+    configOnline: sanitizeMpOrdersConfigOnline(record?.config),
+    payerId: asScalarString(payer?.id),
+    payerEmailMasked: maskEmail(payer?.email),
+    payments,
   };
 }
 

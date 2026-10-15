@@ -551,6 +551,10 @@ const NEW_FILES = [
   'app/api/mp-orders/create/route.ts',
   'app/api/mp-orders/webhook/route.ts',
   'app/api/mp-orders/debug/route.ts',
+  // Herramienta QA de inspección: misma disciplina (no toca nada, solo lee una Order
+  // con el mismo helper). Sus propios candados y la sanitización de la respuesta se
+  // fijan en `tests/mp-orders.qa-inspect.test.ts`.
+  'app/api/admin/qa/mp-orders/[orderId]/route.ts',
 ];
 
 function readSource(relativePath: string): string {
