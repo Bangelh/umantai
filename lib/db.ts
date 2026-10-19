@@ -1,10 +1,10 @@
-import { neon } from '@neondatabase/serverless';
+import { createSqlClient } from './db-driver.server';
 import { getPrefixedEnv } from './env';
 
 // Type for product overrides stored in DB
 export interface ProductOverrideRow {
   slug: string;
-  data: Record<string, any>; // price, inStock, description, images, etc.
+  data: Record<string, unknown>; // price, inStock, description, images, etc.
   updated_at: string;
 }
 
@@ -13,7 +13,7 @@ export interface ProductOverrideRow {
  * Prefers the non-pooling URL for local development and serverless reliability.
  * This addresses the "pooled connection" warning on Vercel/Neon.
  */
-function getDatabaseUrl(): string | undefined {
+export function getDatabaseUrl(): string | undefined {
   // Use prefixed env support (BANGELH_, UMANTAI_URL_, UMANTAI_) for Vercel integrations
   // and always prefer the non-pooling direct connection.
   const url =
@@ -31,19 +31,22 @@ function getDatabaseUrl(): string | undefined {
 }
 
 /**
- * Neon SQL client (replacement for deprecated @vercel/postgres).
- * Returns results in { rows: [...] } shape for minimal code changes in callers.
+ * SQL client portable (Neon HTTP o `pg`, según `DB_DRIVER`/host).
+ * Mantiene el shape `{ rows }` que ya esperan los llamadores.
  */
 function getSql() {
   const url = getDatabaseUrl();
   if (!url) return null;
-  const neonSql = neon(url);
-  // Wrap the tagged template call to return the old { rows } shape
-  return (strings: TemplateStringsArray, ...values: any[]) => {
-    return neonSql(strings, ...values).then((rows: any[]) => ({ rows }));
+  const client = createSqlClient(url);
+  // Envuelve el tagged template para conservar el viejo shape `{ rows }`.
+  return (strings: TemplateStringsArray, ...values: unknown[]) => {
+    return client(strings, ...values).then((rows) => ({ rows }));
   };
 }
 
+// Algunas rutas legacy consumen `rowCount`/`query` de este tag; se mantiene
+// deliberadamente sin tipar para no cambiar su comportamiento en esta fase.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sql = getSql() as any; // local for internal use + re-export
 export { sql }; // for direct import compatibility in routes that still do `import { sql } from ...`
 
@@ -71,7 +74,7 @@ export function getDatabaseNotConfiguredError() {
  * Get all product overrides from Vercel Postgres.
  * Falls back to empty object if no database is configured.
  */
-export async function getAllOverrides(): Promise<Record<string, Record<string, any>>> {
+export async function getAllOverrides(): Promise<Record<string, Record<string, unknown>>> {
   const databaseUrl = getDatabaseUrl();
 
   if (!databaseUrl) {
@@ -85,9 +88,9 @@ export async function getAllOverrides(): Promise<Record<string, Record<string, a
       FROM product_overrides
     `;
 
-    const overrides: Record<string, Record<string, any>> = {};
+    const overrides: Record<string, Record<string, unknown>> = {};
     for (const row of result.rows) {
-      overrides[row.slug as string] = row.data as Record<string, any>;
+      overrides[row.slug as string] = row.data as Record<string, unknown>;
     }
     return overrides;
   } catch (error) {
@@ -99,7 +102,7 @@ export async function getAllOverrides(): Promise<Record<string, Record<string, a
 /**
  * Get a single product's override data (or null if none).
  */
-export async function getOverride(slug: string): Promise<Record<string, any> | null> {
+export async function getOverride(slug: string): Promise<Record<string, unknown> | null> {
   const databaseUrl = getDatabaseUrl();
   if (!databaseUrl) return null;
 
@@ -108,7 +111,7 @@ export async function getOverride(slug: string): Promise<Record<string, any> | n
       SELECT data FROM product_overrides WHERE slug = ${slug} LIMIT 1
     `;
     if (result.rows.length === 0) return null;
-    return result.rows[0].data as Record<string, any>;
+    return result.rows[0].data as Record<string, unknown>;
   } catch (error) {
     console.error('[DB] Failed to fetch override for', slug, error);
     return null;
@@ -118,7 +121,7 @@ export async function getOverride(slug: string): Promise<Record<string, any> | n
 /**
  * Upsert (insert or update) a single product override.
  */
-export async function upsertOverride(slug: string, data: Record<string, any>): Promise<void> {
+export async function upsertOverride(slug: string, data: Record<string, unknown>): Promise<void> {
   const databaseUrl = getDatabaseUrl();
 
   if (!databaseUrl) {

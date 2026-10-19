@@ -15,9 +15,9 @@
  *  Crear un pedido NO es una sola sentencia: es
  *    INSERT orders + INSERT order_items (N) + inventory_reserve_order()
  *  y tiene que ser atómico — si la reserva falla por falta de stock, el pedido
- *  no debe quedar creado. Por eso aquí instanciamos `neon()` directamente y
- *  usamos `transaction()` (una transacción no interactiva sobre HTTP, ideal para
- *  el runtime de Cloudflare/OpenNext donde desplegamos).
+ *  no debe quedar creado. Por eso aquí usamos el cliente portable de
+ *  `lib/db-driver.server.ts`, que ofrece la misma interfaz `sql` y
+ *  `sql.transaction([...])` tanto sobre Neon HTTP como sobre `pg` (Railway).
  * ─────────────────────────────────────────────────────────────────────────────
  *
  *  Reglas que respeta esta capa:
@@ -27,7 +27,7 @@
  *   · La idempotencia del checkout la garantiza el índice único de `orders.idempotency_key`.
  */
 
-import { neon } from '@neondatabase/serverless';
+import { createSqlClient, type SqlClient } from './db-driver.server';
 import { envConfig } from './env';
 import {
   buildVariantKey,
@@ -79,7 +79,7 @@ import {
 //  0. CLIENTE Y GUARDS
 // =============================================================================
 
-type NeonQuery = ReturnType<typeof neon>;
+type NeonQuery = SqlClient;
 
 let cachedSql: NeonQuery | null = null;
 
@@ -97,7 +97,7 @@ function getCommerceSql(): NeonQuery | null {
   const url = resolveDatabaseUrl();
   if (!url) return null;
   // Caché por instancia: en serverless la instancia vive poco, así que es seguro.
-  if (!cachedSql) cachedSql = neon(url);
+  if (!cachedSql) cachedSql = createSqlClient(url);
   return cachedSql;
 }
 
