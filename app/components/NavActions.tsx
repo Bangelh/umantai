@@ -5,6 +5,16 @@ import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
 import { useHydrated } from "@/lib/useHydrated";
 
+/**
+ * Acciones del header.
+ *
+ * Antes cada acción era `<Link><button>`, un control interactivo dentro de otro
+ * (HTML inválido y confuso para teclado/lectores). Ahora el `<Link>` ES el botón.
+ *
+ * En móvil el header deja solo el carrito: la navegación inferior
+ * (`MobileBottomNav`) ya cubre kiosco y lista, y tres pastillas no entran en
+ * 320 px.
+ */
 export function NavActions() {
   // Ambos stores se persisten en localStorage: sus contadores no se pueden pintar
   // hasta después del montaje (ver `lib/useHydrated.ts`).
@@ -13,33 +23,44 @@ export function NavActions() {
   const listCount = useShoppingListStore((state) => state.getTotalItems());
 
   return (
-    <div className="flex items-center gap-4">
-      <Link href="/kiosk">
-        <button className="px-4 py-1.5 text-sm rounded-full border border-white/20 hover:bg-white/5 transition-colors">
-          Ready for Pickup Kiosk
-        </button>
+    <div className="flex items-center gap-2 sm:gap-4">
+      <Link
+        href="/kiosk"
+        className="hidden md:inline-flex items-center rounded-full border border-border-strong px-4 py-1.5 text-sm text-primary transition-colors hover:bg-surface-raised"
+      >
+        Ready for Pickup Kiosk
       </Link>
 
-      <Link href="/list">
-        <button className="relative px-4 py-1.5 text-sm rounded-full border border-white/20 hover:bg-white/5 transition-colors flex items-center gap-2">
-          Shopping List
-          {hydrated && listCount > 0 && (
-            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium bg-white text-black rounded-full">
-              {listCount}
-            </span>
-          )}
-        </button>
+      <Link
+        href="/list"
+        className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border-strong px-4 py-1.5 text-sm text-primary transition-colors hover:bg-surface-raised"
+        aria-label={hydrated && listCount > 0 ? `Lista de compras, ${listCount} artículos` : "Lista de compras"}
+      >
+        Shopping List
+        {hydrated && listCount > 0 && (
+          <span
+            aria-hidden="true"
+            className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium bg-brand text-background rounded-full"
+          >
+            {listCount}
+          </span>
+        )}
       </Link>
 
-      <Link href="/cart">
-        <button className="relative px-4 py-1.5 text-sm rounded-full bg-white text-black font-medium hover:bg-white/90 transition-colors flex items-center gap-2">
-          View Cart
-          {hydrated && cartCount > 0 && (
-            <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium bg-neutral-800 text-white rounded-full">
-              {cartCount}
-            </span>
-          )}
-        </button>
+      <Link
+        href="/cart"
+        className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+        aria-label={hydrated && cartCount > 0 ? `Ver carrito, ${cartCount} artículos` : "Ver carrito"}
+      >
+        <span aria-hidden="true">Cart</span>
+        {hydrated && cartCount > 0 && (
+          <span
+            aria-hidden="true"
+            className="flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-medium bg-background text-primary rounded-full"
+          >
+            {cartCount}
+          </span>
+        )}
       </Link>
     </div>
   );

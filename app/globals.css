@@ -1,18 +1,195 @@
 @import "tailwindcss";
 
+/* =============================================================================
+   DESIGN TOKENS — Fase 2
+
+   Una sola fuente para color, superficie y jerarquía de texto. Las páginas
+   nuevas (analytics, legal, contacto) usan estos tokens en vez de repetir
+   `text-white/60` y `border-white/10` a mano.
+
+   Dark Mode (fase posterior): los valores viven en variables CSS, así que
+   alcanza con sobrescribirlos bajo `[data-theme="light"]`. NO se activa todavía.
+   ============================================================================= */
+
 :root {
+  color-scheme: dark;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Superficies */
+  --um-background: #0a0a0a;
+  --um-surface: #111113;
+  --um-surface-raised: #17171a;
+
+  /* Contenido */
+  --um-foreground: #ededed;
+  --um-primary: #ededed;
+  --um-secondary: #b8b8c0;
+  --um-tertiary: #8e8e97;
+  --um-muted: #6a6a73;
+
+  /* Líneas y marca */
+  --um-border: #2a2a2f;
+  --um-border-strong: #3a3a41;
+  --um-brand: #ffffff;
+
+  /* Estados */
+  --um-success: #34d399;
+  --um-warning: #fbbf24;
+  --um-destructive: #f87171;
+  --um-info: #93c5fd;
+
+  /* Sombras/elevación */
+  --um-shadow-card: 0 1px 0 rgb(255 255 255 / 0.04), 0 12px 32px -24px rgb(0 0 0 / 0.9);
+}
+
+/* Preparado para la fase de Dark/Light Mode; no se aplica todavía. */
+[data-theme="light"] {
+  color-scheme: light;
+  --um-background: #f7f7f5;
+  --um-surface: #ffffff;
+  --um-surface-raised: #f1f1ef;
+  --um-foreground: #16161a;
+  --um-primary: #16161a;
+  --um-secondary: #45454d;
+  --um-tertiary: #5d5d66;
+  --um-muted: #7a7a83;
+  --um-border: #e2e2df;
+  --um-border-strong: #cfcfca;
+  --um-brand: #16161a;
 }
 
 body {
   font-family: var(--font-geist-sans);
+  background-color: var(--um-background);
+  color: var(--um-foreground);
 }
 
-/* Premium dark aesthetic matching Umantai */
 @theme inline {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
+  --color-background: var(--um-background);
+  --color-foreground: var(--um-foreground);
+  --color-surface: var(--um-surface);
+  --color-surface-raised: var(--um-surface-raised);
+
+  --color-primary: var(--um-primary);
+  --color-secondary: var(--um-secondary);
+  --color-tertiary: var(--um-tertiary);
+  --color-muted: var(--um-muted);
+
+  --color-border: var(--um-border);
+  --color-border-strong: var(--um-border-strong);
+  --color-brand: var(--um-brand);
+
+  --color-success: var(--um-success);
+  --color-warning: var(--um-warning);
+  --color-destructive: var(--um-destructive);
+  --color-info: var(--um-info);
+}
+
+/* Foco visible y consistente en teclado (accesibilidad). */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--um-brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--um-brand);
+  color: var(--um-background);
+}
+
+/* Salto al contenido para lectores de pantalla / teclado. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 200;
+  padding: 0.75rem 1.25rem;
+  background: var(--um-brand);
+  color: var(--um-background);
+  font-weight: 600;
+  border-radius: 0 0 0.75rem 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* Primitivas reutilizables (sin dependencias nuevas). */
+.surface-card {
+  background: var(--um-surface);
+  border: 1px solid var(--um-border);
+  border-radius: 1.5rem;
+  box-shadow: var(--um-shadow-card);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.5rem;
+  border-radius: 9999px;
+  background: var(--um-brand);
+  color: var(--um-background);
+  font-weight: 600;
+  transition: opacity 0.15s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  padding: 0 1.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--um-border-strong);
+  color: var(--um-primary);
+  transition: background-color 0.15s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--um-surface-raised);
+}
+
+.field-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--um-tertiary);
+  margin-bottom: 0.375rem;
+}
+
+.field-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--um-border-strong);
+  background: var(--um-background);
+  padding: 0.65rem 0.9rem;
+  color: var(--um-primary);
+}
+
+.field-input::placeholder {
+  color: var(--um-muted);
+}
+
+.field-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Custom styles for Umantai */
