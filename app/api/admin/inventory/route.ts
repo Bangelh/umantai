@@ -1,31 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminToken } from '@/lib/admin.server';
-import { baseProductsData, getProductOptions } from '@/lib/products';
-import { enumerateVariantKeys } from '@/lib/commerce';
+import { guardAdminMutation } from '@/lib/admin-route.server';
+import { baseProductsData } from '@/lib/products';
 import {
-  applyInventoryMovement,
-  getInventoryItem,
-  isCommerceDbConfigured,
-  listInventory,
-  listLowStock,
-  setReorderPoint,
-} from '@/lib/commerce.server';
+  filterInventoryItems,
+  parseInventoryListQuery,
+  parseReceiptInput,
+  parseThresholdInput,
+  summarizeInventory,
+  toAdminInventoryItem,
+} from '@/lib/inventory-admin';
+import { executeReceipt, executeThreshold, InventoryAdminError } from '@/lib/inventory-admin.server';
+import { isCommerceDbConfigured, listInventory, listLowStock } from '@/lib/commerce.server';
 
 /**
- * /api/admin/inventory — operación de inventario para la tienda (requiere admin token).
+ * /api/admin/inventory — operación de inventario (requiere admin token).
  *
- *  GET  → inventario completo + alertas de stock bajo.
- *  POST → REGISTRO DE INGRESO de mercadería (o ajuste de punto de reorden).
+ *  GET   → inventario enriquecido con nombre/marca/estado + resumen + alertas.
+ *          Filtros opcionales: ?q= &status=available|low|out|all &variant= &limit=
+ *  POST  → compatibilidad: registra un ingreso (delegado a /receipts).
+ *  PATCH → configura el umbral de stock bajo (`reorder_point`) de un SKU.
  *
- * Todo cambio de cantidad pasa por `inventory_apply_movement()`; nunca hay UPDATE
- * directo de `quantity_*`. El punto de reorden es configuración, no stock, así que se
- * puede fijar por separado (no altera cantidades).
- *
- * 200 · 400 body inválido · 401/503 auth · 500 fallo · 503 sin base.
+ * Todo cambio de cantidad pasa por `inventory_apply_movement()`; el umbral es
+ * configuración (no stock) y no altera cantidades.
  */
 
-function badRequest(message: string) {
-  return NextResponse.json({ ok: false, code: 'invalid_request', error: message }, { status: 400 });
+function catalogMap() {
+  return new Map(baseProductsData.map((product) => [product.slug, product]));
 }
 
 export async function GET(request: NextRequest) {
@@ -41,10 +42,37 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  try {
-    const [items, lowStock] = await Promise.all([listInventory(), listLowStock()]);
+  const parsed = parseInventoryListQuery(request.nextUrl.searchParams);
+  if (!parsed.ok) {
     return NextResponse.json(
-      { ok: true, items, lowStock, generatedAt: new Date().toISOString() },
+      { ok: false, code: 'invalid_query', error: parsed.error },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const [items, lowStockRaw] = await Promise.all([
+      listInventory('MAIN', parsed.value.limit),
+      listLowStock('MAIN'),
+    ]);
+
+    const catalog = catalogMap();
+    const enriched = items.map((item) => toAdminInventoryItem(item, catalog.get(item.productSlug)));
+    const lowStock = lowStockRaw.map((item) =>
+      toAdminInventoryItem(item, catalog.get(item.productSlug)),
+    );
+
+    const filtered = filterInventoryItems(enriched, parsed.value.filters);
+
+    return NextResponse.json(
+      {
+        ok: true,
+        items: filtered,
+        lowStock,
+        summary: summarizeInventory(enriched),
+        filters: parsed.value.filters,
+        generatedAt: new Date().toISOString(),
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (error) {
@@ -56,87 +84,85 @@ export async function GET(request: NextRequest) {
   }
 }
 
-interface ReceiptBody {
-  productSlug?: unknown;
-  variantKey?: unknown;
-  quantity?: unknown;
-  reason?: unknown;
-  reorderPoint?: unknown;
-}
-
 export async function POST(request: NextRequest) {
-  const access = requireAdminToken(request);
-  if (!access.ok) {
-    return NextResponse.json({ ok: false, code: access.code, error: access.message }, { status: access.status });
-  }
+  const guard = guardAdminMutation(request, 'inventory-legacy-receipt');
+  if (!guard.ok) return guard.response;
 
-  if (!isCommerceDbConfigured()) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
     return NextResponse.json(
-      { ok: false, code: 'database_not_configured', error: 'La base de datos no está configurada.' },
-      { status: 503 },
+      { ok: false, code: 'invalid_json', error: 'Solicitud inválida.' },
+      { status: 400 },
     );
   }
 
-  let body: ReceiptBody;
-  try {
-    body = (await request.json()) as ReceiptBody;
-  } catch {
-    return badRequest('Solicitud inválida.');
-  }
-
-  const productSlug = typeof body.productSlug === 'string' ? body.productSlug.trim() : '';
-  if (!productSlug) return badRequest('productSlug es obligatorio.');
-
-  const base = baseProductsData.find((product) => product.slug === productSlug);
-  if (!base) return badRequest(`Producto desconocido: "${productSlug}".`);
-
-  // La variante debe ser una de las combinaciones reales del producto. Producto sin
-  // opciones usa `variant_key = ''`.
-  const options = getProductOptions(base);
-  const validKeys = enumerateVariantKeys(options);
-  const variantKey = typeof body.variantKey === 'string' ? body.variantKey.trim() : '';
-  if (!validKeys.includes(variantKey)) {
-    return badRequest(`Variante inválida para "${productSlug}": "${variantKey}".`);
-  }
-
-  const quantity = Number(body.quantity);
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    return badRequest('quantity debe ser un entero mayor que 0.');
-  }
-
-  const reason =
-    typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim().slice(0, 200) : 'merchandise receipt';
-
-  let reorderPoint: number | undefined;
-  if (body.reorderPoint !== undefined && body.reorderPoint !== null) {
-    const value = Number(body.reorderPoint);
-    if (!Number.isInteger(value) || value < 0) {
-      return badRequest('reorderPoint debe ser un entero mayor o igual que 0.');
-    }
-    reorderPoint = value;
+  const parsed = parseReceiptInput(body);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { ok: false, code: 'invalid_request', error: parsed.error },
+      { status: 400 },
+    );
   }
 
   try {
-    // Ingreso de mercadería: SIEMPRE por el motor de inventario (ledger + anti-sobreventa).
-    await applyInventoryMovement({
-      productSlug,
-      variantKey,
-      movementType: 'receipt',
-      onHandDelta: quantity,
-      reason,
-      performedBy: 'admin',
-    });
-
-    if (reorderPoint !== undefined) {
-      await setReorderPoint(productSlug, variantKey, reorderPoint);
-    }
-
-    const item = await getInventoryItem(productSlug, variantKey);
-    return NextResponse.json({ ok: true, item }, { status: 201 });
+    const result = await executeReceipt(parsed.value);
+    return NextResponse.json(
+      { ok: true, item: result.item, movement: result.movement, thresholdWarning: result.thresholdWarning },
+      { status: 201 },
+    );
   } catch (error) {
-    console.error('[admin/inventory] no se pudo registrar el ingreso', { productSlug, variantKey, error });
+    if (error instanceof InventoryAdminError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+    console.error('[admin/inventory] no se pudo registrar el ingreso', error);
     return NextResponse.json(
       { ok: false, code: 'receipt_failed', error: 'No se pudo registrar el ingreso de mercadería.' },
+      { status: 500 },
+    );
+  }
+}
+
+/** PATCH /api/admin/inventory — umbral de stock bajo (reorder_point). */
+export async function PATCH(request: NextRequest) {
+  const guard = guardAdminMutation(request, 'inventory-threshold');
+  if (!guard.ok) return guard.response;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, code: 'invalid_json', error: 'Solicitud inválida.' },
+      { status: 400 },
+    );
+  }
+
+  const parsed = parseThresholdInput(body);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { ok: false, code: 'invalid_request', error: parsed.error },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const item = await executeThreshold(parsed.value);
+    return NextResponse.json({ ok: true, item }, { headers: { 'Cache-Control': 'no-store' } });
+  } catch (error) {
+    if (error instanceof InventoryAdminError) {
+      return NextResponse.json(
+        { ok: false, code: error.code, error: error.message },
+        { status: error.status },
+      );
+    }
+    console.error('[admin/inventory] no se pudo guardar el umbral', error);
+    return NextResponse.json(
+      { ok: false, code: 'threshold_failed', error: 'No se pudo guardar el umbral.' },
       { status: 500 },
     );
   }
