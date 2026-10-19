@@ -35,7 +35,7 @@ This document lists all recommended environment variables for deploying Umantai 
 
 ## Production
 
-### Supabase
+### Supabase (solo datos legacy: notas y listas — NO es autenticación)
 ```env
 # Main Supabase project URL (with custom prefix - any supported)
 BANGELH_NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
@@ -193,8 +193,8 @@ APP_ENV=preview
 KIOSK_ACCESS_CODE=change-me-long-random-string
 ```
 
-> The device key is typed once on the tablet and kept in memory only. Ordering an
-> actual per-user login (Supabase Auth + roles) is a separate work item.
+> The device key is typed once on the tablet and kept in memory only. It is a device
+> lock, not a person: staff identity uses Better Auth (ver `AUTH_DECISION.md`).
 
 ### Panel de administración (token de API)
 ```env
@@ -209,10 +209,34 @@ ADMIN_API_SECRET=change-me-long-random-string
 
 > El panel ya NO usa una contraseña hardcodeada (`umantai`): eso era security theater,
 > porque viajaba en el bundle que descarga cualquier visitante. Ahora el panel pide este
-> token, lo guarda en el navegador y lo manda en el header `x-admin-token`. Es una llave
-> compartida — no identifica a la persona; eso llega en la V2 con Supabase Auth + roles.
+> token, lo guarda en el navegador y lo manda en el header `x-admin-token`.
+>
+> **Fase Multi-Tienda:** el panel de comerciante (`/negocio`) YA NO usa este token: usa
+> sesión real + `store_members`. El token queda como puente de ADMINISTRACIÓN DE
+> PLATAFORMA (aprobar tiendas, tools de QA) hasta que exista un rol global en `users`.
+> No es un tercer sistema de usuarios: es la misma tabla `users`, sin rol de plataforma
+> todavía (ver `AUTH_DECISION.md` §7).
 > El kiosco usa SU PROPIA clave (`KIOSK_ACCESS_CODE`), separada a propósito: quien edita
 > precios no debería poder, con esa misma credencial, entregar mercadería.
+
+### Autenticación de usuarios (Better Auth)
+```env
+# Secreto de firma de sesiones. OBLIGATORIO en Producción: 32+ caracteres aleatorios
+# (`openssl rand -hex 32`). En staging/desarrollo, si falta, se usa un secreto efímero y
+# se avisa en logs; NUNCA se usa el fallback en Producción.
+BETTER_AUTH_SECRET=change-me-long-random-string
+
+# URL pública con la que se validan cookies y orígenes (Better Auth trustedOrigins).
+# En staging: https://web-staging-6756.up.railway.app
+# En Producción: https://umantai.com
+# Si falta, se usa NEXT_PUBLIC_SERVER_URL / NEXT_PUBLIC_SITE_URL.
+BETTER_AUTH_URL=https://umantai.com
+```
+
+> Sesiones en PostgreSQL (tablas `sessions`, `auth_accounts`) con cookie HttpOnly.
+> El registro/login es email + contraseña (mínimo 8 caracteres). OAuth se agrega con un
+> plugin de Better Auth sin cambiar el modelo: la identidad sigue siendo `users.id`.
+> `store_members.user_id` referencia esa misma identidad.
 
 ### Notificaciones al cliente (Resend)
 ```env
@@ -283,7 +307,7 @@ VERCEL_URL=your-project.vercel.app
 
 ## Preview
 
-### Supabase
+### Supabase (solo datos legacy: notas y listas — NO es autenticación)
 ```env
 BANGELH_NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 BANGELH_NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -323,7 +347,7 @@ VERCEL_URL=your-project-git-branch.vercel.app
 
 ## Development
 
-### Supabase
+### Supabase (solo datos legacy: notas y listas — NO es autenticación)
 ```env
 BANGELH_NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 BANGELH_NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key

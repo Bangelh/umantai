@@ -60,6 +60,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Datos de pago: el sitio no almacena números de tarjeta. El procesamiento lo realiza el proveedor de pagos y solo se conserva la referencia de la operación y su estado.',
           'Datos técnicos: registros de errores y de seguridad del servidor (por ejemplo, intentos fallidos de administración). No se usan para perfilado publicitario.',
           'Formulario de contacto: nombre, correo, teléfono opcional y el mensaje que nos escribes.',
+          'Ubicación (opcional): si pulsas “Usar mi ubicación”, el navegador te pide permiso y nos envía coordenadas aproximadas para mostrar productos y comercios cercanos. No se guarda una ubicación precisa en la base de datos ni se crea un historial de ubicaciones: se mantiene solo en la sesión del navegador y se descarta al cerrar la pestaña. Puedes rechazar el permiso o revocarlo en la configuración del navegador; el buscador sigue funcionando con una zona elegida manualmente.',
         ],
       },
       {
@@ -68,6 +69,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Para crear y gestionar tu pedido, reservar stock, coordinar el retiro o la entrega, enviarte el aviso de que tu pedido está listo y atender consultas o reclamos.',
           'Para cumplir obligaciones contables o legales que resulten aplicables una vez definidas por el negocio.',
           'Para seguridad del servicio: prevenir fraude, abuso del inventario y accesos no autorizados.',
+          'Para mostrar resultados cercanos: usar la ubicación que autorizaste solo durante la búsqueda. Sin tu consentimiento no se solicita ubicación.',
         ],
       },
       {
@@ -75,6 +77,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         paragraphs: [
           'Los datos del pedido se conservan mientras el pedido esté activo y luego durante el plazo que exija la normativa aplicable, que el negocio debe definir.',
           'Los mensajes de contacto se conservan mientras sean necesarios para atender la consulta.',
+          'La ubicación usada para buscar no se almacena de forma persistente: vive en la sesión del navegador y se elimina al cerrarla o al quitarla manualmente.',
         ],
       },
       {
@@ -95,7 +98,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '7. Seguridad',
         paragraphs: [
-          'El acceso administrativo está protegido por un token de servidor y las rutas de pago validan la autenticidad de las notificaciones del proveedor.',
+          'Las cuentas usan sesiones con cookie HttpOnly y contraseñas almacenadas con hash; el acceso administrativo mantiene además un token de servidor y las rutas de pago validan la autenticidad de las notificaciones del proveedor.',
           'Ningún sistema es infalible: si detectamos un incidente que afecte datos personales, actuaremos según el procedimiento que defina el negocio con su asesoría legal.',
         ],
       },
@@ -238,8 +241,9 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         heading: '1. Qué usamos hoy',
         paragraphs: [
           'El sitio NO usa cookies de publicidad, píxeles de redes sociales ni analítica de terceros.',
+          'Almacenamiento necesario: carrito y lista de compras (localStorage), identificador de sesión de navegación y, si autorizas la ubicación, las coordenadas de esa pestaña (sessionStorage). Nada de eso se usa para publicidad.',
           'Almacenamiento local del navegador (localStorage), estrictamente necesario: carrito de compras, lista de compras, identificador anónimo de sesión del catálogo, token de administración (solo si ingresas al panel) y nombre del actor de inventario.',
-          'Cookies de sesión del CMS: se usan únicamente para autenticar al personal que administra el contenido. No se crean para visitantes anónimos.',
+          'Cookies de sesión: autentican tu cuenta de UMANTAI (Better Auth) con una cookie HttpOnly de duración limitada. Se crean al ingresar y se eliminan al cerrar sesión. El panel administrativo usa además un token guardado en el navegador, no una cookie.',
         ],
       },
       {
@@ -258,7 +262,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '4. Cómo borrarlas',
         paragraphs: [
-          'Puedes borrar el almacenamiento local y las cookies desde la configuración de tu navegador. Al hacerlo se vaciará el carrito y la lista de compras guardados en ese dispositivo.',
+          'Puedes borrar el almacenamiento local y las cookies desde la configuración de tu navegador. Al hacerlo se vaciará el carrito, la lista de compras y la ubicación de la pestaña, y se cerrará tu sesión.',
           'Borrar las cookies de sesión del CMS cierra la sesión administrativa.',
         ],
       },
