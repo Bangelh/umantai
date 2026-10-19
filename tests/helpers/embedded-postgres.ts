@@ -1,0 +1,95 @@
+/**
+ * tests/helpers/embedded-postgres.ts — PostgreSQL REAL y efímero para tests.
+ *
+ * Levanta un cluster local con `embedded-postgres` (PG 17), crea una base
+ * `umantai_test` y aplica `db/migrations/001…007.sql` en orden.
+ *
+ * Reglas de seguridad:
+ *   · Nunca lee `DATABASE_URL` ni ninguna URL externa.
+ *   · Escucha sólo en localhost y en un puerto fijo de test.
+ *   · Usa un directorio temporal que se borra al terminar.
+ *   · No toca Producción, Preview ni QA.
+ */
+
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Client } from 'pg';
+import EmbeddedPostgres from 'embedded-postgres';
+
+const TEST_PORT = 55432;
+const TEST_DATABASE = 'umantai_test';
+const TEST_USER = 'postgres';
+const TEST_PASSWORD = 'postgres';
+
+const MIGRATIONS = [
+  '001_commerce_core.sql',
+  '002_payment_confirmation.sql',
+  '003_pickup_pin_kiosk.sql',
+  '004_payment_webhook_diagnostics.sql',
+  '005_duplicate_payment_guard.sql',
+  '006_fulfillment_stock_conflict_guard.sql',
+  '007_release_respects_rereservation.sql',
+] as const;
+
+export interface EmbeddedTestDatabase {
+  /** URL local efímera. Nunca apunta a un servicio externo. */
+  url: string;
+  stop(): Promise<void>;
+}
+
+export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
+  const databaseDir = await mkdtemp(path.join(tmpdir(), 'umantai-pg-'));
+
+  const server = new EmbeddedPostgres({
+    databaseDir,
+    port: TEST_PORT,
+    user: TEST_USER,
+    password: TEST_PASSWORD,
+    persistent: false,
+    // Windows inicializa en WIN1252 por defecto y las migraciones tienen
+    // caracteres UTF-8 (→, ·, acentos). Sin esto, el primer COMMENT falla.
+    initdbFlags: ['--encoding=UTF8', '--locale=C'],
+  });
+
+  let started = false;
+
+  try {
+    await server.initialise();
+    await server.start();
+    started = true;
+
+    const adminUrl = `postgresql://${TEST_USER}:${TEST_PASSWORD}@localhost:${TEST_PORT}/postgres`;
+    const admin = new Client({ connectionString: adminUrl });
+    await admin.connect();
+    try {
+      await admin.query(`CREATE DATABASE ${TEST_DATABASE}`);
+    } finally {
+      await admin.end();
+    }
+
+    const url = `postgresql://${TEST_USER}:${TEST_PASSWORD}@localhost:${TEST_PORT}/${TEST_DATABASE}`;
+    const client = new Client({ connectionString: url });
+    await client.connect();
+    try {
+      for (const file of MIGRATIONS) {
+        const sql = await readFile(path.join(process.cwd(), 'db', 'migrations', file), 'utf8');
+        await client.query(sql);
+      }
+    } finally {
+      await client.end();
+    }
+
+    return {
+      url,
+      stop: async () => {
+        await server.stop().catch(() => undefined);
+        await rm(databaseDir, { recursive: true, force: true }).catch(() => undefined);
+      },
+    };
+  } catch (error) {
+    if (started) await server.stop().catch(() => undefined);
+    await rm(databaseDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
