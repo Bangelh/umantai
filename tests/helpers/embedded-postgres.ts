@@ -30,6 +30,7 @@ const MIGRATIONS = [
   '005_duplicate_payment_guard.sql',
   '006_fulfillment_stock_conflict_guard.sql',
   '007_release_respects_rereservation.sql',
+  '008_inventory_ledger_filters.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {
@@ -44,15 +45,62 @@ export interface EmbeddedTestDatabase {
  * Base para los tests de integración.
  *
  * - Sin `INTEGRATION_DATABASE_URL`: cluster efímero local (default seguro).
- * - Con `INTEGRATION_DATABASE_URL`: usa ESA base (staging/test DB) y NO aplica
- *   migraciones. Pensado para Railway staging; nunca para Producción.
+ * - Con `INTEGRATION_DATABASE_URL`: resetea el schema `public` de ESA base y
+ *   aplica 001–008. Así cada corrida arranca limpia y no arrastra inventario de
+ *   pruebas anteriores. Guards: el nombre de la base debe contener `test` o
+ *   `integration` (p. ej. `umantai_integration`); si no, aborta.
+ *
+ * Nunca apuntar a Producción ni a la base `railway` de staging.
  */
 export async function startTestDatabase(): Promise<EmbeddedTestDatabase> {
   const external = (process.env.INTEGRATION_DATABASE_URL ?? '').trim();
   if (external) {
+    await resetExternalTestDatabase(external);
     return { url: external, external: true, stop: async () => undefined };
   }
   return startEmbeddedPostgres();
+}
+
+function databaseNameFromUrl(connectionString: string): string {
+  try {
+    return decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, '')) || 'postgres';
+  } catch {
+    throw new Error('INTEGRATION_DATABASE_URL no es una URL válida.');
+  }
+}
+
+/**
+ * Resetea una base de TEST externa. Destructivo por diseño, pero acotado:
+ *   · solo `public` (no toca roles, extensiones ni otras DBs);
+ *   · exige que el nombre de la base sea de test/integración;
+ *   · reaplica TODAS las migraciones, así el esquema también es reproducible.
+ */
+async function resetExternalTestDatabase(connectionString: string): Promise<void> {
+  const databaseName = databaseNameFromUrl(connectionString);
+  if (!/(test|integration)/i.test(databaseName)) {
+    throw new Error(
+      `INTEGRATION_DATABASE_URL apunta a "${databaseName}". Por seguridad, el reset automático ` +
+        'solo se permite en bases cuyo nombre contenga "test" o "integration".',
+    );
+  }
+
+  const needsSsl = /sslmode=(require|verify)/i.test(connectionString);
+  const client = new Client({
+    connectionString,
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  });
+  await client.connect();
+  try {
+    console.info(`[integration] reseteando schema public de ${databaseName}`);
+    await client.query('DROP SCHEMA IF EXISTS public CASCADE');
+    await client.query('CREATE SCHEMA public');
+    for (const file of MIGRATIONS) {
+      const sql = await readFile(path.join(process.cwd(), 'db', 'migrations', file), 'utf8');
+      await client.query(sql);
+    }
+  } finally {
+    await client.end();
+  }
 }
 
 export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {

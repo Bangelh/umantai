@@ -975,6 +975,124 @@ export async function listInventoryMovements(
   };
 }
 
+export interface InventoryLedgerOptions {
+  productSlug?: string | null;
+  variantKey?: string | null;
+  movementType?: InventoryMovementType | null;
+  /** Número de pedido (`UM-...`) o UUID interno. */
+  order?: string | null;
+  /** ISO 8601, límites inclusivos. */
+  from?: string | null;
+  to?: string | null;
+  limit?: number;
+  offset?: number;
+  locationCode?: string;
+}
+
+export interface InventoryLedgerEntry {
+  id: string;
+  productSlug: string;
+  variantKey: string;
+  locationCode: string;
+  movementType: InventoryMovementType;
+  onHandDelta: number;
+  reservedDelta: number;
+  onHandAfter: number;
+  reservedAfter: number;
+  orderId: string | null;
+  orderNumber: string | null;
+  reason: string | null;
+  performedBy: string | null;
+  createdAt: string;
+}
+
+export interface InventoryLedgerPage {
+  entries: InventoryLedgerEntry[];
+  hasMore: boolean;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Ledger global (no por SKU) para la pantalla de movimientos.
+ *
+ * Solo lectura y ordenado por fecha descendente. `limit + 1` permite saber si hay
+ * más páginas sin un COUNT extra. No expone tokens, PIN ni metadata de pago.
+ */
+export async function listInventoryLedger(
+  options: InventoryLedgerOptions = {},
+): Promise<InventoryLedgerPage> {
+  const sql = requireSql();
+
+  const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
+  const offset = Math.max(Number(options.offset) || 0, 0);
+  const locationCode = options.locationCode?.trim() || 'MAIN';
+  const productSlug = options.productSlug?.trim() || null;
+  const variantKey = options.variantKey?.trim() || null;
+  const movementType = options.movementType ?? null;
+  const order = options.order?.trim() || null;
+  const from = options.from ?? null;
+  const to = options.to ?? null;
+
+  const rows = (await sql`
+    SELECT m.id::text AS id,
+           i.product_slug, i.variant_key, i.location_code,
+           m.movement_type, m.on_hand_delta, m.reserved_delta,
+           m.on_hand_after, m.reserved_after,
+           m.order_id::text AS order_id, o.order_number,
+           m.reason, m.performed_by, m.created_at
+      FROM inventory_movements m
+      JOIN inventory i ON i.id = m.inventory_id
+      LEFT JOIN orders o ON o.id = m.order_id
+     WHERE i.location_code = ${locationCode}
+       AND (${productSlug}::text IS NULL OR i.product_slug = ${productSlug})
+       AND (${variantKey}::text IS NULL OR i.variant_key = ${variantKey})
+       AND (${movementType}::text IS NULL OR m.movement_type::text = ${movementType})
+       AND (${order}::text IS NULL
+            OR o.order_number = ${order}
+            OR m.order_id::text = ${order})
+       AND (${from}::timestamptz IS NULL OR m.created_at >= ${from}::timestamptz)
+       AND (${to}::timestamptz IS NULL OR m.created_at <= ${to}::timestamptz)
+     ORDER BY m.created_at DESC, m.id DESC
+     LIMIT ${limit + 1} OFFSET ${offset}
+  `) as unknown as Array<{
+    id: string;
+    product_slug: string;
+    variant_key: string;
+    location_code: string;
+    movement_type: InventoryMovementType;
+    on_hand_delta: number;
+    reserved_delta: number;
+    on_hand_after: number;
+    reserved_after: number;
+    order_id: string | null;
+    order_number: string | null;
+    reason: string | null;
+    performed_by: string | null;
+    created_at: string;
+  }>;
+
+  const hasMore = rows.length > limit;
+  const entries = rows.slice(0, limit).map((row) => ({
+    id: row.id,
+    productSlug: row.product_slug,
+    variantKey: row.variant_key,
+    locationCode: row.location_code,
+    movementType: row.movement_type,
+    onHandDelta: Number(row.on_hand_delta),
+    reservedDelta: Number(row.reserved_delta),
+    onHandAfter: Number(row.on_hand_after),
+    reservedAfter: Number(row.reserved_after),
+    orderId: row.order_id,
+    orderNumber: row.order_number,
+    reason: row.reason,
+    performedBy: row.performed_by,
+    createdAt: row.created_at,
+  }));
+
+  return { entries, hasMore, limit, offset };
+}
+
 export interface QaOrderCancelResult {
   orderNumber: string;
   previousStatus: OrderStatus;
