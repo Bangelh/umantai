@@ -19,7 +19,11 @@ Nada de Producción fue modificado; Mercado Pago sigue congelado.
 | Producción | **no tocada** |
 
 El pedido original citaba `8393914`; sobre ese HEAD se agregó el fix de Supabase
-(§6), por lo que el commit desplegado y verificado es su sucesor `d5042b4`.
+(§6), por lo que el commit de runtime desplegado y verificado es su sucesor
+`d5042b4`. Los commits posteriores (`docs(infra)`) sólo agregan Markdown y
+JSON de evidencia: `git diff d5042b4 HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs'
+package.json` está **vacío**, así que el código desplegado coincide exactamente
+con el árbol de código de HEAD.
 
 ## 2. Producción — baseline y auditoría REAL
 
