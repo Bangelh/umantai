@@ -1,0 +1,527 @@
+{
+  "generatedAt": "2026-10-19T15:17:52.361Z",
+  "postgres": "17",
+  "note": "Cluster efímero en localhost. Sin datos de Producción, Preview ni QA.",
+  "baselineFingerprint": "sha256:2b6d872f987d9a50abf96642746e6a70db030608dc6ff2e40fdc3cea84dde495",
+  "steps": [
+    {
+      "migration": "001_commerce_core.sql",
+      "fingerprint": "sha256:f595ee06832c773c7f0299fcfe68accd14351cd8c6705a27aa017c901ade358c",
+      "tables": 8,
+      "columns": 119,
+      "functions": 12,
+      "triggers": 8,
+      "indexes": 33,
+      "constraints": 46,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": false,
+          "detail": "falta: confirm_order_payment, inventory_rereserve_order, transición 'expired' → 'confirmed'"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": false,
+          "detail": "falta: pickup_attempts, redeem_pickup_code_verified, mark_order_ready_for_pickup"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": false,
+          "detail": "falta: payment_webhook_events"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": false,
+          "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "002_payment_confirmation.sql",
+      "fingerprint": "sha256:3fb92a99db19e348de3ca17c619dc330ae32de9f34f4bfbb7908973fa040538c",
+      "tables": 8,
+      "columns": 119,
+      "functions": 14,
+      "triggers": 8,
+      "indexes": 33,
+      "constraints": 46,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": false,
+          "detail": "falta: pickup_attempts, redeem_pickup_code_verified, mark_order_ready_for_pickup"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": false,
+          "detail": "falta: payment_webhook_events"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": false,
+          "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "003_pickup_pin_kiosk.sql",
+      "fingerprint": "sha256:2b6d872f987d9a50abf96642746e6a70db030608dc6ff2e40fdc3cea84dde495",
+      "tables": 9,
+      "columns": 125,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 36,
+      "constraints": 47,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": false,
+          "detail": "falta: payment_webhook_events"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": false,
+          "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "004_payment_webhook_diagnostics.sql",
+      "fingerprint": "sha256:738948fc6f1eaaf806e49cb19f288047ced1fdafe4c3166f39312fd1839d834d",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": false,
+          "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "005_duplicate_payment_guard.sql",
+      "fingerprint": "sha256:2067d897baea2d0eb3a95351f2afc72938ef1cf4c5dfd26f4023564014b01f90",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "006_fulfillment_stock_conflict_guard.sql",
+      "fingerprint": "sha256:2ea20facc137d2267a3b9f6fc629ac9d2bcc400c07a414012edf27efaa30eb5c",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "007_release_respects_rereservation.sql",
+      "fingerprint": "sha256:b1e839827d3e531ef3c92acfac940db07536229c675008d717b08e9510f9c9cc",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": true,
+          "detail": "OK"
+        }
+      ]
+    }
+  ],
+  "drill": [
+    {
+      "migration": "004_payment_webhook_diagnostics.sql",
+      "fingerprint": "sha256:738948fc6f1eaaf806e49cb19f288047ced1fdafe4c3166f39312fd1839d834d",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": false,
+          "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "005_duplicate_payment_guard.sql",
+      "fingerprint": "sha256:2067d897baea2d0eb3a95351f2afc72938ef1cf4c5dfd26f4023564014b01f90",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": false,
+          "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "006_fulfillment_stock_conflict_guard.sql",
+      "fingerprint": "sha256:2ea20facc137d2267a3b9f6fc629ac9d2bcc400c07a414012edf27efaa30eb5c",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": false,
+          "detail": "falta: predicado prior_releases en inventory_release_order"
+        }
+      ]
+    },
+    {
+      "migration": "007_release_respects_rereservation.sql",
+      "fingerprint": "sha256:b1e839827d3e531ef3c92acfac940db07536229c675008d717b08e9510f9c9cc",
+      "tables": 10,
+      "columns": 150,
+      "functions": 16,
+      "triggers": 8,
+      "indexes": 39,
+      "constraints": 48,
+      "expected": [
+        {
+          "id": "001_commerce_core",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "002_payment_confirmation",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "003_pickup_pin_kiosk",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "004_payment_webhook_diagnostics",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "005_duplicate_payment_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "006_fulfillment_stock_conflict_guard",
+          "present": true,
+          "detail": "OK"
+        },
+        {
+          "id": "007_release_respects_rereservation",
+          "present": true,
+          "detail": "OK"
+        }
+      ]
+    }
+  ]
+}
