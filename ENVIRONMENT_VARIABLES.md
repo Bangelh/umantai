@@ -234,6 +234,41 @@ RESEND_FROM_EMAIL=Umantai <pedidos@umantai.com>
 > mostrador. No hay reintento automático.
 > `ADMIN_NOTIFICATION_EMAIL` quedó obsoleto y ya no se lee.
 
+### Sitio público, contacto y sellado del build (Fase 2)
+```env
+# URL absoluta del sitio: canonical, Open Graph, robots.txt y sitemap.xml.
+# Orden de resolución: NEXT_PUBLIC_SITE_URL > NEXT_PUBLIC_SERVER_URL >
+# https://umantai.com (solo en producción).
+NEXT_PUBLIC_SITE_URL=https://umantai.com
+
+# Destinatario del aviso del formulario de contacto. OPCIONAL: sin esta variable (o sin
+# RESEND_API_KEY) el mensaje se guarda igual en `contact_messages`; solo no sale el correo
+# y la UI lo informa. El formulario NO se rompe por no tener Resend.
+CONTACT_TO_EMAIL=hola@umantai.com
+
+# Correo legal mostrado en privacidad/términos/reembolsos. Mientras no exista, las páginas
+# muestran `[PENDIENTE: definir correo legal]` (nunca un dato inventado).
+LEGAL_EMAIL=legal@umantai.com
+```
+
+```env
+# Sellado del build (/api/health). NO son secretos.
+# `scripts/write-build-info.mjs` (prebuild) resuelve el commit en este orden:
+#   BUILD_COMMIT > VERCEL_GIT_COMMIT_SHA > RAILWAY_GIT_COMMIT_SHA >
+#   GIT_COMMIT_SHA > GIT_COMMIT > `git rev-parse HEAD`
+# Con `railway up` conviene fijar GIT_COMMIT_SHA antes del deploy (como ya se hace en
+# staging) o BUILD_COMMIT. Si el build real no resuelve commit, health devuelve
+# commit=null (nunca hereda el SHA viejo de la plataforma) y el build queda identificado
+# por build.buildId.
+BUILD_COMMIT=
+BUILD_ID=
+```
+
+> `/api/health` ahora devuelve `commit` + `build { buildId, commitSource, builtAt }`.
+> `commit` describe el código desplegado; `buildId` cambia en cada build aunque el commit
+> no cambie. Es el reemplazo de confiar en `RAILWAY_GIT_COMMIT_SHA`, que queda obsoleto
+> con `railway up`.
+
 ### Additional / Recommended
 ```env
 # Current environment (production, preview, development)

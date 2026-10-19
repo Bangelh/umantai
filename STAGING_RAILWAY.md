@@ -4,11 +4,13 @@
 **Entorno:** `staging` (`c19f1bca-5aba-4eaf-8117-20761a6e9d37`) — el entorno
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
-**Commit de runtime desplegado:** `a129bfabb2b3e1c8d8ebb9a904eda9a47a49936e`
-(`feat/railway-staging`), verificado en `/api/health` → `commit`.
+**Commit de runtime desplegado:** `0c261cc5330759d6d70dccd16a10ae18d8466192`
+(`feat/railway-staging`), verificado en `/api/health` → `commit` y
+`build { buildId, commitSource: "GIT_COMMIT_SHA", builtAt }`.
 El SHA se inyecta como `GIT_COMMIT_SHA` antes de cada `railway up`, porque el
-deploy por archivo no lo expone. Los commits posteriores de esta fase son
-docs/evidencia.
+deploy por archivo no lo expone. Desde la Fase 2, `npm run build` sella además un
+manifiesto embebido (`lib/build-info.generated.json`), así que el health identifica
+el build aunque la variable de plataforma quede desfasada.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
@@ -129,10 +131,40 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 - `/admin/inventario`, `/cart` y `/products` responden 200.
 - Confirmación de compra muestra subtotal y total; verificado en el bundle
   desplegado (`app/cart/page-*.js` contiene la fila `Subtotal`).
-- Nota: `/api/health` toma `commit` de `RAILWAY_GIT_COMMIT_SHA`, que solo
-  actualiza el deploy disparado por GitHub. Con `railway up` ese SHA puede quedar
-  desactualizado aunque el build sí sea el último; para comprobar el contenido,
-  mirar el bundle o el deployment `SUCCESS` más reciente.
+- ~~Nota: `/api/health` toma `commit` de `RAILWAY_GIT_COMMIT_SHA`…~~ **Resuelto en
+  Fase 2**: el commit y el `buildId` se sellan al compilar (ver §5.3).
+
+### 5.3 Fase funcional 2 — analytics + legal + frontend (2026-10-19)
+
+- Migraciones **009** (`idx_orders_created_at`) y **010** (`contact_messages`)
+  aplicadas en `railway` con `psql -v ON_ERROR_STOP=1` desde el contenedor
+  `Postgres17`. 001–008 intactas. Idempotentes (`IF NOT EXISTS`).
+- Deploy `0c261cc` (`SUCCESS`). `/api/health` → 200 con
+  `commit=0c261cc…`, `buildId=20261019193732-0c261cc`,
+  `commitSource=GIT_COMMIT_SHA`, base `reachable=true`.
+- Smoke público (200): `/`, `/products`, `/products/<slug>`, `/cart`, `/admin`,
+  `/admin/inventario`, `/admin/analytics`, `/contacto`, `/legal`,
+  `/legal/{privacidad,terminos,reembolsos,cookies,aviso-legal}`,
+  `/sitemap.xml`, `/robots.txt`, `/api/health`.
+- API analytics:
+  - sin token → **401**;
+  - con `ADMIN_API_SECRET` (desde el contenedor `web`, sin exponer el valor) →
+    **200** con `sales.orders=4`, `revenueCents=144800`, `topProducts=3`,
+    `lowStock=1`, `outOfStock=0`, `series.weekly=6`, `currency=PEN`.
+- Contacto:
+  - payload inválido → **400** con errores por campo;
+  - payload válido → **200** `delivery=stored_email_failed` (sin Resend en
+    staging), fila guardada en `contact_messages` con `email_status=not_configured`;
+  - la fila de QA se borró: `contact_messages` queda en **0 filas**.
+- SEO: `robots.txt` bloquea `/admin`, `/api/`, `/debug`, `/kiosk`, `/pedido/`,
+  `/cart`, `/list` y publica el sitemap; `sitemap.xml` incluye home, catálogo,
+  contacto, legal y todos los productos base.
+- Legal: las páginas muestran `[PENDIENTE: …]` para razón social, RUC, dirección,
+  correo legal, jurisdicción y plazo de reembolso. No se inventó ningún dato.
+- Unitarios **349/349**; integración real (PostgreSQL efímero) **19/19**.
+- Limitación de verificación: no hay Chrome/Playwright en el entorno, así que el
+  chequeo responsive se hizo por CSS/layout (breakpoints y nav inferior) y smoke
+  HTTP, no con viewport automatizado.
 
 ## 6. Pendiente / riesgos
 
@@ -146,3 +178,7 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
   inactivas (el resto del comercio funciona).
 - Sin credenciales de prueba de Mercado Pago: el checkout queda 503 y no se creó
   ninguna Preference/Order.
+- `/admin/analytics` comparte el mismo token que el resto del panel (sin roles):
+  quien tenga `ADMIN_API_SECRET` ve agregados de ventas. Se resuelve con auth real.
+- El envío de correo del formulario de contacto queda inactivo hasta configurar
+  `RESEND_API_KEY` + `CONTACT_TO_EMAIL`; los mensajes igual se guardan.
