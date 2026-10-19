@@ -126,3 +126,26 @@ según el plan, posiblemente tarjeta. **No se creó ningún recurso.**
 
 Tampoco hay una DB de origen confirmada como productiva, así que **no se hizo
 dump** (regla explícita de la Fase 5).
+
+## 8. Verificación adicional (2026-10-19, GitHub Deployments — solo lectura)
+
+La API pública de GitHub sí expone los deployments que crea la integración de
+Vercel. Se consultaron sin credenciales y **sin modificar nada**:
+
+- Los últimos **100 deployments son todos `Preview`** (no hay ninguno etiquetado
+  `Production`). Vercel no publica el deployment productivo en GitHub, así que el
+  commit/ID de Producción sigue **NO VERIFICADO**.
+- Hay **varios proyectos Vercel** conectados al mismo repo (`umantai`,
+  `umantai01`, `umantai-dh4a`, `umantai-72m4`, `umantai-5fhy`,
+  `my-prisma-postgres-app`). Cada push genera un preview por proyecto.
+- El commit de esta rama `18bc710` compiló correctamente en al menos dos previews
+  (`umantai01` y `umantai`), lo que confirma que el build portable funciona en
+  Vercel además de en CI.
+- Un tercer proyecto (`umantai-dh4a`) falló en el mismo SHA. Es una diferencia de
+  configuración de ESE proyecto (probablemente variables ausentes), no del código.
+- Los previews están protegidos por Vercel Authentication (302 a SSO), así que
+  `/api/health` no se pudo consultar desde fuera sin sesión. No se intentó evadir
+  la protección.
+
+**Conclusión:** Producción sigue bloqueada para auditoría (falta sesión/token de
+Vercel). El baseline de código y el build de la rama quedan verificados.
