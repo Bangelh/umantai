@@ -7,6 +7,8 @@ import { NavActions } from "./components/NavActions";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { SiteFooter } from "./components/SiteFooter";
+import { AuthLink } from "@/components/brand/AuthLink";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { businessConfig } from "@/config/business";
 
 const geistSans = Geist({
@@ -22,9 +24,9 @@ const geistMono = Geist_Mono({
 });
 
 const SITE_NAME = businessConfig.name;
-const DEFAULT_TITLE = `${SITE_NAME} | Premium Whole Foods & Technology`;
+const DEFAULT_TITLE = `${SITE_NAME} | Productos y comercios cerca de ti`;
 const DEFAULT_DESCRIPTION =
-  "Alimentos seleccionados, tecnología y accesorios. Retiro en tienda con nuestra kiosco Ready for Pickup o entrega coordinada.";
+  "Busca productos en las tiendas de UMANTAI: abarrotes, ropa, telas, ferretería y más. Precio, distancia y disponibilidad en una sola lista.";
 
 /**
  * Metadata raíz.
@@ -80,21 +82,24 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-primary">
         <a href="#contenido" className="skip-link">
-          Skip to content
+          Saltar al contenido
         </a>
 
         {/* Top Navigation */}
         <nav aria-label="Principal" className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-5 sm:px-8 h-20 flex items-center justify-between gap-4">
-            <Link href="/" className="font-semibold text-2xl tracking-[-1px] shrink-0">
-              umantai
+            <Link href="/" className="shrink-0" aria-label="UMANTAI — inicio">
+              <BrandLogo />
             </Link>
-            <NavActions />
+            <div className="flex items-center gap-2 sm:gap-4">
+              <AuthLink />
+              <NavActions />
+            </div>
           </div>
         </nav>
 
