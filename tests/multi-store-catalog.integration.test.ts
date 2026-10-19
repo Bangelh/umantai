@@ -191,6 +191,34 @@ test('store product: se crea desde el maestro con precio propio y stock inicial'
   assert.equal(product.inStock, true);
 });
 
+test('store product: edita precio/visibilidad y conserva el slug', async () => {
+  const created = await catalog.createStoreProductCatalog(userA.id, storeA.id, {
+    name: 'Producto editable',
+    category: 'pruebas',
+    priceCents: 900,
+    visible: true,
+  });
+  const productId = String(created.id);
+  const slug = String(created.slug);
+
+  await catalog.updateStoreProductCatalog(userA.id, storeA.id, productId, {
+    name: 'Producto editable v2',
+    priceCents: 1200,
+    visible: false,
+  });
+
+  const updated = (await stores.listStoreProducts(userA.id, storeA.id)).find(
+    (product) => product.id === productId,
+  );
+  assert.ok(updated);
+  assert.equal(updated.name, 'Producto editable v2');
+  assert.equal(updated.priceCents, 1200);
+  assert.equal(updated.visible, false);
+  assert.equal(updated.slug, slug, 'editar no cambia la URL pública');
+
+  await catalog.updateStoreProductCatalog(userA.id, storeA.id, productId, { visible: true });
+});
+
 test('variants: ejes genéricos, SKU estable y stock independiente por combinación', async () => {
   const created = await catalog.createStoreProductCatalog(userA.id, storeA.id, {
     name: 'Polo algodón',

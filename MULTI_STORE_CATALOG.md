@@ -227,8 +227,10 @@ snapshot.
 | Telas del Sur | telas | color/ancho |
 | Ferretería Central | ferretería | producto sin variantes |
 
-`Arroz Costeño` existe como maestro y se vende en más de una tienda con distinto
-precio y stock. El seed es idempotente: no duplica tiendas ni suma stock.
+El maestro `zapatos` se usa en dos tiendas (`Zapatillas urbanas` en Hilos &
+Estilo y `Botas de seguridad` en Ferretería Central) con distinto precio y stock,
+lo que demuestra `MasterProduct → varios StoreProduct`. El seed es idempotente:
+no duplica tiendas ni suma stock.
 
 > El seed de staging no crea usuarios automáticamente. Usa `SEED_OWNER_EMAIL`
 > para asignar las tiendas a un usuario ya registrado y probar el panel merchant.
