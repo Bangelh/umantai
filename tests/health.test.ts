@@ -32,6 +32,11 @@ test('reporte sano: ok, versión, commit, entorno, driver y timestamp', async ()
     ok: true,
     version: '0.1.0',
     commit: 'abc1234',
+    build: {
+      buildId: 'dev',
+      commitSource: 'none',
+      builtAt: null,
+    },
     environment: 'staging',
     database: { reachable: true, type: 'pg' },
     timestamp: '2026-10-19T12:00:00.000Z',
@@ -46,6 +51,7 @@ test('reporte NO contiene URL, usuario, password ni host', async () => {
     assert.ok(!serialized.includes(forbidden), `el reporte filtró "${forbidden}"`);
   }
   assert.deepEqual(Object.keys(report).sort(), [
+    'build',
     'commit',
     'database',
     'environment',
@@ -91,4 +97,27 @@ test('commit: Railway y Vercel exponen variables distintas', () => {
   assert.equal(resolveBuildCommit({ VERCEL_GIT_COMMIT_SHA: 'vercel-sha' }), 'vercel-sha');
   assert.equal(resolveBuildCommit({ GIT_COMMIT_SHA: '  ' }), null);
   assert.equal(resolveBuildCommit({}), null);
+});
+
+test('el build embebido gana sobre un RAILWAY_GIT_COMMIT_SHA desfasado', async () => {
+  // Caso real: `railway up` deja la variable de plataforma en el commit viejo,
+  // pero el manifiesto sellado al compilar tiene el código que sí se desplegó.
+  const report = await buildHealthReport({
+    ...fixedDeps({ reachable: true, type: 'pg' }),
+    commit: undefined,
+    env: { APP_ENV: 'staging', RAILWAY_GIT_COMMIT_SHA: 'commit-viejo' },
+    build: {
+      buildId: '20261019120000-abc1234',
+      commit: 'commit-nuevo',
+      commitSource: 'git',
+      builtAt: '2026-10-19T12:00:00.000Z',
+    },
+  });
+
+  assert.equal(report.commit, 'commit-nuevo');
+  assert.deepEqual(report.build, {
+    buildId: '20261019120000-abc1234',
+    commitSource: 'git',
+    builtAt: '2026-10-19T12:00:00.000Z',
+  });
 });

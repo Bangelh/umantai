@@ -8,7 +8,10 @@
  *
  *      ok                 true si la base respondió
  *      version            versión de la app (package.json)
- *      commit             SHA del build, si la plataforma lo expone
+ *      commit             SHA del build realmente desplegado
+ *      build.id           id único del build (se sella al compilar)
+ *      build.commitSource de dónde salió el SHA (`git`, `BUILD_COMMIT`…)
+ *      build.builtAt      ISO 8601 del build
  *      environment        APP_ENV resuelto (production | staging | preview | development)
  *      database.reachable true/false
  *      database.type      driver en uso (`neon`, `pg` o `none`)
@@ -23,6 +26,7 @@
  */
 
 import pkg from '../package.json';
+import { resolveBuildIdentity, type BuildIdentity } from './build-info';
 import { getDatabaseUrl } from './db';
 import { resolveDbDriver, type DbDriverName } from './db-driver.server';
 import {
@@ -43,6 +47,8 @@ export interface HealthReport {
   ok: boolean;
   version: string;
   commit: string | null;
+  /** Identidad del build embebida al compilar. Siempre presente. */
+  build: Pick<BuildIdentity, 'buildId' | 'commitSource' | 'builtAt'>;
   environment: RuntimeEnvironmentName;
   database: HealthDatabase;
   timestamp: string;
@@ -53,8 +59,10 @@ export interface HealthDependencies {
   checkDatabase: () => Promise<HealthDatabase>;
   /** Mapa de variables (por defecto `process.env`). */
   env?: RuntimeEnvSource;
-  /** SHA del build; `null` si la plataforma no lo expone. */
+  /** SHA del build; `null` si no se pudo resolver. */
   commit?: string | null;
+  /** Identidad del build inyectable (tests). */
+  build?: BuildIdentity;
   /** Reloj inyectable (tests). */
   now?: () => Date;
 }
@@ -62,19 +70,15 @@ export interface HealthDependencies {
 /** Timeout del `SELECT 1`. Un healthcheck no debe colgar el chequeo de Railway. */
 export const HEALTH_DB_TIMEOUT_MS = 2_000;
 
-/** SHA del commit, si el hosting lo expone (Vercel y Railway usan nombres distintos). */
+/**
+ * SHA del commit.
+ *
+ * La fuente principal es el manifiesto sellado en build (`lib/build-info.ts`),
+ * justamente porque `RAILWAY_GIT_COMMIT_SHA` queda viejo con `railway up`. Las
+ * variables de plataforma siguen como último recurso.
+ */
 export function resolveBuildCommit(source: RuntimeEnvSource = process.env): string | null {
-  const candidates = [
-    source.VERCEL_GIT_COMMIT_SHA,
-    source.RAILWAY_GIT_COMMIT_SHA,
-    source.GIT_COMMIT_SHA,
-    source.GIT_COMMIT,
-  ];
-  for (const value of candidates) {
-    const commit = typeof value === 'string' ? value.trim() : '';
-    if (commit) return commit;
-  }
-  return null;
+  return resolveBuildIdentity(source).commit;
 }
 
 /** Ejecuta una promesa con timeout, sin dejar timers colgados. */
@@ -126,11 +130,17 @@ export async function buildHealthReport(deps: HealthDependencies): Promise<Healt
   const env = deps.env ?? process.env;
   const database = await deps.checkDatabase();
   const now = deps.now ? deps.now() : new Date();
+  const identity = deps.build ?? resolveBuildIdentity(env);
 
   return {
     ok: database.reachable,
     version: pkg.version,
-    commit: deps.commit !== undefined ? deps.commit : resolveBuildCommit(env),
+    commit: deps.commit !== undefined ? deps.commit : identity.commit,
+    build: {
+      buildId: identity.buildId,
+      commitSource: identity.commitSource,
+      builtAt: identity.builtAt,
+    },
     environment: resolveRuntimeEnvironment(env).name,
     database,
     timestamp: now.toISOString(),
