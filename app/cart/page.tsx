@@ -435,7 +435,11 @@ export default function CartPage() {
               ))}
             </ul>
 
-            <div className="mt-4 flex justify-between text-lg font-medium">
+            <div className="mt-4 flex justify-between text-sm text-white/70">
+              <span>Subtotal</span>
+              <span className="font-mono">{money(summary.subtotal)}</span>
+            </div>
+            <div className="mt-2 flex justify-between text-lg font-medium">
               <span>Total</span>
               <span className="font-mono tracking-tight">{money(summary.total)}</span>
             </div>
