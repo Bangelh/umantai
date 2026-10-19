@@ -4,10 +4,11 @@
 **Entorno:** `staging` (`c19f1bca-5aba-4eaf-8117-20761a6e9d37`) — el entorno
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
-**Commit desplegado:** `d5042b4ec6263f09239de6749b3f7be54a2ed6e7`
+**Commit de runtime desplegado:** `a129bfabb2b3e1c8d8ebb9a904eda9a47a49936e`
 (`feat/railway-staging`), verificado en `/api/health` → `commit`.
 El SHA se inyecta como `GIT_COMMIT_SHA` antes de cada `railway up`, porque el
-deploy por archivo no lo expone.
+deploy por archivo no lo expone. Los commits posteriores de esta fase son
+docs/evidencia.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
@@ -108,6 +109,24 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 - Restore drill original: `umantai_verify` conserva el fingerprint
   `sha256:bea7529f…` (idéntico a QA), 12 tablas, 14 pedidos y las mismas
   secuencias (74 / 1016 / 22 / 5). Artefacto: `audit-umantai_verify-current.json`.
+
+### 5.2 Fase funcional 1 — compra + inventario (2026-10-19)
+
+- Migración **008** aplicada en `railway` (índices del ledger); 001–007 intactas.
+- Deploy `a129bfa` verificado en `/api/health`.
+- Unitarios: **307/307**. Integración real: **14/14** contra
+  `umantai_integration`, que ahora se **resetea y reaplica 001–008** en cada
+  corrida (sin datos de corridas previas).
+- Smoke de API:
+  - `POST /api/admin/inventory/receipts` → 201; `oura-ring-gen3`
+    (`color:stealth`) pasó de 312 a 314, umbral 4, movimiento `receipt`.
+  - `POST /api/admin/inventory/adjustments` → 200; −1 dejó 313 e informó
+    `before/after`. Un −9999 devolvió **409** (invariante).
+  - `GET /api/admin/inventory/ledger?product=oura-ring-gen3&type=adjustment`
+    devolvió el movimiento con actor, motivo y saldo.
+  - `POST /api/orders` → 201 (`UM-2026-001018`), reserva 1/66 disponibles;
+    expiración forzada + cron → reserva liberada (0/67) y pedido `expired`.
+- `/admin/inventario`, `/cart` y `/products` responden 200.
 
 ## 6. Pendiente / riesgos
 
