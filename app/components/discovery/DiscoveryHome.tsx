@@ -440,6 +440,9 @@ export function DiscoveryHome({ initial }: Props) {
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block font-mono text-[15px] font-semibold tabular-nums text-primary">
+                      {product.hasVariants && (
+                        <span className="mr-1 text-[10px] font-normal text-muted">desde</span>
+                      )}
                       {formatPriceCents(product.priceCents, product.currency)}
                     </span>
                     <span className={`mt-0.5 block text-[11px] font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>

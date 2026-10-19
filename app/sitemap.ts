@@ -2,7 +2,6 @@ import type { MetadataRoute } from 'next';
 
 import { businessConfig } from '@/config/business';
 import { LEGAL_SLUGS } from '@/lib/legal';
-import { baseProductsData } from '@/lib/products';
 import { getPlatformSql } from '@/lib/platform-db.server';
 
 // El catálogo de tiendas cambia en runtime; no se congela en el build.
@@ -11,16 +10,16 @@ export const dynamic = 'force-dynamic';
 /**
  * sitemap.xml — páginas públicas indexables.
  *
- * Incluye el catálogo legacy y, si hay base configurada, las vitrinas de tiendas
- * ACTIVAS y sus productos VISIBLES. Nunca expone tiendas inactivas ni productos
- * ocultos.
+ * Incluye la home, las páginas institucionales y —si hay base configurada— las
+ * vitrinas de tiendas ACTIVAS y sus productos VISIBLES/no archivados. Nunca
+ * expone tiendas inactivas ni productos ocultos. `/products` ya no se indexa:
+ * redirige a la home.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = businessConfig.siteUrl.replace(/\/+$/, '');
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: 'daily', priority: 1 },
-    { url: `${base}/products`, changeFrequency: 'daily', priority: 0.9 },
     { url: `${base}/vender`, changeFrequency: 'monthly', priority: 0.6 },
     { url: `${base}/contacto`, changeFrequency: 'monthly', priority: 0.5 },
     { url: `${base}/legal`, changeFrequency: 'monthly', priority: 0.3 },
@@ -31,12 +30,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
   ];
 
-  const legacyProducts: MetadataRoute.Sitemap = baseProductsData.map((product) => ({
-    url: `${base}/products/${product.slug}`,
-    changeFrequency: 'weekly',
-    priority: 0.7,
-  }));
-
   let platformRoutes: MetadataRoute.Sitemap = [];
   const sql = getPlatformSql();
 
@@ -46,7 +39,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         SELECT s.slug AS store_slug, sp.slug AS product_slug, sp.updated_at
           FROM store_products sp
           JOIN stores s ON s.id = sp.store_id
-         WHERE s.active = TRUE AND sp.visible = TRUE
+         WHERE s.active = TRUE AND sp.visible = TRUE AND sp.archived_at IS NULL
          ORDER BY sp.updated_at DESC
          LIMIT 2000
       `;
@@ -80,5 +73,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  return [...staticRoutes, ...legacyProducts, ...platformRoutes];
+  return [...staticRoutes, ...platformRoutes];
 }

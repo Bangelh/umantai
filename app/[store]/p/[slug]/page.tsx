@@ -95,6 +95,7 @@ export default async function StoreProductPage({ params }: PageProps) {
 
       <StoreProductActions
         product={{
+          storeId: shop.id,
           slug: product.slug,
           name: product.name,
           brand: product.brand ?? '',
@@ -107,6 +108,8 @@ export default async function StoreProductPage({ params }: PageProps) {
           currency: product.currency,
           storeSlug: shop.slug,
           storeName: shop.name,
+          optionSchema: product.optionSchema,
+          variants: product.variants,
         }}
       />
 

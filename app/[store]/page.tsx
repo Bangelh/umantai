@@ -10,6 +10,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { normalizeSearchText } from '@/lib/catalog';
 import { formatPriceCents } from '@/lib/discovery';
 import { getStorefront } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
@@ -18,6 +19,7 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ store: string }>;
+  searchParams: Promise<{ q?: string | string[] }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -43,7 +45,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function StorePage({ params }: PageProps) {
+export default async function StorePage({ params, searchParams }: PageProps) {
   const { store: storeSlug } = await params;
   const slugCheck = validateStoreSlug(storeSlug);
   if (!slugCheck.ok) notFound();
@@ -51,7 +53,18 @@ export default async function StorePage({ params }: PageProps) {
   const storefront = await getStorefront(slugCheck.slug);
   if (!storefront) notFound();
 
-  const { store, products } = storefront;
+  const { store } = storefront;
+  const rawQuery = (await searchParams).q;
+  const query = normalizeSearchText(Array.isArray(rawQuery) ? rawQuery[0] : rawQuery ?? '');
+  const products = query
+    ? storefront.products.filter((product) =>
+        normalizeSearchText(
+          [product.name, product.brand, product.category, product.description]
+            .filter(Boolean)
+            .join(' '),
+        ).includes(query),
+      )
+    : storefront.products;
   const availableCount = products.filter((product) => product.inStock).length;
 
   return (
@@ -91,6 +104,35 @@ export default async function StorePage({ params }: PageProps) {
       </header>
 
       <section aria-label="Productos" className="mt-5">
+        <form action={`/${store.slug}`} method="get" role="search" className="mb-4 flex gap-2">
+          <label htmlFor="store-search" className="sr-only">
+            Buscar en {store.name}
+          </label>
+          <input
+            id="store-search"
+            type="search"
+            name="q"
+            defaultValue={rawQuery && !Array.isArray(rawQuery) ? rawQuery : ''}
+            placeholder={`Buscar en ${store.name}…`}
+            maxLength={80}
+            className="h-10 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
+          />
+          <button
+            type="submit"
+            className="h-10 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
+          >
+            Buscar
+          </button>
+          {query && (
+            <Link
+              href={`/${store.slug}`}
+              className="inline-flex h-10 items-center rounded-xl px-2 text-xs text-tertiary hover:text-primary"
+            >
+              Limpiar
+            </Link>
+          )}
+        </form>
+
         <div className="flex items-baseline justify-between border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Productos</h2>
           <span className="text-xs text-muted sm:hidden">{products.length} · {availableCount} disponibles</span>
@@ -98,9 +140,16 @@ export default async function StorePage({ params }: PageProps) {
 
         {products.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-sm text-tertiary">Esta tienda todavía no publicó productos.</p>
-            <Link href="/" className="mt-4 inline-block text-sm text-primary underline underline-offset-4">
-              Volver al buscador
+            <p className="text-sm text-tertiary">
+              {query
+                ? `No encontramos productos para “${query}” en esta tienda.`
+                : 'Esta tienda todavía no publicó productos.'}
+            </p>
+            <Link
+              href={query ? `/${store.slug}` : '/'}
+              className="mt-4 inline-block text-sm text-primary underline underline-offset-4"
+            >
+              {query ? 'Ver todo el catálogo' : 'Volver al buscador'}
             </Link>
           </div>
         ) : (
@@ -116,11 +165,20 @@ export default async function StorePage({ params }: PageProps) {
                     <span className="mt-0.5 block truncate text-xs text-tertiary">
                       {[product.brand, product.category].filter(Boolean).join(' · ') || 'Sin marca'}
                       {product.unit !== 'unidad' && ` · por ${product.unit}`}
+                      {product.variants.length > 0 && ` · ${product.variants.length} variantes`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block font-mono text-[15px] font-semibold tabular-nums">
-                      {formatPriceCents(product.priceCents, product.currency)}
+                      {product.variants.length > 0 && (
+                        <span className="mr-1 text-[10px] font-normal text-muted">desde</span>
+                      )}
+                      {formatPriceCents(
+                        product.variants.length > 0
+                          ? Math.min(...product.variants.map((variant) => variant.priceCents ?? product.priceCents))
+                          : product.priceCents,
+                        product.currency,
+                      )}
                     </span>
                     <span
                       className={`mt-0.5 block text-[11px] font-medium ${

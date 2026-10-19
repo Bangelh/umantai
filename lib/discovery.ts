@@ -150,6 +150,9 @@ export interface DiscoveryProduct {
   available: number;
   inStock: boolean;
   distanceKm: number | null;
+  /** Cantidad de variantes activas; `priceCents` es el mínimo en ese caso. */
+  variantCount: number;
+  hasVariants: boolean;
 }
 
 export interface DiscoveryStore {
