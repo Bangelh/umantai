@@ -21,7 +21,9 @@ import {
 } from '@/lib/commerce.server';
 import { buildStockConflictResponse, findStockShortages } from '@/lib/stock-conflict';
 import { getSessionUser } from '@/lib/auth.server';
-import { resolveCheckoutProducts, DEFAULT_STORE_ID, DEFAULT_STORE_SLUG } from '@/lib/stores.server';
+import { DEFAULT_STORE_ID, DEFAULT_STORE_SLUG } from '@/lib/stores.server';
+import { resolveStoreCheckout } from '@/lib/store-catalog.server';
+import { CatalogError } from '@/lib/catalog';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -83,6 +85,7 @@ interface OrderRequestBody {
 
 interface RawOrderLine {
   productSlug?: unknown;
+  storeSlug?: unknown;
   quantity?: unknown;
   variant?: unknown;
 }
@@ -179,53 +182,42 @@ export async function POST(request: NextRequest) {
   //   · `storeSlug` de una tienda de la plataforma → `store_products`.
   //   · sin tienda (o la legacy)                    → catálogo base + overrides.
   const storeSlug = asTrimmedString(body.storeSlug);
-  const isPlatformStore = !!storeSlug && storeSlug !== DEFAULT_STORE_SLUG;
+  const lineStoreHints = rawItems
+    .map((raw) => asTrimmedString(((raw ?? {}) as RawOrderLine).storeSlug))
+    .filter((slug): slug is string => !!slug);
+  const isPlatformStore =
+    (!!storeSlug && storeSlug !== DEFAULT_STORE_SLUG) ||
+    lineStoreHints.some((slug) => slug !== DEFAULT_STORE_SLUG);
 
   let storeId = DEFAULT_STORE_ID;
-  const lines: CreateOrderLineInput[] = [];
+  let lines: CreateOrderLineInput[] = [];
 
   if (isPlatformStore) {
-    const slugs = rawItems
-      .map((raw) => asTrimmedString(((raw ?? {}) as RawOrderLine).productSlug))
-      .filter((slug): slug is string => !!slug);
-
-    const resolved = await resolveCheckoutProducts(storeSlug, slugs);
-    if (!resolved) {
-      return badRequest(`Unknown store: "${storeSlug}"`);
-    }
-    storeId = resolved.store.id;
-
-    for (const [index, raw] of rawItems.entries()) {
-      const line = (raw ?? {}) as RawOrderLine;
-      const productSlug = asTrimmedString(line.productSlug);
-      if (!productSlug) return badRequest(`items[${index}].productSlug is required`);
-
-      const product = resolved.products.get(productSlug);
-      if (!product) {
-        return badRequest(`Product "${productSlug}" is not available in this store`);
+    // La tienda se deriva de `stores` + `store_products`; el `store_id` que
+    // pudiera venir del navegador no se usa. Un carrito cross-store se rechaza.
+    try {
+      const resolved = await resolveStoreCheckout(
+        storeSlug ?? lineStoreHints[0] ?? null,
+        rawItems.map((raw) => {
+          const line = (raw ?? {}) as RawOrderLine;
+          return {
+            productSlug: asTrimmedString(line.productSlug) ?? '',
+            storeSlug: asTrimmedString(line.storeSlug),
+            quantity: Number(line.quantity),
+            variant:
+              line.variant && typeof line.variant === 'object'
+                ? (line.variant as Record<string, unknown>)
+                : {},
+          };
+        }),
+      );
+      storeId = resolved.store.id;
+      lines = resolved.lines;
+    } catch (error) {
+      if (error instanceof CatalogError) {
+        return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
       }
-
-      const quantity = Number(line.quantity);
-      if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LINE_QUANTITY) {
-        return badRequest(`items[${index}].quantity must be an integer between 1 and ${MAX_LINE_QUANTITY}`);
-      }
-
-      // Los StoreProduct de esta fase no tienen ejes de variación.
-      const variant = line.variant && typeof line.variant === 'object' ? (line.variant as ProductVariant) : {};
-      if (Object.keys(normalizeVariantSelection(variant)).length > 0) {
-        return badRequest(`items[${index}].variant is not supported for this store product`);
-      }
-
-      lines.push({
-        productSlug,
-        productName: product.name,
-        productBrand: product.brand,
-        imageUrl: product.imageUrl,
-        variant: {},
-        variantKey: '',
-        quantity,
-        unitPrice: product.unitPrice,
-      });
+      throw error;
     }
   } else {
     // Una sola query para todos los overrides de /admin (no N queries).

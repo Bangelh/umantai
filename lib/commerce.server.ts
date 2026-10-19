@@ -255,6 +255,7 @@ export async function createOrder(
       imageUrl: line.imageUrl ?? null,
       variant,
       variantKey: line.variantKey ?? buildVariantKey(variant),
+      variantSku: line.variantSku ?? null,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       discountAmount,
@@ -321,7 +322,7 @@ export async function createOrder(
     (line, index) => sql`
       INSERT INTO order_items (
         order_id, line_number, product_slug, product_name, product_brand, image_url,
-        variant_key, variant, quantity, unit_price, discount_amount, tax_amount, line_total
+        variant_key, variant_sku, variant, quantity, unit_price, discount_amount, tax_amount, line_total
       ) VALUES (
         ${orderId}::uuid,
         ${index + 1},
@@ -330,6 +331,7 @@ export async function createOrder(
         ${line.productBrand},
         ${line.imageUrl},
         ${line.variantKey},
+        ${line.variantSku},
         ${JSON.stringify(line.variant)}::jsonb,
         ${line.quantity},
         ${line.unitPrice},

@@ -590,6 +590,8 @@ export interface CreateOrderLineInput {
   variant?: ProductVariant;
   /** Opcional: si no se envía, el servidor lo deriva con `buildVariantKey(variant)`. */
   variantKey?: string;
+  /** SKU de la variante vendida (snapshot; opcional para catálogo legacy). */
+  variantSku?: string | null;
   quantity: number;
   unitPrice: number;
   discountAmount?: number;
