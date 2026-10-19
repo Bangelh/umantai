@@ -218,7 +218,7 @@ function loadOrderFrom(world: FakeWorld) {
 
 test('gate: Producción queda bloqueado (404) aunque el flag y el admin estén bien', () => {
   const result = evaluateQaCleanupGate({
-    vercelEnv: 'production',
+    environment: 'production',
     cleanupFlag: '1',
     adminConfigured: true,
     adminTokenValid: true,
@@ -229,7 +229,7 @@ test('gate: Producción queda bloqueado (404) aunque el flag y el admin estén b
 test('gate: Preview sin QA_CLEANUP=1 queda bloqueado (404)', () => {
   for (const flag of [undefined, '', '0', 'true', 'yes', 'TRUE']) {
     const result = evaluateQaCleanupGate({
-      vercelEnv: 'preview',
+      environment: 'preview',
       cleanupFlag: flag,
       adminConfigured: true,
       adminTokenValid: true,
@@ -238,10 +238,10 @@ test('gate: Preview sin QA_CLEANUP=1 queda bloqueado (404)', () => {
   }
 });
 
-test('gate: fuera de Vercel (VERCEL_ENV ausente) queda bloqueado (404)', () => {
+test('gate: desarrollo local (sin entorno preview/staging) queda bloqueado (404)', () => {
   assert.deepEqual(
     evaluateQaCleanupGate({
-      vercelEnv: undefined,
+      environment: 'development',
       cleanupFlag: '1',
       adminConfigured: true,
       adminTokenValid: true,
@@ -250,10 +250,22 @@ test('gate: fuera de Vercel (VERCEL_ENV ausente) queda bloqueado (404)', () => {
   );
 });
 
+test('gate: Railway staging con flag y admin válidos SÍ se permite', () => {
+  assert.deepEqual(
+    evaluateQaCleanupGate({
+      environment: 'staging',
+      cleanupFlag: '1',
+      adminConfigured: true,
+      adminTokenValid: true,
+    }),
+    { ok: true },
+  );
+});
+
 test('gate: Preview con flag pero sin autenticación administrativa queda bloqueado (403)', () => {
   assert.deepEqual(
     evaluateQaCleanupGate({
-      vercelEnv: 'preview',
+      environment: 'preview',
       cleanupFlag: '1',
       adminConfigured: false,
       adminTokenValid: false,
@@ -263,7 +275,7 @@ test('gate: Preview con flag pero sin autenticación administrativa queda bloque
 
   assert.deepEqual(
     evaluateQaCleanupGate({
-      vercelEnv: 'preview',
+      environment: 'preview',
       cleanupFlag: '1',
       adminConfigured: true,
       adminTokenValid: false,
@@ -272,10 +284,10 @@ test('gate: Preview con flag pero sin autenticación administrativa queda bloque
   );
 });
 
-test('gate: Preview + flag=1 + admin válido es el ÚNICO caso permitido', () => {
+test('gate: Preview + flag=1 + admin válido es un caso permitido', () => {
   assert.deepEqual(
     evaluateQaCleanupGate({
-      vercelEnv: 'preview',
+      environment: 'preview',
       cleanupFlag: '1',
       adminConfigured: true,
       adminTokenValid: true,
@@ -289,6 +301,24 @@ test('gate: Preview + flag=1 + admin válido es el ÚNICO caso permitido', () =>
 test('ruta cancel: Producción responde 404 aunque manden flag y token válidos', async () => {
   await withEnv(
     { VERCEL_ENV: 'production', [QA_CLEANUP_ENV]: '1', ADMIN_API_SECRET: ADMIN_SECRET },
+    async () => {
+      const response = await cancelRoute(
+        postJson('http://localhost/api/admin/orders/cancel', { orderIds: [ORDER_CONFIRMED] }, ADMIN_SECRET) as unknown as CancelRequest,
+      );
+      assert.equal(response.status, 404);
+      assert.equal((await response.json()).code, 'qa_cleanup_unavailable');
+    },
+  );
+});
+
+test('ruta cancel: APP_ENV=production gana sobre VERCEL_ENV=preview → 404', async () => {
+  await withEnv(
+    {
+      VERCEL_ENV: 'preview',
+      APP_ENV: 'production',
+      [QA_CLEANUP_ENV]: '1',
+      ADMIN_API_SECRET: ADMIN_SECRET,
+    },
     async () => {
       const response = await cancelRoute(
         postJson('http://localhost/api/admin/orders/cancel', { orderIds: [ORDER_CONFIRMED] }, ADMIN_SECRET) as unknown as CancelRequest,

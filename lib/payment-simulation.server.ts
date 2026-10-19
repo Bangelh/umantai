@@ -11,7 +11,7 @@
  *  NO es un pago real, NO debilita la seguridad y NO puede usarse en Producción.
  *  Tres candados tienen que estar abiertos A LA VEZ:
  *
- *    1. `VERCEL_ENV === 'preview'`   → imposible en Producción por construcción.
+ *    1. entorno `preview` o `staging` → imposible en Producción por construcción.
  *    2. `MP_PAYMENT_SIMULATION === '1'` → apagado por defecto; hay que encenderlo.
  *    3. autenticación administrativa (`x-admin-token`) ya existente.
  *
@@ -42,6 +42,10 @@ import { isAdminApiConfigured, verifyAdminToken, ADMIN_TOKEN_HEADER } from './ad
 import type { OrderStatus, OrderWithItems, PaymentStatus } from './commerce';
 import { getOrderWithItems } from './commerce.server';
 import { applyApprovedPayment, type ApplyApprovedPaymentInput } from './payment-confirmation.server';
+import {
+  resolveRuntimeEnvironment,
+  type RuntimeEnvironmentName,
+} from './runtime-environment.server';
 
 /** Variable que enciende la simulación SOLO en Preview. */
 export const MP_PAYMENT_SIMULATION_ENV = 'MP_PAYMENT_SIMULATION';
@@ -54,7 +58,8 @@ export const SIMULATED_PAYMENT_PREFIX = 'SIMULATED-MP-';
 // =============================================================================
 
 export interface PaymentSimulationGateInput {
-  vercelEnv: string | null | undefined;
+  /** Entorno ya resuelto por `runtime-environment.server.ts` (APP_ENV manda). */
+  environment: RuntimeEnvironmentName;
   simulationFlag: string | null | undefined;
   adminConfigured: boolean;
   adminTokenValid: boolean;
@@ -74,7 +79,7 @@ export type PaymentSimulationGate =
 export function evaluatePaymentSimulationGate(
   input: PaymentSimulationGateInput,
 ): PaymentSimulationGate {
-  if (input.vercelEnv !== 'preview') {
+  if (input.environment !== 'preview' && input.environment !== 'staging') {
     return { ok: false, status: 404, code: 'simulation_unavailable' };
   }
   if (input.simulationFlag !== '1') {
@@ -89,7 +94,7 @@ export function evaluatePaymentSimulationGate(
 /** Combina el gate con los valores reales del proceso y la petición. */
 export function checkPaymentSimulationAccess(request: Request): PaymentSimulationGate {
   return evaluatePaymentSimulationGate({
-    vercelEnv: process.env.VERCEL_ENV,
+    environment: resolveRuntimeEnvironment().name,
     simulationFlag: process.env[MP_PAYMENT_SIMULATION_ENV],
     adminConfigured: isAdminApiConfigured(),
     adminTokenValid: verifyAdminToken(request.headers.get(ADMIN_TOKEN_HEADER)),

@@ -13,7 +13,7 @@
  *  `inventory_release_order()` (el motor del ledger) y a la máquina de estados.
  *
  *  ─── LOS TRES CANDADOS (los tres a la vez, sin fallback) ────────────────────
- *    1. `VERCEL_ENV === 'preview'`        → imposible en Producción por construcción.
+ *    1. entorno `preview` o `staging`     → imposible en Producción por construcción.
  *    2. `QA_CLEANUP === '1'`              → apagado por defecto; hay que encenderlo.
  *    3. autenticación administrativa (`x-admin-token`) ya existente.
  *
@@ -30,6 +30,10 @@ import { ADMIN_TOKEN_HEADER, isAdminApiConfigured, verifyAdminToken } from './ad
 import type { AdminOrderView } from './admin-order-view';
 import type { OrderStatus, OrderWithItems } from './commerce';
 import { cancelOrderForQa, getOrderWithItems, listAdminOrders } from './commerce.server';
+import {
+  resolveRuntimeEnvironment,
+  type RuntimeEnvironmentName,
+} from './runtime-environment.server';
 
 /** Variable que enciende la limpieza QA SOLO en Preview. */
 export const QA_CLEANUP_ENV = 'QA_CLEANUP';
@@ -55,7 +59,8 @@ export const QA_CLEANUP_MAX_ORDER_IDS = 50;
 // =============================================================================
 
 export interface QaCleanupGateInput {
-  vercelEnv: string | null | undefined;
+  /** Entorno ya resuelto por `runtime-environment.server.ts` (APP_ENV manda). */
+  environment: RuntimeEnvironmentName;
   cleanupFlag: string | null | undefined;
   adminConfigured: boolean;
   adminTokenValid: boolean;
@@ -70,7 +75,7 @@ export type QaCleanupGate =
  * existe"). Autenticación administrativa ausente o inválida → 403.
  */
 export function evaluateQaCleanupGate(input: QaCleanupGateInput): QaCleanupGate {
-  if (input.vercelEnv !== 'preview') {
+  if (input.environment !== 'preview' && input.environment !== 'staging') {
     return { ok: false, status: 404, code: 'qa_cleanup_unavailable' };
   }
   if (input.cleanupFlag !== '1') {
@@ -85,7 +90,7 @@ export function evaluateQaCleanupGate(input: QaCleanupGateInput): QaCleanupGate 
 /** Combina el gate con los valores reales del proceso y la petición. */
 export function checkQaCleanupAccess(request: Request): QaCleanupGate {
   return evaluateQaCleanupGate({
-    vercelEnv: process.env.VERCEL_ENV,
+    environment: resolveRuntimeEnvironment().name,
     cleanupFlag: process.env[QA_CLEANUP_ENV],
     adminConfigured: isAdminApiConfigured(),
     adminTokenValid: verifyAdminToken(request.headers.get(ADMIN_TOKEN_HEADER)),

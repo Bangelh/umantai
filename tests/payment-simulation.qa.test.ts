@@ -196,7 +196,7 @@ function guardOrder(order: ConfirmOrderState) {
 
 test('gate: Production queda bloqueado (404) incluso con flag y admin válidos', () => {
   const result = evaluatePaymentSimulationGate({
-    vercelEnv: 'production',
+    environment: 'production',
     simulationFlag: '1',
     adminConfigured: true,
     adminTokenValid: true,
@@ -207,7 +207,7 @@ test('gate: Production queda bloqueado (404) incluso con flag y admin válidos',
 test('gate: Preview sin MP_PAYMENT_SIMULATION=1 queda bloqueado (404)', () => {
   for (const flag of [undefined, '', '0', 'true', 'yes']) {
     const result = evaluatePaymentSimulationGate({
-      vercelEnv: 'preview',
+      environment: 'preview',
       simulationFlag: flag,
       adminConfigured: true,
       adminTokenValid: true,
@@ -216,9 +216,9 @@ test('gate: Preview sin MP_PAYMENT_SIMULATION=1 queda bloqueado (404)', () => {
   }
 });
 
-test('gate: fuera de Vercel (VERCEL_ENV ausente) queda bloqueado (404)', () => {
+test('gate: desarrollo local (sin entorno preview/staging) queda bloqueado (404)', () => {
   const result = evaluatePaymentSimulationGate({
-    vercelEnv: undefined,
+    environment: 'development',
     simulationFlag: '1',
     adminConfigured: true,
     adminTokenValid: true,
@@ -226,9 +226,19 @@ test('gate: fuera de Vercel (VERCEL_ENV ausente) queda bloqueado (404)', () => {
   assert.deepEqual(result, { ok: false, status: 404, code: 'simulation_unavailable' });
 });
 
+test('gate: Railway staging con flag y admin válidos SÍ se permite', () => {
+  const result = evaluatePaymentSimulationGate({
+    environment: 'staging',
+    simulationFlag: '1',
+    adminConfigured: true,
+    adminTokenValid: true,
+  });
+  assert.deepEqual(result, { ok: true });
+});
+
 test('gate: Preview con flag pero sin autenticación administrativa queda bloqueado (403)', () => {
   const noConfig = evaluatePaymentSimulationGate({
-    vercelEnv: 'preview',
+    environment: 'preview',
     simulationFlag: '1',
     adminConfigured: false,
     adminTokenValid: false,
@@ -236,7 +246,7 @@ test('gate: Preview con flag pero sin autenticación administrativa queda bloque
   assert.deepEqual(noConfig, { ok: false, status: 403, code: 'simulation_forbidden' });
 
   const badToken = evaluatePaymentSimulationGate({
-    vercelEnv: 'preview',
+    environment: 'preview',
     simulationFlag: '1',
     adminConfigured: true,
     adminTokenValid: false,
@@ -244,9 +254,9 @@ test('gate: Preview con flag pero sin autenticación administrativa queda bloque
   assert.deepEqual(badToken, { ok: false, status: 403, code: 'simulation_forbidden' });
 });
 
-test('gate: Preview + flag=1 + admin válido es el ÚNICO caso permitido', () => {
+test('gate: Preview + flag=1 + admin válido es un caso permitido', () => {
   const result = evaluatePaymentSimulationGate({
-    vercelEnv: 'preview',
+    environment: 'preview',
     simulationFlag: '1',
     adminConfigured: true,
     adminTokenValid: true,
@@ -259,6 +269,24 @@ test('gate: Preview + flag=1 + admin válido es el ÚNICO caso permitido', () =>
 test('ruta: Producción responde 404 aunque manden flag y token válidos', async () => {
   await withEnv(
     { VERCEL_ENV: 'production', [MP_PAYMENT_SIMULATION_ENV]: '1', ADMIN_API_SECRET: ADMIN_SECRET },
+    async () => {
+      const response = await simulateRoute(
+        simulateRequest({ orderId: ORDER_ID }, ADMIN_SECRET),
+      );
+      assert.equal(response.status, 404);
+      assert.equal((await response.json()).code, 'simulation_unavailable');
+    },
+  );
+});
+
+test('ruta: APP_ENV=production gana sobre VERCEL_ENV=preview → 404', async () => {
+  await withEnv(
+    {
+      VERCEL_ENV: 'preview',
+      APP_ENV: 'production',
+      [MP_PAYMENT_SIMULATION_ENV]: '1',
+      ADMIN_API_SECRET: ADMIN_SECRET,
+    },
     async () => {
       const response = await simulateRoute(
         simulateRequest({ orderId: ORDER_ID }, ADMIN_SECRET),
