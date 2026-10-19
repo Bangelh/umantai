@@ -105,6 +105,27 @@ comercial. HEAD incluye, entre otros:
 **No se puede asumir** que el esquema de Production coincida con el de
 `.env.local` (QA/Preview), que tiene 001–003 y **no** tiene 004–007.
 
+### 8.1 Confirmación de la auditoría read-only (2026-10-19)
+
+La auditoría **sí se ejecutó** con el script `scripts/audit-schema.ts`
+(`BEGIN READ ONLY`) usando la sesión autenticada de Vercel y las variables
+`encrypted` legibles de la integración (las `sensitive` no se pueden leer).
+Artefacto versionado: `audit-production.json`.
+
+| Dato | Producción (ambas DBs candidatas) |
+|---|---|
+| Fingerprint | `sha256:78289625e1c5704217abe529568ee0ae43dab99c42dc1e9af0a3756e0549d5b4` |
+| Tablas / funciones / triggers | **0 / 0 / 0** |
+| Columnas / constraints / índices | **0 / 0 / 0** |
+| Migraciones 001–007 | todas **FALTA** |
+| Conteos | ninguno (no hay tablas) |
+
+Por eso **no se generó un dump de Producción**: un `pg_dump` custom +
+schema-only de una base sin objetos sólo produce un archivo vacío y no existe
+una conexión productiva confirmada (la variable sensible no es legible). El
+drill de backup/restore se hizo sobre la única base poblada: QA → `umantai_verify`
+(ver `STAGING_RAILWAY.md` §3).
+
 ## 6. Bloqueo de Fase 3 (auditar DB de Production)
 
 Para ejecutar `scripts/audit-schema.ts` contra Production hace falta **una** de

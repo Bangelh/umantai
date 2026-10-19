@@ -4,9 +4,10 @@
 **Entorno:** `staging` (`c19f1bca-5aba-4eaf-8117-20761a6e9d37`) — el entorno
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
-**Commit desplegado:** build de `c96e9dd` (rama `feat/railway-staging`). Los
-commits posteriores tocan tests, scripts, docs y tipos de `lib/env.ts`; no
-cambian el comportamiento del runtime desplegado.
+**Commit desplegado:** `d5042b4ec6263f09239de6749b3f7be54a2ed6e7`
+(`feat/railway-staging`), verificado en `/api/health` → `commit`.
+El SHA se inyecta como `GIT_COMMIT_SHA` antes de cada `railway up`, porque el
+deploy por archivo no lo expone.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
@@ -19,7 +20,7 @@ cambian el comportamiento del runtime desplegado.
 | `web` | App Next.js 16, builder Nixpacks, Node 22, healthcheck `/api/health` |
 | `Postgres17` | **PostgreSQL 17.11**, imagen `postgres:17`, volumen `postgres17-volume` montado en `/var/lib/postgresql/data` |
 | `cron` | Mismo repo, `buildCommand=echo cron: no build required` (no compila Next), `startCommand=node scripts/trigger-expire-reservations.mjs`, schedule `*/15 * * * *` |
-| `Postgres` | PostgreSQL 18 creado por la template por defecto; quedó **sin uso** (no se borra sin aprobación) |
+| `Postgres` | PostgreSQL 18 creado por la template por defecto. **Ningún servicio lo referencia**, pero contiene copias de QA (`railway` y `umantai_restore_drill`). No se borra sin aprobación |
 
 Variables del `web` (sin valores): `APP_ENV=staging`, `DB_DRIVER=pg`,
 `PGPOOL_MAX=10`, `COMMERCE_RESERVATION_TTL_MINUTES=30`, `PAYLOAD_SECRET`,
@@ -86,13 +87,33 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 - Ejecución real del servicio `cron` (`railway cron run`): `EXITED` en 6 s con
   `[cron] ok {"ok":true,"expiredOrders":0}`. Programado cada 15 min.
 - Headers: `x-content-type-options`, `x-frame-options`, `x-xss-protection`.
-- Integración real contra `umantai_integration` (Railway PG17):
-  **8/8 tests**.
+- Integración real contra un **clon de la base staging** (`umantai_drill_20261019`,
+  creado con `pg_dump | pg_restore` dentro del contenedor PG17): **8/8 tests**.
+  Fingerprint del clon después de los tests:
+  `sha256:45b59079…` (idéntico a staging); 001–007 `OK`.
+  Artefacto: `audit-drill-clone.json`.
+- `GET /api/notes` con token admin → **503** `Supabase is not configured`
+  (degradación esperada, ya no rompe el build).
+
+### 5.1 Evidencia del deploy d5042b4 (2026-10-19)
+
+- Auditoría READ ONLY de `railway` post-deploy: fingerprint
+  `sha256:45b59079…`; 13 tablas, 16 funciones, 8 triggers, 46 índices,
+  53 constraints; 001–007 `OK`. Artefacto: `audit-railway-current.json`.
+- Conteos: `orders=15`, `order_items=15`, `inventory=49`,
+  `inventory_movements=79`, `order_status_history=26`, `pickup_codes=4`,
+  `pickup_attempts=5`, `payment_webhook_events=1`.
+- Secuencias: `order_number_seq=1017`, `inventory_movements_id_seq=79`,
+  `order_status_history_id_seq=26`, `pickup_attempts_id_seq=5`.
+- Restore drill original: `umantai_verify` conserva el fingerprint
+  `sha256:bea7529f…` (idéntico a QA), 12 tablas, 14 pedidos y las mismas
+  secuencias (74 / 1016 / 22 / 5). Artefacto: `audit-umantai_verify-current.json`.
 
 ## 6. Pendiente / riesgos
 
 - La template `--database postgres` creó **PG18**; se agregó un `Postgres17`
-  aparte. El servicio PG18 sigue existiendo sin uso (no se borra sin aprobación).
+  aparte. El PG18 no lo referencia ningún servicio, pero guarda copias de QA y
+  un drill de restore (ver `INFRASTRUCTURE_FOUNDATION.md` §7). No se borra.
 - El cron se configuró vía API de Railway (`serviceInstanceUpdate`). El primer
   build falló porque compilaba la app completa sin `PAYLOAD_SECRET`; se fijó un
   `buildCommand` no-op y se verificó una ejecución real.
