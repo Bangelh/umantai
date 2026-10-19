@@ -16,8 +16,10 @@ import {
   createOrder,
   expireStaleOrders,
   getOrderByPublicToken,
+  getVariantAvailability,
   isCommerceDbConfigured,
 } from '@/lib/commerce.server';
+import { buildStockConflictResponse, findStockShortages } from '@/lib/stock-conflict';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -92,6 +94,30 @@ function asTrimmedString(value: unknown): string | null {
 }
 
 /** Imagen de la línea: override de /admin si existe, si no la del catálogo base. */
+/**
+ * Lee disponibilidad REAL de los SKU del carrito y devuelve solo los cortos.
+ * Un fallo de lectura NO bloquea la compra: el motor transaccional sigue siendo
+ * la autoridad y devolverá su propio 409.
+ */
+async function findShortages(lines: CreateOrderLineInput[]) {
+  try {
+    const slugs = [...new Set(lines.map((line) => line.productSlug))];
+    const availability = await getVariantAvailability(slugs);
+    return findStockShortages(
+      lines.map((line) => ({
+        productSlug: line.productSlug,
+        productName: line.productName,
+        variantKey: line.variantKey ?? '',
+        quantity: line.quantity,
+      })),
+      availability,
+    );
+  } catch (error) {
+    console.error('POST /api/orders: no se pudo pre-validar stock', error);
+    return [];
+  }
+}
+
 function pickImage(override: Record<string, unknown>, base: Product): string | null {
   const overrideImages = override.images;
   if (Array.isArray(overrideImages) && typeof overrideImages[0] === 'string') {
@@ -191,6 +217,19 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  // ── Validación de stock FRESCA antes de crear el pedido ─────────────────────
+  // El carrito muestra el stock de cuando se agregó el producto; para cuando el
+  // comprador confirma, otro checkout pudo llevarse las últimas unidades. Acá se
+  // lee `inventory` de nuevo y se responde con el DETALLE por SKU. La autoridad
+  // final sigue siendo la reserva transaccional de `createOrder()`.
+  const shortages = await findShortages(lines);
+  if (shortages.length > 0) {
+    return NextResponse.json(
+      buildStockConflictResponse(COMMERCE_ERROR_MESSAGES.insufficient_stock, shortages),
+      { status: 409 },
+    );
+  }
+
   // ── Metadata: datos del invitado + DNI para Mercado Pago ────────────────────
   // El pedido invitado no crea fila en `customers`; guardamos el snapshot de contacto
   // y el documento aquí. Fase 2 puede promoverlo a cliente registrado.
@@ -259,9 +298,11 @@ export async function POST(request: NextRequest) {
 
     if (code === 'insufficient_stock') {
       // 409 Conflict: el carrito es válido, pero el stock cambió bajo los pies
-      // del comprador. El cliente debe re-leer disponibilidad y reintentar.
+      // del comprador (carrera entre la pre-validación y la reserva). Se vuelve a
+      // leer para decir QUÉ SKU falta; si la lectura falla, el 409 igual sale.
+      const racedShortages = await findShortages(lines).catch(() => []);
       return NextResponse.json(
-        { error: COMMERCE_ERROR_MESSAGES[code], code },
+        buildStockConflictResponse(COMMERCE_ERROR_MESSAGES[code], racedShortages),
         { status: 409 },
       );
     }
