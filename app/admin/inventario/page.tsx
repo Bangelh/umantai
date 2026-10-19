@@ -16,6 +16,7 @@ import { InventoryTable } from './components/InventoryTable';
 import { ReceiptForm } from './components/ReceiptForm';
 import { AdjustmentForm } from './components/AdjustmentForm';
 import { MovementsPanel } from './components/MovementsPanel';
+import { AdminNav } from '../components/AdminNav';
 
 type Tab = 'inventario' | 'movimientos';
 
@@ -198,10 +199,11 @@ export default function InventoryAdminPage() {
             >
               {loading ? 'Actualizando…' : 'Actualizar'}
             </button>
-            <Link href="/admin" className="text-sm text-white/70 hover:text-white">
-              Panel →
-            </Link>
           </div>
+        </div>
+
+        <div className="mt-4">
+          <AdminNav />
         </div>
 
         <div className="mt-6 flex gap-2 border-b border-white/10" role="tablist" aria-label="Secciones de inventario">
