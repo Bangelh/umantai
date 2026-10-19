@@ -78,5 +78,10 @@ La comparación válida contra Producción/staging se hará con el mismo comando
 - [x] 004–007 analizadas y aplicadas en un PostgreSQL 17 efímero.
 - [x] Fingerprint antes/después por migración.
 - [x] Integración funcional 8/8 después de 007.
-- [ ] Aplicarlas en Railway staging (bloqueado: falta autenticación de Railway).
-- [ ] Aplicarlas en Producción (fuera de alcance; requiere cutover autorizado).
+- [x] **Aplicadas en Railway staging (PostgreSQL 17.11)** una por una, con
+  `ON_ERROR_STOP` y verificación de marcadores. Fingerprint post-migraciones:
+  `sha256:45b59079…`; integración 8/8 contra `umantai_integration`.
+- [ ] Producción: fuera de alcance; requiere cutover autorizado (y hoy no tiene
+  esquema comercial).
+
+Detalle del entorno: `STAGING_RAILWAY.md`.

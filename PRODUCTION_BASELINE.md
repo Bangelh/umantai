@@ -127,25 +127,56 @@ según el plan, posiblemente tarjeta. **No se creó ningún recurso.**
 Tampoco hay una DB de origen confirmada como productiva, así que **no se hizo
 dump** (regla explícita de la Fase 5).
 
-## 8. Verificación adicional (2026-10-19, GitHub Deployments — solo lectura)
+## 8. Producción verificada (2026-10-19, Vercel CLI autenticado)
 
-La API pública de GitHub sí expone los deployments que crea la integración de
-Vercel. Se consultaron sin credenciales y **sin modificar nada**:
+| Dato | Valor |
+|---|---|
+| Proyecto Vercel | `umantai` (`prj_aor2ZwfDnr2JjlQ0iUBrj5L14J4q`) |
+| Deployment ID | `dpl_9bdZFe4iUqiutjrfNziUHCw9qRi4` |
+| Target | `production` · estado `Ready` |
+| Creado | **2026-10-15 20:43:36 UTC** |
+| Commit | **`c402b97`** (`ui(db-status): use amber inline '⚠️ Connection pooler detected' badge…`) |
+| Rama | **`main`** |
+| Repo / org | `Bangelh/umantai` |
+| `gitDirty` | `1` (deploy manual desde un árbol con cambios sin commitear) |
+| URL / aliases | `umantai-486zx62tz-umantai.vercel.app` · `umantai.com`, `www.umantai.com`, `umantai.vercel.app` |
 
-- Los últimos **100 deployments son todos `Preview`** (no hay ninguno etiquetado
-  `Production`). Vercel no publica el deployment productivo en GitHub, así que el
-  commit/ID de Producción sigue **NO VERIFICADO**.
-- Hay **varios proyectos Vercel** conectados al mismo repo (`umantai`,
-  `umantai01`, `umantai-dh4a`, `umantai-72m4`, `umantai-5fhy`,
-  `my-prisma-postgres-app`). Cada push genera un preview por proyecto.
-- El commit de esta rama `18bc710` compiló correctamente en al menos dos previews
-  (`umantai01` y `umantai`), lo que confirma que el build portable funciona en
-  Vercel además de en CI.
-- Un tercer proyecto (`umantai-dh4a`) falló en el mismo SHA. Es una diferencia de
-  configuración de ESE proyecto (probablemente variables ausentes), no del código.
-- Los previews están protegidos por Vercel Authentication (302 a SSO), así que
-  `/api/health` no se pudo consultar desde fuera sin sesión. No se intentó evadir
-  la protección.
+### Variables presentes (solo nombres)
 
-**Conclusión:** Producción sigue bloqueada para auditoría (falta sesión/token de
-Vercel). El baseline de código y el build de la rama quedan verificados.
+El pull de Production devolvió **70 variables**. Las relevantes para el runtime:
+
+- DB: `POSTGRES_URL_NON_POOLING` (sensitive, production), `DATABASE_URL` (sensitive),
+  `UMANTAI_URL_POSTGRES_URL*`, `UMANTAI_URL_DATABASE_URL`, `STORAGE_URL_POSTGRES_*`.
+- Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (sensitive).
+- Storage: `R2_*`, `STORAGE_URL_*`.
+- Entorno/build: `VERCEL_*`, `TURBO_*`, `NX_DAEMON`.
+
+**29 variables son `sensitive`**: Vercel no permite leer su valor por CLI ni por
+API (`decrypt=true` devuelve vacío). `POSTGRES_URL_NON_POOLING` es una de ellas,
+así que **no se puede demostrar criptográficamente** a qué host apunta el código
+productivo. Sí se pudieron leer las variables `encrypted` de la misma integración:
+
+| Alias legible (encrypted) | Host | Tablas en `public` |
+|---|---|---|
+| `UMANTAI_URL_POSTGRES_URL` (= `…_DATABASE_URL` = `…_PRISMA_DATABASE_URL`) | `db.prisma.io` / `postgres` | **0** |
+| `STORAGE_URL_POSTGRES_URL_NON_POOLING` | `aws.neon.tech` / `neondb` | **0** |
+
+Ambas bases se auditaron en `READ ONLY`: **0 tablas, 0 funciones, 0 triggers**,
+fingerprint `sha256:78289625…`. Artefacto: `audit-production.json`.
+
+### Evidencia funcional
+
+- `GET https://umantai.com/api/categories` (vía `vercel curl`, autenticado) →
+  `{"success":false,"error":"Error connecting to database: TypeError: fetch failed"}`.
+- `GET /api/catalog/availability` → **404**: el deployment productivo es anterior a
+  esa ruta. `/api/health` tampoco existe en Producción.
+- Todo el dominio responde detrás de **Vercel Deployment Protection** (302 a SSO).
+
+### Conclusión
+
+Producción **no tiene el esquema comercial ni datos**: es un deployment viejo
+(commit de junio) con una base vacía/inaccesible. No hay datos productivos que
+copiar. La única base poblada es la de QA/Preview de `.env.local`
+(fingerprint `sha256:bea7529f…`, 12 tablas, 14 pedidos), que se usó como **origen
+verificado del restore de staging**. Ver `STAGING_RAILWAY.md`.

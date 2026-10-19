@@ -1,7 +1,9 @@
-# Railway staging — configuración preparada (NO ejecutada)
+# Railway staging — configuración de referencia
 
-**Estado:** preparado, **sin crear servicios, sin desplegar, sin copiar la base y sin DNS**.
-**Fecha:** 2026-10-19 · **Commit congelado:** `408a8f5` · **Tag:** `pre-railway-2026-10-19`
+**Estado:** **EJECUTADA el 2026-10-19**. Este documento conserva el diseño y las
+variables; el estado real (URL, servicios, restore y pruebas) está en
+`STAGING_RAILWAY.md`.
+**Fecha de diseño:** 2026-10-19 · **Commit congelado:** `408a8f5` · **Tag:** `pre-railway-2026-10-19`
 
 > Este documento describe cómo se creará el entorno **cuando se autorice la Fase E**.
 > Nada de lo que figura acá se ejecutó. Producción (Vercel + Neon) permanece intacta.
