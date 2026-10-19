@@ -127,6 +127,12 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
   - `POST /api/orders` → 201 (`UM-2026-001018`), reserva 1/66 disponibles;
     expiración forzada + cron → reserva liberada (0/67) y pedido `expired`.
 - `/admin/inventario`, `/cart` y `/products` responden 200.
+- Confirmación de compra muestra subtotal y total; verificado en el bundle
+  desplegado (`app/cart/page-*.js` contiene la fila `Subtotal`).
+- Nota: `/api/health` toma `commit` de `RAILWAY_GIT_COMMIT_SHA`, que solo
+  actualiza el deploy disparado por GitHub. Con `railway up` ese SHA puede quedar
+  desactualizado aunque el build sí sea el último; para comprobar el contenido,
+  mirar el bundle o el deployment `SUCCESS` más reciente.
 
 ## 6. Pendiente / riesgos
 
