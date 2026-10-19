@@ -40,8 +40,10 @@ tuvo reintento exitoso.
    ```
    En Vercel: deshabilitar el cron job del proyecto (Project → Settings → Cron Jobs).
 2. **Bajar la app de escritura**:
-   - Railway: `railway down --service web --environment <env> --yes` (deja de
-     servir; el volumen y la DB NO se tocan) o escalar a 0 réplicas.
+   - Railway: escalar el servicio `web` a **0 réplicas** desde el dashboard
+     (Service → Settings → Scale). El volumen y la DB NO se tocan.
+     **No usar `railway down`**: ese comando *elimina* el deployment actual; es
+     reversible con un redeploy, pero no es la forma de pausar el servicio.
    - Vercel: pausar el proyecto o aplicar Instant Rollback (paso 3) antes de
      seguir aceptando tráfico.
 3. **Modo read-only de la base** (sólo si la app sigue arriba y hay riesgo de
@@ -105,7 +107,9 @@ tuvo reintento exitoso.
   contra la DB actual.
 - Las variables de entorno son del servicio/entorno, no del deployment: un
   cambio de variables requiere redeploy para tomar efecto.
-- Un `railway down` detiene el servicio, pero **no** borra el volumen ni la DB.
+- Escalar a 0 detiene el servicio, pero **no** borra el volumen ni la DB.
+- `railway down` **elimina** el deployment más reciente (no es un pause);
+  evitarlo durante un rollback salvo que se quiera apagar el servicio.
 
 ---
 

@@ -79,8 +79,8 @@ que copiar ni un dump productivo que hacer. El dump de Producción se marca
 |---|---|---|---:|---:|---:|---:|---:|
 | Producción | auditada | `78289625…` | 0 | 0 | 0 | 0 | 0 |
 | QA `.env.local` | origen | `bea7529f…` | 12 | 16 | 8 | 43 | 52 |
-| `umantai_verify` | restore del backup | `bea7529f…` | 12 | 16 | 8 | 43 | 52 |
-| Staging `railway` | pre-004–007 | `bea7529f…` | 12 | 16 | 8 | 43 | 52 |
+| `umantai_verify` | restore del backup / copia pre-004–007 | `bea7529f…` | 12 | 16 | 8 | 43 | 52 |
+| Staging `railway` | antes de 004–007 (misma copia restaurada) | `bea7529f…` | 12 | 16 | 8 | 43 | 52 |
 | Staging `railway` | post-004–007 | `45b59079…` | 13 | 16 | 8 | 46 | 53 |
 | `umantai_drill_20261019` | clon real + tests | `45b59079…` | 13 | 16 | 8 | 46 | 53 |
 
@@ -141,7 +141,8 @@ redeem_pickup_code_verified      dup=f review=t prior=f
 inventory_release_order          dup=f review=f prior=t
 ```
 
-Fingerprint antes `bea7529f…` → después `45b59079…` (+1 tabla, +25 columnas,
+Fingerprint de la copia restaurada antes `bea7529f…` → después `45b59079…` en
+`railway` (+1 tabla, +25 columnas,
 +3 índices, +1 constraint; funciones/triggers sin cambios de conteo).
 
 ### Escenarios funcionales
