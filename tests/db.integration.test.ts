@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 
 import { closeDbPools } from '../lib/db-driver.server';
-import { startEmbeddedPostgres, type EmbeddedTestDatabase } from './helpers/embedded-postgres';
+import { startTestDatabase, type EmbeddedTestDatabase } from './helpers/embedded-postgres';
 
 type Commerce = typeof import('../lib/commerce.server');
 type Confirmation = typeof import('../lib/payment-confirmation.server');
@@ -28,11 +28,12 @@ let confirmation: Confirmation;
 // =============================================================================
 
 before(async () => {
-  database = await startEmbeddedPostgres();
+  database = await startTestDatabase();
 
   // Debe quedar ANTES de importar lib/env.ts / commerce.server.ts.
   process.env.DB_DRIVER = 'pg';
   process.env.POSTGRES_URL_NON_POOLING = database.url;
+  if (database.external) console.info('[integration] usando INTEGRATION_DATABASE_URL (staging/test DB)');
   process.env.APP_ENV = 'test';
   delete process.env.VERCEL_ENV;
   delete process.env.RESEND_API_KEY;

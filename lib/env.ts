@@ -5,6 +5,8 @@
  * transitive-only dependency issues after GitHub org migration (OceanSide26 → Bangelh).
  */
 
+import { resolveRuntimeEnvironment } from './runtime-environment.server';
+
 // Supported prefixes from Vercel Supabase/Postgres integrations
 // Current: BANGELH_* (Bangelh), UMANTAI_URL_* / UMANTAI_* (umantai vercel project e.g. umantai-dh4a-*-umantai.vercel.app)
 const VERCEL_ENV_PREFIXES = ['BANGELH_', 'UMANTAI_URL_', 'UMANTAI_'] as const;
@@ -141,7 +143,9 @@ export function isVercelPreview(): boolean {
 // === Environment Validation & Startup Logging ===
 
 function validateEnvironment() {
-  const isProd = envConfig.vercel.isProduction;
+  // APP_ENV manda (Railway, contenedores). En Vercel sin APP_ENV se mantiene
+  // el comportamiento histórico basado en VERCEL_ENV.
+  const isProd = resolveRuntimeEnvironment().isProduction;
   const missing: string[] = [];
 
   // Critical for most functionality

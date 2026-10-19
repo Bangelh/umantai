@@ -33,9 +33,26 @@ const MIGRATIONS = [
 ] as const;
 
 export interface EmbeddedTestDatabase {
-  /** URL local efímera. Nunca apunta a un servicio externo. */
+  /** URL de la base de test (efímera local o staging externo explícito). */
   url: string;
+  /** `true` cuando la URL vino de `INTEGRATION_DATABASE_URL` (staging/test DB). */
+  external?: boolean;
   stop(): Promise<void>;
+}
+
+/**
+ * Base para los tests de integración.
+ *
+ * - Sin `INTEGRATION_DATABASE_URL`: cluster efímero local (default seguro).
+ * - Con `INTEGRATION_DATABASE_URL`: usa ESA base (staging/test DB) y NO aplica
+ *   migraciones. Pensado para Railway staging; nunca para Producción.
+ */
+export async function startTestDatabase(): Promise<EmbeddedTestDatabase> {
+  const external = (process.env.INTEGRATION_DATABASE_URL ?? '').trim();
+  if (external) {
+    return { url: external, external: true, stop: async () => undefined };
+  }
+  return startEmbeddedPostgres();
 }
 
 export async function startEmbeddedPostgres(): Promise<EmbeddedTestDatabase> {
