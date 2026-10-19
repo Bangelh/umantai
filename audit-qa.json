@@ -1,0 +1,2094 @@
+{
+  "target": "postgresql://<redacted>/neondb",
+  "fingerprint": "sha256:bea7529f6fca4a84177bf4fc6269e47948f569785fea6d15c665a07674064cb8",
+  "snapshot": {
+    "serverVersion": "PostgreSQL 17.11 (59c914d) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+    "database": "neondb",
+    "tables": [
+      {
+        "name": "brands",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "categories",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "customers",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "inventory",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "inventory_movements",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "order_items",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "order_status_history",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "order_status_transitions",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "orders",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "pickup_attempts",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "pickup_codes",
+        "type": "BASE TABLE"
+      },
+      {
+        "name": "product_overrides",
+        "type": "BASE TABLE"
+      }
+    ],
+    "columns": [
+      {
+        "table": "brands",
+        "column": "id",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "nextval('brands_id_seq'::regclass)",
+        "generated": false
+      },
+      {
+        "table": "brands",
+        "column": "name",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "brands",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "brands",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "id",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "nextval('categories_id_seq'::regclass)",
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "name",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "slug",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "parent_id",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "level",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "sort_order",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": true,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "categories",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "email",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "phone",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "full_name",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "doc_type",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "doc_number",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "auth_user_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "default_address",
+        "dataType": "jsonb",
+        "udtName": "jsonb",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "marketing_opt_in",
+        "dataType": "boolean",
+        "udtName": "bool",
+        "nullable": false,
+        "default": "false",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "total_orders",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "total_spent",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "notes",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "customers",
+        "column": "deleted_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "location_code",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": "'MAIN'::text",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "product_slug",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "variant_key",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": "''::text",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "quantity_on_hand",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "quantity_reserved",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "reorder_point",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "restock_eta",
+        "dataType": "date",
+        "udtName": "date",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "is_active",
+        "dataType": "boolean",
+        "udtName": "bool",
+        "nullable": false,
+        "default": "true",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "inventory",
+        "column": "quantity_available",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": true,
+        "default": null,
+        "generated": true
+      },
+      {
+        "table": "inventory_movements",
+        "column": "id",
+        "dataType": "bigint",
+        "udtName": "int8",
+        "nullable": false,
+        "default": "nextval('inventory_movements_id_seq'::regclass)",
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "inventory_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "order_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "order_item_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "movement_type",
+        "dataType": "USER-DEFINED",
+        "udtName": "inventory_movement_type",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "on_hand_delta",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "reserved_delta",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "on_hand_after",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "reserved_after",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "reason",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "performed_by",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "idempotency_key",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "inventory_movements",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "order_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "line_number",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "product_slug",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "product_name",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "product_brand",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "image_url",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "variant_key",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": "''::text",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "variant",
+        "dataType": "jsonb",
+        "udtName": "jsonb",
+        "nullable": false,
+        "default": "'{}'::jsonb",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "quantity",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "unit_price",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "discount_amount",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "tax_amount",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "line_total",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "order_items",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "id",
+        "dataType": "bigint",
+        "udtName": "int8",
+        "nullable": false,
+        "default": "nextval('order_status_history_id_seq'::regclass)",
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "order_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "from_status",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_status",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "to_status",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_status",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "changed_by",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "reason",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_history",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "order_status_transitions",
+        "column": "from_status",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_status",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_transitions",
+        "column": "to_status",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_status",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_transitions",
+        "column": "requires_role",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_transitions",
+        "column": "description",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "order_status_transitions",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "order_number",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": "((('UM-'::text || to_char(now(), 'YYYY'::text)) || '-'::text) || lpad((nextval('order_number_seq'::regclass))::text, 6, '0'::text))",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "public_token",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "idempotency_key",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "customer_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "contact_email",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "contact_phone",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "channel",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_channel",
+        "nullable": false,
+        "default": "'web'::order_channel",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "fulfillment_type",
+        "dataType": "USER-DEFINED",
+        "udtName": "fulfillment_type",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "locker_code",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "status",
+        "dataType": "USER-DEFINED",
+        "udtName": "order_status",
+        "nullable": false,
+        "default": "'pending_payment'::order_status",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "payment_status",
+        "dataType": "USER-DEFINED",
+        "udtName": "payment_status",
+        "nullable": false,
+        "default": "'pending'::payment_status",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "payment_method",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "payment_reference",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "currency",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": "'PEN'::text",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "subtotal",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "discount_total",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "tax_total",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "shipping_total",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "total",
+        "dataType": "numeric",
+        "udtName": "numeric",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "item_count",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "shipping_address",
+        "dataType": "jsonb",
+        "udtName": "jsonb",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "pickup_instructions",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "customer_note",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "reservation_expires_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "reservation_released",
+        "dataType": "boolean",
+        "udtName": "bool",
+        "nullable": false,
+        "default": "false",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "confirmed_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "ready_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "picked_up_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "delivered_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "cancelled_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "cancelled_reason",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "metadata",
+        "dataType": "jsonb",
+        "udtName": "jsonb",
+        "nullable": false,
+        "default": "'{}'::jsonb",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "version",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "orders",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "id",
+        "dataType": "bigint",
+        "udtName": "int8",
+        "nullable": false,
+        "default": "nextval('pickup_attempts_id_seq'::regclass)",
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "code_attempt",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "outcome",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "device_id",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "ip",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_attempts",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": "gen_random_uuid()",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "order_id",
+        "dataType": "uuid",
+        "udtName": "uuid",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "code",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "locker_code",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "locker_slot",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "status",
+        "dataType": "USER-DEFINED",
+        "udtName": "pickup_code_status",
+        "nullable": false,
+        "default": "'issued'::pickup_code_status",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "max_attempts",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "5",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "attempts",
+        "dataType": "integer",
+        "udtName": "int4",
+        "nullable": false,
+        "default": "0",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "expires_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "redeemed_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "redeemed_by",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "revoked_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "revocation_reason",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": true,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "created_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "pickup_codes",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": false,
+        "default": "now()",
+        "generated": false
+      },
+      {
+        "table": "product_overrides",
+        "column": "slug",
+        "dataType": "text",
+        "udtName": "text",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "product_overrides",
+        "column": "data",
+        "dataType": "jsonb",
+        "udtName": "jsonb",
+        "nullable": false,
+        "default": null,
+        "generated": false
+      },
+      {
+        "table": "product_overrides",
+        "column": "updated_at",
+        "dataType": "timestamp with time zone",
+        "udtName": "timestamptz",
+        "nullable": true,
+        "default": "now()",
+        "generated": false
+      }
+    ],
+    "constraints": [
+      {
+        "table": "brands",
+        "name": "brands_name_key",
+        "type": "u",
+        "definition": "UNIQUE (name)"
+      },
+      {
+        "table": "brands",
+        "name": "brands_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "categories",
+        "name": "categories_parent_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "categories",
+        "name": "categories_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "customers",
+        "name": "customers_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "customers",
+        "name": "customers_total_orders_check",
+        "type": "c",
+        "definition": "CHECK ((total_orders >= 0))"
+      },
+      {
+        "table": "customers",
+        "name": "customers_total_spent_check",
+        "type": "c",
+        "definition": "CHECK ((total_spent >= (0)::numeric))"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_no_oversell_chk",
+        "type": "c",
+        "definition": "CHECK ((quantity_reserved <= quantity_on_hand))"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_quantity_on_hand_check",
+        "type": "c",
+        "definition": "CHECK ((quantity_on_hand >= 0))"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_quantity_reserved_check",
+        "type": "c",
+        "definition": "CHECK ((quantity_reserved >= 0))"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_reorder_point_check",
+        "type": "c",
+        "definition": "CHECK ((reorder_point >= 0))"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_sku_unique",
+        "type": "u",
+        "definition": "UNIQUE (location_code, product_slug, variant_key)"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_balance_chk",
+        "type": "c",
+        "definition": "CHECK (((on_hand_after >= 0) AND (reserved_after >= 0) AND (reserved_after <= on_hand_after)))"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_delta_chk",
+        "type": "c",
+        "definition": "CHECK (((on_hand_delta <> 0) OR (reserved_delta <> 0)))"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_inventory_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (inventory_id) REFERENCES inventory(id) ON DELETE RESTRICT"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_order_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_order_item_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE RESTRICT"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_discount_amount_check",
+        "type": "c",
+        "definition": "CHECK ((discount_amount >= (0)::numeric))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_line_number_check",
+        "type": "c",
+        "definition": "CHECK ((line_number > 0))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_line_total_check",
+        "type": "c",
+        "definition": "CHECK ((line_total >= (0)::numeric))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_line_total_chk",
+        "type": "c",
+        "definition": "CHECK ((line_total = round(((((quantity)::numeric * unit_price) - discount_amount) + tax_amount), 2)))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_order_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_quantity_check",
+        "type": "c",
+        "definition": "CHECK ((quantity > 0))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_tax_amount_check",
+        "type": "c",
+        "definition": "CHECK ((tax_amount >= (0)::numeric))"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_unique_line",
+        "type": "u",
+        "definition": "UNIQUE (order_id, line_number)"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_unit_price_check",
+        "type": "c",
+        "definition": "CHECK ((unit_price >= (0)::numeric))"
+      },
+      {
+        "table": "order_status_history",
+        "name": "order_status_history_order_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "order_status_history",
+        "name": "order_status_history_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "order_status_transitions",
+        "name": "order_status_transitions_no_self",
+        "type": "c",
+        "definition": "CHECK ((from_status <> to_status))"
+      },
+      {
+        "table": "order_status_transitions",
+        "name": "order_status_transitions_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (from_status, to_status)"
+      },
+      {
+        "table": "orders",
+        "name": "orders_currency_check",
+        "type": "c",
+        "definition": "CHECK ((currency ~ '^[A-Z]{3}$'::text))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_customer_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL"
+      },
+      {
+        "table": "orders",
+        "name": "orders_discount_total_check",
+        "type": "c",
+        "definition": "CHECK ((discount_total >= (0)::numeric))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_item_count_check",
+        "type": "c",
+        "definition": "CHECK ((item_count >= 0))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_pickup_expiry_chk",
+        "type": "c",
+        "definition": "CHECK (((reservation_expires_at IS NULL) OR (reservation_expires_at > created_at)))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "orders",
+        "name": "orders_shipping_total_check",
+        "type": "c",
+        "definition": "CHECK ((shipping_total >= (0)::numeric))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_subtotal_check",
+        "type": "c",
+        "definition": "CHECK ((subtotal >= (0)::numeric))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_tax_total_check",
+        "type": "c",
+        "definition": "CHECK ((tax_total >= (0)::numeric))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_total_balanced_chk",
+        "type": "c",
+        "definition": "CHECK ((total = (((subtotal - discount_total) + tax_total) + shipping_total)))"
+      },
+      {
+        "table": "orders",
+        "name": "orders_total_check",
+        "type": "c",
+        "definition": "CHECK ((total >= (0)::numeric))"
+      },
+      {
+        "table": "pickup_attempts",
+        "name": "pickup_attempts_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_attempts_check",
+        "type": "c",
+        "definition": "CHECK ((attempts >= 0))"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_format_chk",
+        "type": "c",
+        "definition": "CHECK ((code ~ '^[0-9A-Z]{6,12}$'::text))"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_max_attempts_check",
+        "type": "c",
+        "definition": "CHECK ((max_attempts > 0))"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_order_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_redeemed_chk",
+        "type": "c",
+        "definition": "CHECK ((((status = 'redeemed'::pickup_code_status) AND (redeemed_at IS NOT NULL)) OR (status <> 'redeemed'::pickup_code_status)))"
+      },
+      {
+        "table": "product_overrides",
+        "name": "product_overrides_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (slug)"
+      }
+    ],
+    "indexes": [
+      {
+        "table": "brands",
+        "name": "brands_name_key",
+        "definition": "CREATE UNIQUE INDEX brands_name_key ON public.brands USING btree (name)"
+      },
+      {
+        "table": "brands",
+        "name": "brands_pkey",
+        "definition": "CREATE UNIQUE INDEX brands_pkey ON public.brands USING btree (id)"
+      },
+      {
+        "table": "categories",
+        "name": "categories_pkey",
+        "definition": "CREATE UNIQUE INDEX categories_pkey ON public.categories USING btree (id)"
+      },
+      {
+        "table": "categories",
+        "name": "idx_categories_level",
+        "definition": "CREATE INDEX idx_categories_level ON public.categories USING btree (level)"
+      },
+      {
+        "table": "categories",
+        "name": "idx_categories_parent_id",
+        "definition": "CREATE INDEX idx_categories_parent_id ON public.categories USING btree (parent_id)"
+      },
+      {
+        "table": "customers",
+        "name": "customers_pkey",
+        "definition": "CREATE UNIQUE INDEX customers_pkey ON public.customers USING btree (id)"
+      },
+      {
+        "table": "customers",
+        "name": "idx_customers_phone",
+        "definition": "CREATE INDEX idx_customers_phone ON public.customers USING btree (phone)"
+      },
+      {
+        "table": "customers",
+        "name": "uq_customers_auth_user",
+        "definition": "CREATE UNIQUE INDEX uq_customers_auth_user ON public.customers USING btree (auth_user_id) WHERE (auth_user_id IS NOT NULL)"
+      },
+      {
+        "table": "customers",
+        "name": "uq_customers_email_alive",
+        "definition": "CREATE UNIQUE INDEX uq_customers_email_alive ON public.customers USING btree (lower(email)) WHERE (deleted_at IS NULL)"
+      },
+      {
+        "table": "inventory",
+        "name": "idx_inventory_active_location",
+        "definition": "CREATE INDEX idx_inventory_active_location ON public.inventory USING btree (location_code) WHERE (is_active = true)"
+      },
+      {
+        "table": "inventory",
+        "name": "idx_inventory_product",
+        "definition": "CREATE INDEX idx_inventory_product ON public.inventory USING btree (product_slug, variant_key)"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_pkey",
+        "definition": "CREATE UNIQUE INDEX inventory_pkey ON public.inventory USING btree (id)"
+      },
+      {
+        "table": "inventory",
+        "name": "inventory_sku_unique",
+        "definition": "CREATE UNIQUE INDEX inventory_sku_unique ON public.inventory USING btree (location_code, product_slug, variant_key)"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "idx_inventory_movements_inventory",
+        "definition": "CREATE INDEX idx_inventory_movements_inventory ON public.inventory_movements USING btree (inventory_id, created_at DESC)"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "idx_inventory_movements_order",
+        "definition": "CREATE INDEX idx_inventory_movements_order ON public.inventory_movements USING btree (order_id, created_at DESC)"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "inventory_movements_pkey",
+        "definition": "CREATE UNIQUE INDEX inventory_movements_pkey ON public.inventory_movements USING btree (id)"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "uq_inventory_movements_idempotency",
+        "definition": "CREATE UNIQUE INDEX uq_inventory_movements_idempotency ON public.inventory_movements USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL)"
+      },
+      {
+        "table": "order_items",
+        "name": "idx_order_items_order",
+        "definition": "CREATE INDEX idx_order_items_order ON public.order_items USING btree (order_id)"
+      },
+      {
+        "table": "order_items",
+        "name": "idx_order_items_product",
+        "definition": "CREATE INDEX idx_order_items_product ON public.order_items USING btree (product_slug)"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_pkey",
+        "definition": "CREATE UNIQUE INDEX order_items_pkey ON public.order_items USING btree (id)"
+      },
+      {
+        "table": "order_items",
+        "name": "order_items_unique_line",
+        "definition": "CREATE UNIQUE INDEX order_items_unique_line ON public.order_items USING btree (order_id, line_number)"
+      },
+      {
+        "table": "order_status_history",
+        "name": "idx_order_status_history_order",
+        "definition": "CREATE INDEX idx_order_status_history_order ON public.order_status_history USING btree (order_id, created_at DESC)"
+      },
+      {
+        "table": "order_status_history",
+        "name": "order_status_history_pkey",
+        "definition": "CREATE UNIQUE INDEX order_status_history_pkey ON public.order_status_history USING btree (id)"
+      },
+      {
+        "table": "order_status_transitions",
+        "name": "order_status_transitions_pkey",
+        "definition": "CREATE UNIQUE INDEX order_status_transitions_pkey ON public.order_status_transitions USING btree (from_status, to_status)"
+      },
+      {
+        "table": "orders",
+        "name": "idx_orders_contact",
+        "definition": "CREATE INDEX idx_orders_contact ON public.orders USING btree (lower(contact_email))"
+      },
+      {
+        "table": "orders",
+        "name": "idx_orders_created",
+        "definition": "CREATE INDEX idx_orders_created ON public.orders USING btree (created_at DESC)"
+      },
+      {
+        "table": "orders",
+        "name": "idx_orders_customer",
+        "definition": "CREATE INDEX idx_orders_customer ON public.orders USING btree (customer_id, created_at DESC)"
+      },
+      {
+        "table": "orders",
+        "name": "idx_orders_expiring",
+        "definition": "CREATE INDEX idx_orders_expiring ON public.orders USING btree (reservation_expires_at) WHERE ((status = 'pending_payment'::order_status) AND (reservation_released = false))"
+      },
+      {
+        "table": "orders",
+        "name": "idx_orders_status",
+        "definition": "CREATE INDEX idx_orders_status ON public.orders USING btree (status, created_at DESC)"
+      },
+      {
+        "table": "orders",
+        "name": "orders_pkey",
+        "definition": "CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)"
+      },
+      {
+        "table": "orders",
+        "name": "uq_orders_idempotency",
+        "definition": "CREATE UNIQUE INDEX uq_orders_idempotency ON public.orders USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL)"
+      },
+      {
+        "table": "orders",
+        "name": "uq_orders_number",
+        "definition": "CREATE UNIQUE INDEX uq_orders_number ON public.orders USING btree (order_number)"
+      },
+      {
+        "table": "orders",
+        "name": "uq_orders_public_token",
+        "definition": "CREATE UNIQUE INDEX uq_orders_public_token ON public.orders USING btree (public_token)"
+      },
+      {
+        "table": "pickup_attempts",
+        "name": "idx_pickup_attempts_device",
+        "definition": "CREATE INDEX idx_pickup_attempts_device ON public.pickup_attempts USING btree (device_id, created_at DESC)"
+      },
+      {
+        "table": "pickup_attempts",
+        "name": "idx_pickup_attempts_window",
+        "definition": "CREATE INDEX idx_pickup_attempts_window ON public.pickup_attempts USING btree (created_at DESC)"
+      },
+      {
+        "table": "pickup_attempts",
+        "name": "pickup_attempts_pkey",
+        "definition": "CREATE UNIQUE INDEX pickup_attempts_pkey ON public.pickup_attempts USING btree (id)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "idx_pickup_codes_expiring",
+        "definition": "CREATE INDEX idx_pickup_codes_expiring ON public.pickup_codes USING btree (expires_at) WHERE (status = 'issued'::pickup_code_status)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "idx_pickup_codes_order",
+        "definition": "CREATE INDEX idx_pickup_codes_order ON public.pickup_codes USING btree (order_id, created_at DESC)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "pickup_codes_pkey",
+        "definition": "CREATE UNIQUE INDEX pickup_codes_pkey ON public.pickup_codes USING btree (id)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "uq_pickup_codes_code",
+        "definition": "CREATE UNIQUE INDEX uq_pickup_codes_code ON public.pickup_codes USING btree (code)"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "uq_pickup_codes_one_issued_per_order",
+        "definition": "CREATE UNIQUE INDEX uq_pickup_codes_one_issued_per_order ON public.pickup_codes USING btree (order_id) WHERE (status = 'issued'::pickup_code_status)"
+      },
+      {
+        "table": "product_overrides",
+        "name": "idx_product_overrides_updated_at",
+        "definition": "CREATE INDEX idx_product_overrides_updated_at ON public.product_overrides USING btree (updated_at DESC)"
+      },
+      {
+        "table": "product_overrides",
+        "name": "product_overrides_pkey",
+        "definition": "CREATE UNIQUE INDEX product_overrides_pkey ON public.product_overrides USING btree (slug)"
+      }
+    ],
+    "functions": [
+      {
+        "name": "confirm_order_payment",
+        "args": "p_order_number text, p_payment_id text, p_payment_method text, p_paid_amount numeric, p_currency text, p_payment_metadata jsonb, p_location_code text, p_actor text",
+        "returns": "orders",
+        "language": "plpgsql",
+        "bodyHash": "95c8236158dcd4b7473fbd60717e9b79"
+      },
+      {
+        "name": "enforce_order_status_transition",
+        "args": "",
+        "returns": "trigger",
+        "language": "plpgsql",
+        "bodyHash": "3604bcd8213e539b648beb2fdc78127e"
+      },
+      {
+        "name": "expire_stale_orders",
+        "args": "p_limit integer",
+        "returns": "integer",
+        "language": "plpgsql",
+        "bodyHash": "4a2c86a51a15ec4eb2f2fd380f8742a2"
+      },
+      {
+        "name": "guard_order_items_mutation",
+        "args": "",
+        "returns": "trigger",
+        "language": "plpgsql",
+        "bodyHash": "3a6a0bec68bfb4e1726c39d46a6c543a"
+      },
+      {
+        "name": "inventory_apply_movement",
+        "args": "p_product_slug text, p_variant_key text, p_movement_type inventory_movement_type, p_on_hand_delta integer, p_reserved_delta integer, p_location_code text, p_order_id uuid, p_order_item_id uuid, p_reason text, p_performed_by text, p_idempotency_key text",
+        "returns": "inventory_movements",
+        "language": "plpgsql",
+        "bodyHash": "42c2a77a32cddcc0beb54fbcff848c69"
+      },
+      {
+        "name": "inventory_commit_order",
+        "args": "p_order_id uuid, p_reason text",
+        "returns": "integer",
+        "language": "plpgsql",
+        "bodyHash": "e5574b8f2d2c18c9c8d49a4211719b9b"
+      },
+      {
+        "name": "inventory_release_order",
+        "args": "p_order_id uuid, p_reason text",
+        "returns": "integer",
+        "language": "plpgsql",
+        "bodyHash": "ae24973887ec82e92835bd1252bb545d"
+      },
+      {
+        "name": "inventory_rereserve_order",
+        "args": "p_order_id uuid, p_location_code text",
+        "returns": "integer",
+        "language": "plpgsql",
+        "bodyHash": "6f1cc1fbfaa26f584e6dbdeda3737e88"
+      },
+      {
+        "name": "inventory_reserve_order",
+        "args": "p_order_id uuid, p_location_code text",
+        "returns": "integer",
+        "language": "plpgsql",
+        "bodyHash": "50716e28dade50275b42c266a8cbd019"
+      },
+      {
+        "name": "issue_pickup_code",
+        "args": "p_order_id uuid, p_locker_code text, p_locker_slot text, p_ttl interval, p_max_attempts integer",
+        "returns": "pickup_codes",
+        "language": "plpgsql",
+        "bodyHash": "fbfaa97a58ad54d7dfb7511681f09753"
+      },
+      {
+        "name": "mark_order_ready_for_pickup",
+        "args": "p_order_id uuid, p_locker_code text, p_locker_slot text, p_ttl interval, p_max_attempts integer, p_actor text",
+        "returns": "pickup_codes",
+        "language": "plpgsql",
+        "bodyHash": "b76d677670f050e746548bed0504ea5f"
+      },
+      {
+        "name": "prevent_ledger_mutation",
+        "args": "",
+        "returns": "trigger",
+        "language": "plpgsql",
+        "bodyHash": "47db138d32d3cfc20bea57eb04872525"
+      },
+      {
+        "name": "redeem_pickup_code",
+        "args": "p_code text, p_redeemed_by text",
+        "returns": "TABLE(ok boolean, error_code text, pickup_code_id uuid, order_id uuid, order_number text, locker_code text, locker_slot text)",
+        "language": "plpgsql",
+        "bodyHash": "c73d37985d333c46c5659eb47b4689b4"
+      },
+      {
+        "name": "redeem_pickup_code_verified",
+        "args": "p_code text, p_redeemed_by text, p_device_id text, p_ip text",
+        "returns": "TABLE(ok boolean, error_code text, pickup_code_id uuid, order_id uuid, order_number text, locker_code text, locker_slot text, committed_lines integer)",
+        "language": "plpgsql",
+        "bodyHash": "b4b60890f403544f2f31a007ac396b43"
+      },
+      {
+        "name": "refresh_order_totals_from_items",
+        "args": "p_order_id uuid",
+        "returns": "orders",
+        "language": "plpgsql",
+        "bodyHash": "ab97bcd38f188d933cbbee29c429768b"
+      },
+      {
+        "name": "set_updated_at",
+        "args": "",
+        "returns": "trigger",
+        "language": "plpgsql",
+        "bodyHash": "3d8caacf97b53e6ba01cdc77e3bbb508"
+      }
+    ],
+    "triggers": [
+      {
+        "table": "customers",
+        "name": "trg_customers_updated_at",
+        "definition": "CREATE TRIGGER trg_customers_updated_at BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+      },
+      {
+        "table": "inventory",
+        "name": "trg_inventory_updated_at",
+        "definition": "CREATE TRIGGER trg_inventory_updated_at BEFORE UPDATE ON public.inventory FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+      },
+      {
+        "table": "inventory_movements",
+        "name": "trg_inventory_movements_append_only",
+        "definition": "CREATE TRIGGER trg_inventory_movements_append_only BEFORE DELETE OR UPDATE ON public.inventory_movements FOR EACH ROW EXECUTE FUNCTION prevent_ledger_mutation()"
+      },
+      {
+        "table": "order_items",
+        "name": "trg_order_items_lock",
+        "definition": "CREATE TRIGGER trg_order_items_lock BEFORE INSERT OR DELETE OR UPDATE ON public.order_items FOR EACH ROW EXECUTE FUNCTION guard_order_items_mutation()"
+      },
+      {
+        "table": "order_items",
+        "name": "trg_order_items_updated_at",
+        "definition": "CREATE TRIGGER trg_order_items_updated_at BEFORE UPDATE ON public.order_items FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+      },
+      {
+        "table": "orders",
+        "name": "trg_orders_status_guard",
+        "definition": "CREATE TRIGGER trg_orders_status_guard BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION enforce_order_status_transition()"
+      },
+      {
+        "table": "orders",
+        "name": "trg_orders_updated_at",
+        "definition": "CREATE TRIGGER trg_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+      },
+      {
+        "table": "pickup_codes",
+        "name": "trg_pickup_codes_updated_at",
+        "definition": "CREATE TRIGGER trg_pickup_codes_updated_at BEFORE UPDATE ON public.pickup_codes FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+      }
+    ],
+    "expected": [
+      {
+        "id": "001_commerce_core",
+        "present": true,
+        "detail": "OK"
+      },
+      {
+        "id": "002_payment_confirmation",
+        "present": true,
+        "detail": "OK"
+      },
+      {
+        "id": "003_pickup_pin_kiosk",
+        "present": true,
+        "detail": "OK"
+      },
+      {
+        "id": "004_payment_webhook_diagnostics",
+        "present": false,
+        "detail": "falta: payment_webhook_events"
+      },
+      {
+        "id": "005_duplicate_payment_guard",
+        "present": false,
+        "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+      },
+      {
+        "id": "006_fulfillment_stock_conflict_guard",
+        "present": false,
+        "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+      },
+      {
+        "id": "007_release_respects_rereservation",
+        "present": false,
+        "detail": "falta: predicado prior_releases en inventory_release_order"
+      }
+    ]
+  },
+  "counts": [
+    {
+      "table": "brands",
+      "rows": 0
+    },
+    {
+      "table": "categories",
+      "rows": 0
+    },
+    {
+      "table": "customers",
+      "rows": 0
+    },
+    {
+      "table": "inventory",
+      "rows": 49
+    },
+    {
+      "table": "inventory_movements",
+      "rows": 74
+    },
+    {
+      "table": "order_items",
+      "rows": 14
+    },
+    {
+      "table": "order_status_history",
+      "rows": 22
+    },
+    {
+      "table": "order_status_transitions",
+      "rows": 19
+    },
+    {
+      "table": "orders",
+      "rows": 14
+    },
+    {
+      "table": "pickup_attempts",
+      "rows": 5
+    },
+    {
+      "table": "pickup_codes",
+      "rows": 4
+    },
+    {
+      "table": "product_overrides",
+      "rows": 0
+    }
+  ]
+}

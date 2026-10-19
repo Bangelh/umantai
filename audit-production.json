@@ -1,0 +1,52 @@
+{
+  "target": "postgres://<redacted>/postgres",
+  "fingerprint": "sha256:78289625e1c5704217abe529568ee0ae43dab99c42dc1e9af0a3756e0549d5b4",
+  "snapshot": {
+    "serverVersion": "PostgreSQL 17.2 on x86_64-pc-linux-musl, compiled by gcc (Alpine 13.2.1_git20240309) 13.2.1 20240309, 64-bit",
+    "database": "postgres",
+    "tables": [],
+    "columns": [],
+    "constraints": [],
+    "indexes": [],
+    "functions": [],
+    "triggers": [],
+    "expected": [
+      {
+        "id": "001_commerce_core",
+        "present": false,
+        "detail": "falta: customers, orders, order_items, inventory, inventory_movements, pickup_codes, order_status_transitions, order_status_history, inventory_apply_movement, inventory_reserve_order, enforce_order_status_transition"
+      },
+      {
+        "id": "002_payment_confirmation",
+        "present": false,
+        "detail": "falta: confirm_order_payment, inventory_rereserve_order, transición 'expired' → 'confirmed'"
+      },
+      {
+        "id": "003_pickup_pin_kiosk",
+        "present": false,
+        "detail": "falta: pickup_attempts, redeem_pickup_code_verified, mark_order_ready_for_pickup"
+      },
+      {
+        "id": "004_payment_webhook_diagnostics",
+        "present": false,
+        "detail": "falta: payment_webhook_events"
+      },
+      {
+        "id": "005_duplicate_payment_guard",
+        "present": false,
+        "detail": "falta: guarda duplicatePayment en confirm_order_payment"
+      },
+      {
+        "id": "006_fulfillment_stock_conflict_guard",
+        "present": false,
+        "detail": "falta: guarda en mark_order_ready_for_pickup, guarda en inventory_commit_order, guarda en redeem_pickup_code_verified"
+      },
+      {
+        "id": "007_release_respects_rereservation",
+        "present": false,
+        "detail": "falta: predicado prior_releases en inventory_release_order"
+      }
+    ]
+  },
+  "counts": []
+}

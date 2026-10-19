@@ -53,3 +53,6 @@ skills-lock.json
 
 # Client proposals / commercial docs (contain pricing — keep out of the repo)
 /docs/
+# local tool binaries and database backups (never commit)
+.tools/
+backups/
