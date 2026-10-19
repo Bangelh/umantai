@@ -36,11 +36,12 @@ export const getPrefixedEnv = (key: string): string | undefined => {
 
 // Lightweight validation equivalent (avoids zod). Only VERCEL_ENV can cause hard failure here.
 const allowedVercelEnvs = ['production', 'preview', 'development'] as const;
-let VERCEL_ENV: 'production' | 'preview' | 'development' = 'development';
+type VercelEnv = (typeof allowedVercelEnvs)[number];
+let VERCEL_ENV: VercelEnv = 'development';
 const rawVercelEnv = process.env.VERCEL_ENV;
 if (rawVercelEnv) {
   if ((allowedVercelEnvs as readonly string[]).includes(rawVercelEnv)) {
-    VERCEL_ENV = rawVercelEnv as any;
+    VERCEL_ENV = rawVercelEnv as VercelEnv;
   } else {
     const fakeError = { VERCEL_ENV: { _errors: [`Invalid enum value. Expected 'production' | 'preview' | 'development', received '${rawVercelEnv}'`] } };
     console.error('❌ Invalid environment variables:', fakeError);
@@ -185,10 +186,8 @@ function validateEnvironment() {
       console.warn('   Get it from Supabase Dashboard → Database → Connect → "Direct connection" (NOT the pooled one).');
       console.warn('   Even if you set it under the NON_POOLING var name, the value must be the direct string.');
     }
-    if (isPooled) {
-      // Also surface in the debug info
-      (envConfig as any).database.isPooled = true;
-    }
+    // El detalle de pooling se deriva de la URL en `getEnvDebugInfo`;
+    // no se muta `envConfig` (es `as const` y no lo lee nadie).
   }
 }
 

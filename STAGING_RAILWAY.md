@@ -5,8 +5,8 @@
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
 **Commit desplegado:** build de `c96e9dd` (rama `feat/railway-staging`). Los
-commits posteriores solo cambian formato de `lib/env.ts`, tests, scripts y docs;
-no alteran el runtime desplegado.
+commits posteriores tocan tests, scripts, docs y tipos de `lib/env.ts`; no
+cambian el comportamiento del runtime desplegado.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
