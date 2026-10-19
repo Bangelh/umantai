@@ -219,6 +219,28 @@ ADMIN_API_SECRET=change-me-long-random-string
 > El kiosco usa SU PROPIA clave (`KIOSK_ACCESS_CODE`), separada a propósito: quien edita
 > precios no debería poder, con esa misma credencial, entregar mercadería.
 
+### Storage de imágenes (multi-tienda)
+
+```env
+# db = fallback de staging (bytea en media_assets, servido por /api/media/<key>).
+# r2 = bucket S3-compatible de Cloudflare. Default: db.
+MEDIA_DRIVER=db
+
+# Solo si MEDIA_DRIVER=r2. Usa credenciales/bucket DE STAGING, nunca Producción.
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=umantai-staging-media
+# Opcional: dominio público del bucket. Sin él, la app sirve por /api/media/<key>.
+R2_PUBLIC_BASE_URL=
+```
+
+> El adaptador está en `lib/storage.server.ts`. Valida MIME real (JPEG/PNG/WebP),
+> tamaño máximo 2 MB y genera la key del servidor. Staging puede operar con
+> `MEDIA_DRIVER=db` sin bloquear la fase; la única configuración pendiente para
+> storage real es completar las cinco variables R2 en el entorno de staging.
+> No reutilices las credenciales de Producción.
+
 ### Autenticación de usuarios (Better Auth)
 ```env
 # Secreto de firma de sesiones. OBLIGATORIO en Producción: 32+ caracteres aleatorios
