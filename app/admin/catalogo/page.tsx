@@ -29,6 +29,12 @@ export default function MasterCatalogPage() {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [filterCategory, setFilterCategory] = useState('');
+  const [filterBrand, setFilterBrand] = useState('');
+  const [facets, setFacets] = useState<{ categories: string[]; brands: string[] }>({
+    categories: [],
+    brands: [],
+  });
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
@@ -45,8 +51,14 @@ export default function MasterCatalogPage() {
       setBusy(true);
       setError(null);
       try {
+        const params = new URLSearchParams({
+          q: query,
+          includeArchived: showArchived ? '1' : '0',
+        });
+        if (filterCategory) params.set('category', filterCategory);
+        if (filterBrand) params.set('brand', filterBrand);
         const response = await fetch(
-          `/api/admin/master-products?q=${encodeURIComponent(query)}&includeArchived=${showArchived ? '1' : '0'}`,
+          `/api/admin/master-products?${params.toString()}`,
           withAdminAuth({}, candidate),
         );
         const payload = (await response.json().catch(() => null)) as {
@@ -57,6 +69,21 @@ export default function MasterCatalogPage() {
         setProducts(payload?.products ?? []);
         setAuthorized(true);
         setAdminToken(candidate);
+
+        const facetResponse = await fetch(
+          '/api/admin/master-products/facets',
+          withAdminAuth({}, candidate),
+        );
+        if (facetResponse.ok) {
+          const facetPayload = (await facetResponse.json().catch(() => null)) as {
+            categories?: string[];
+            brands?: string[];
+          } | null;
+          setFacets({
+            categories: facetPayload?.categories ?? [],
+            brands: facetPayload?.brands ?? [],
+          });
+        }
       } catch (err) {
         setAuthorized(false);
         setError(err instanceof Error ? err.message : 'No autorizado.');
@@ -64,7 +91,7 @@ export default function MasterCatalogPage() {
         setBusy(false);
       }
     },
-    [query, showArchived, token],
+    [filterBrand, filterCategory, query, showArchived, token],
   );
 
 
@@ -271,6 +298,28 @@ export default function MasterCatalogPage() {
           placeholder="Buscar nombre, marca o categoría…"
           className="h-10 min-w-40 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
         />
+        <select
+          value={filterCategory}
+          onChange={(event) => setFilterCategory(event.target.value)}
+          aria-label="Filtrar por categoría"
+          className="h-10 rounded-xl border border-border-strong bg-background px-2 text-xs"
+        >
+          <option value="">Toda categoría</option>
+          {facets.categories.map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
+        <select
+          value={filterBrand}
+          onChange={(event) => setFilterBrand(event.target.value)}
+          aria-label="Filtrar por marca"
+          className="h-10 rounded-xl border border-border-strong bg-background px-2 text-xs"
+        >
+          <option value="">Toda marca</option>
+          {facets.brands.map((value) => (
+            <option key={value} value={value}>{value}</option>
+          ))}
+        </select>
         <label className="flex items-center gap-1 text-xs text-tertiary">
           <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
           Ver archivados
