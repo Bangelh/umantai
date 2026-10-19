@@ -23,6 +23,8 @@ export type CartLineIdentity = Pick<CartItem, 'slug'> & {
   selectedOptions?: Record<string, string>;
   selectedColor?: string;
   selectedStorage?: string;
+  /** Tienda de origen. Dos tiendas pueden vender el mismo slug sin colisionar. */
+  storeSlug?: string;
 };
 
 /**
@@ -48,7 +50,9 @@ export function cartItemVariant(item: CartLineIdentity): ProductVariant {
  * carritos guardados siguen funcionando sin migración.
  */
 export function cartLineKey(item: CartLineIdentity): string {
-  return [item.slug, buildVariantKey(cartItemVariant(item))].join('::');
+  // La tienda forma parte de la identidad: el mismo producto en dos comercios
+  // es una línea distinta (precio, stock y pedido distintos).
+  return [item.storeSlug ?? '', item.slug, buildVariantKey(cartItemVariant(item))].join('::');
 }
 
 interface CartStore {
@@ -71,7 +75,9 @@ export const useCartStore = create<CartStore>()(
         const selectedOptions = Object.keys(normalized).length > 0 ? (normalized as Record<string, string>) : undefined;
 
         const existing = get().items.findIndex(
-          (item) => cartLineKey(item) === cartLineKey({ slug: product.slug, selectedOptions }),
+          (item) =>
+            cartLineKey(item) ===
+            cartLineKey({ slug: product.slug, storeSlug: product.storeSlug, selectedOptions }),
         );
 
         if (existing !== -1) {

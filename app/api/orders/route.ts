@@ -20,6 +20,8 @@ import {
   isCommerceDbConfigured,
 } from '@/lib/commerce.server';
 import { buildStockConflictResponse, findStockShortages } from '@/lib/stock-conflict';
+import { getSessionUser } from '@/lib/auth.server';
+import { resolveCheckoutProducts, DEFAULT_STORE_ID, DEFAULT_STORE_SLUG } from '@/lib/stores.server';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -75,6 +77,8 @@ interface OrderRequestBody {
   shippingAddress?: unknown;
   shippingTotal?: unknown;
   items?: unknown;
+  /** Tienda de la vitrina. Ausente = catálogo legacy (fase 1). */
+  storeSlug?: unknown;
 }
 
 interface RawOrderLine {
@@ -99,10 +103,13 @@ function asTrimmedString(value: unknown): string | null {
  * Un fallo de lectura NO bloquea la compra: el motor transaccional sigue siendo
  * la autoridad y devolverá su propio 409.
  */
-async function findShortages(lines: CreateOrderLineInput[]) {
+async function findShortages(
+  lines: CreateOrderLineInput[],
+  storeId = DEFAULT_STORE_ID,
+) {
   try {
     const slugs = [...new Set(lines.map((line) => line.productSlug))];
-    const availability = await getVariantAvailability(slugs);
+    const availability = await getVariantAvailability(slugs, 'MAIN', storeId);
     return findStockShortages(
       lines.map((line) => ({
         productSlug: line.productSlug,
@@ -141,8 +148,13 @@ export async function POST(request: NextRequest) {
     return badRequest('Invalid JSON body');
   }
 
+  // ── Identidad (opcional): el checkout de invitado sigue siendo válido ─────
+  // Si hay sesión, el pedido se asocia a `orders.user_id`. Nunca se exige login.
+  const sessionUser = await getSessionUser(request.headers);
+
   // ── Validación del contacto ────────────────────────────────────────────────
-  const contactEmail = asTrimmedString(body.contactEmail)?.toLowerCase() ?? '';
+  const contactEmail =
+    asTrimmedString(body.contactEmail)?.toLowerCase() ?? sessionUser?.email?.toLowerCase() ?? '';
   if (!contactEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
     return badRequest('A valid contactEmail is required');
   }
@@ -163,58 +175,110 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Resolución de precios en el SERVIDOR ───────────────────────────────────
-  // Una sola query para todos los overrides de /admin (no N queries).
-  const overrides = await getAllOverrides();
+  // Dos caminos, ambos con el precio resuelto en el servidor:
+  //   · `storeSlug` de una tienda de la plataforma → `store_products`.
+  //   · sin tienda (o la legacy)                    → catálogo base + overrides.
+  const storeSlug = asTrimmedString(body.storeSlug);
+  const isPlatformStore = !!storeSlug && storeSlug !== DEFAULT_STORE_SLUG;
 
+  let storeId = DEFAULT_STORE_ID;
   const lines: CreateOrderLineInput[] = [];
 
-  for (const [index, raw] of rawItems.entries()) {
-    const line = (raw ?? {}) as RawOrderLine;
-    const productSlug = asTrimmedString(line.productSlug);
-    if (!productSlug) return badRequest(`items[${index}].productSlug is required`);
+  if (isPlatformStore) {
+    const slugs = rawItems
+      .map((raw) => asTrimmedString(((raw ?? {}) as RawOrderLine).productSlug))
+      .filter((slug): slug is string => !!slug);
 
-    const base = baseProductsData.find((product) => product.slug === productSlug);
-    if (!base) return badRequest(`Unknown product in items[${index}]: "${productSlug}"`);
-
-    const quantity = Number(line.quantity);
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LINE_QUANTITY) {
-      return badRequest(`items[${index}].quantity must be an integer between 1 and ${MAX_LINE_QUANTITY}`);
+    const resolved = await resolveCheckoutProducts(storeSlug, slugs);
+    if (!resolved) {
+      return badRequest(`Unknown store: "${storeSlug}"`);
     }
+    storeId = resolved.store.id;
 
-    const override = (overrides[productSlug] ?? {}) as Record<string, unknown>;
-    const overridePrice = override.price;
-    const unitPrice =
-      typeof overridePrice === 'number' && Number.isFinite(overridePrice) && overridePrice >= 0
-        ? overridePrice
-        : base.price;
+    for (const [index, raw] of rawItems.entries()) {
+      const line = (raw ?? {}) as RawOrderLine;
+      const productSlug = asTrimmedString(line.productSlug);
+      if (!productSlug) return badRequest(`items[${index}].productSlug is required`);
 
-    const variant: ProductVariant =
-      line.variant && typeof line.variant === 'object' ? (line.variant as ProductVariant) : {};
+      const product = resolved.products.get(productSlug);
+      if (!product) {
+        return badRequest(`Product "${productSlug}" is not available in this store`);
+      }
 
-    // ── Validación SERVER-SIDE de la variante ─────────────────────────────────
-    // El navegador solo elige; acá se comprueba que la selección sea una combinación
-    // real del producto (una opción por cada eje declarado, sin opciones de más).
-    // Producto sin variantes: solo vale la selección vacía (`variant_key = ''`).
-    const options = getProductOptions(base);
-    const variantKey = variantKeyForSelection(options, variant);
-    if (variantKey === null) {
-      return badRequest(
-        `items[${index}].variant is not a valid selection for "${productSlug}"`,
-      );
+      const quantity = Number(line.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LINE_QUANTITY) {
+        return badRequest(`items[${index}].quantity must be an integer between 1 and ${MAX_LINE_QUANTITY}`);
+      }
+
+      // Los StoreProduct de esta fase no tienen ejes de variación.
+      const variant = line.variant && typeof line.variant === 'object' ? (line.variant as ProductVariant) : {};
+      if (Object.keys(normalizeVariantSelection(variant)).length > 0) {
+        return badRequest(`items[${index}].variant is not supported for this store product`);
+      }
+
+      lines.push({
+        productSlug,
+        productName: product.name,
+        productBrand: product.brand,
+        imageUrl: product.imageUrl,
+        variant: {},
+        variantKey: '',
+        quantity,
+        unitPrice: product.unitPrice,
+      });
     }
+  } else {
+    // Una sola query para todos los overrides de /admin (no N queries).
+    const overrides = await getAllOverrides();
 
-    lines.push({
-      productSlug,
-      productName: typeof override.name === 'string' ? override.name : base.name,
-      productBrand: typeof override.brand === 'string' ? override.brand : base.brand,
-      imageUrl: pickImage(override, base),
-      // Se guarda la selección normalizada (sin claves vacías) y la clave canónica
-      // que comparte `inventory`. La clave SIEMPRE se deriva acá, nunca del cliente.
-      variant: normalizeVariantSelection(variant),
-      variantKey,
-      quantity,
-      unitPrice,
-    });
+    for (const [index, raw] of rawItems.entries()) {
+      const line = (raw ?? {}) as RawOrderLine;
+      const productSlug = asTrimmedString(line.productSlug);
+      if (!productSlug) return badRequest(`items[${index}].productSlug is required`);
+
+      const base = baseProductsData.find((product) => product.slug === productSlug);
+      if (!base) return badRequest(`Unknown product in items[${index}]: "${productSlug}"`);
+
+      const quantity = Number(line.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > MAX_LINE_QUANTITY) {
+        return badRequest(`items[${index}].quantity must be an integer between 1 and ${MAX_LINE_QUANTITY}`);
+      }
+
+      const override = (overrides[productSlug] ?? {}) as Record<string, unknown>;
+      const overridePrice = override.price;
+      const unitPrice =
+        typeof overridePrice === 'number' && Number.isFinite(overridePrice) && overridePrice >= 0
+          ? overridePrice
+          : base.price;
+
+      const variant: ProductVariant =
+        line.variant && typeof line.variant === 'object' ? (line.variant as ProductVariant) : {};
+
+      // ── Validación SERVER-SIDE de la variante ───────────────────────────────
+      // El navegador solo elige; acá se comprueba que la selección sea una combinación
+      // real del producto (una opción por cada eje declarado, sin opciones de más).
+      // Producto sin variantes: solo vale la selección vacía (`variant_key = ''`).
+      const options = getProductOptions(base);
+      const variantKey = variantKeyForSelection(options, variant);
+      if (variantKey === null) {
+        return badRequest(
+          `items[${index}].variant is not a valid selection for "${productSlug}"`,
+        );
+      }
+
+      lines.push({
+        productSlug,
+        productName: typeof override.name === 'string' ? override.name : base.name,
+        productBrand: typeof override.brand === 'string' ? override.brand : base.brand,
+        imageUrl: pickImage(override, base),
+        // Se guarda la selección normalizada (sin claves vacías) y la clave canónica
+        // que comparte `inventory`. La clave SIEMPRE se deriva acá, nunca del cliente.
+        variant: normalizeVariantSelection(variant),
+        variantKey,
+        quantity,
+        unitPrice,
+      });
+    }
   }
 
   // ── Validación de stock FRESCA antes de crear el pedido ─────────────────────
@@ -222,7 +286,7 @@ export async function POST(request: NextRequest) {
   // comprador confirma, otro checkout pudo llevarse las últimas unidades. Acá se
   // lee `inventory` de nuevo y se responde con el DETALLE por SKU. La autoridad
   // final sigue siendo la reserva transaccional de `createOrder()`.
-  const shortages = await findShortages(lines);
+  const shortages = await findShortages(lines, storeId);
   if (shortages.length > 0) {
     return NextResponse.json(
       buildStockConflictResponse(COMMERCE_ERROR_MESSAGES.insufficient_stock, shortages),
@@ -245,6 +309,8 @@ export async function POST(request: NextRequest) {
 
   const metadata: Record<string, unknown> = { channel: 'web_checkout' };
   if (Object.keys(buyer).length > 0) metadata.buyer = buyer;
+  if (storeSlug) metadata.storeSlug = storeSlug;
+  if (sessionUser) metadata.userId = sessionUser.id;
 
   const idempotencyKey = asTrimmedString(body.idempotencyKey);
   const channel = isOrderChannel(body.channel) ? body.channel : 'web';
@@ -286,6 +352,8 @@ export async function POST(request: NextRequest) {
         currency: 'PEN',
         shippingTotal,
         reservationTtlMinutes: RESERVATION_TTL_MINUTES,
+        storeId,
+        userId: sessionUser?.id ?? null,
         items: lines,
       },
       { metadata },
@@ -300,7 +368,7 @@ export async function POST(request: NextRequest) {
       // 409 Conflict: el carrito es válido, pero el stock cambió bajo los pies
       // del comprador (carrera entre la pre-validación y la reserva). Se vuelve a
       // leer para decir QUÉ SKU falta; si la lectura falla, el 409 igual sale.
-      const racedShortages = await findShortages(lines).catch(() => []);
+      const racedShortages = await findShortages(lines, storeId).catch(() => []);
       return NextResponse.json(
         buildStockConflictResponse(COMMERCE_ERROR_MESSAGES[code], racedShortages),
         { status: 409 },

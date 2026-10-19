@@ -117,8 +117,14 @@ function seriesFromRows(rows: SeriesSqlRow[]): SeriesRow[] {
 export interface AnalyticsOptions {
   range: AnalyticsRange;
   previous: AnalyticsPreviousRange;
-  /** Local/locker del inventario. Mañana será también el scope de tienda. */
+  /** Local/locker del inventario. */
   locationCode?: string;
+  /**
+   * Scope de tienda. NULL/undefined = agregado global de la plataforma (panel
+   * legacy). El panel de comerciante SIEMPRE pasa su storeId, ya validado por
+   * `requireStoreAccess` antes de llegar acá.
+   */
+  storeId?: string | null;
   /** Reloj inyectable (tests). */
   now?: Date;
 }
@@ -134,6 +140,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
   if (!sql) throw new Error('commerce_db_not_configured');
 
   const { range, previous } = options;
+  const storeId = options.storeId ?? null;
   const locationCode = options.locationCode ?? 'MAIN';
   const generatedAt = (options.now ?? new Date()).toISOString();
 
@@ -150,6 +157,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
         FROM orders
          WHERE created_at >= ${range.fromUtc}::timestamptz
            AND created_at <  ${range.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
       `,
       // 1 · KPIs del período anterior (misma longitud)
       sql`
@@ -161,6 +169,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
         FROM orders
          WHERE created_at >= ${previous.fromUtc}::timestamptz
            AND created_at <  ${previous.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
       `,
       // 2 · Pedidos por estado (todos, no solo ventas)
       sql`
@@ -168,6 +177,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
           FROM orders
          WHERE created_at >= ${range.fromUtc}::timestamptz
            AND created_at <  ${range.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
          GROUP BY status
       `,
       // 3 · Ventas por día comercial (Lima)
@@ -178,6 +188,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
           FROM orders
          WHERE created_at >= ${range.fromUtc}::timestamptz
            AND created_at <  ${range.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
            AND status = ANY(${SALE_ORDER_STATUSES as unknown as string[]}::order_status[])
            AND payment_status = ANY(${SALE_PAYMENT_STATUSES as unknown as string[]}::payment_status[])
          GROUP BY 1
@@ -191,6 +202,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
           FROM orders
          WHERE created_at >= ${range.fromUtc}::timestamptz
            AND created_at <  ${range.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
            AND status = ANY(${SALE_ORDER_STATUSES as unknown as string[]}::order_status[])
            AND payment_status = ANY(${SALE_PAYMENT_STATUSES as unknown as string[]}::payment_status[])
          GROUP BY 1
@@ -206,6 +218,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
           JOIN orders o ON o.id = oi.order_id
          WHERE o.created_at >= ${range.fromUtc}::timestamptz
            AND o.created_at <  ${range.toUtc}::timestamptz
+           AND (${storeId}::uuid IS NULL OR o.store_id = ${storeId}::uuid)
            AND o.status = ANY(${SALE_ORDER_STATUSES as unknown as string[]}::order_status[])
            AND o.payment_status = ANY(${SALE_PAYMENT_STATUSES as unknown as string[]}::payment_status[])
          GROUP BY oi.product_slug
@@ -217,6 +230,7 @@ export async function getAnalyticsSummary(options: AnalyticsOptions): Promise<An
         SELECT product_slug, variant_key, quantity_available, reorder_point
           FROM inventory
          WHERE location_code = ${locationCode}
+           AND (${storeId}::uuid IS NULL OR store_id = ${storeId}::uuid)
            AND is_active = TRUE
            AND (
              quantity_available <= 0

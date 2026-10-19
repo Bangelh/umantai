@@ -600,6 +600,10 @@ export interface CreateOrderInput {
   /** Idempotencia del checkout: el mismo valor dos veces devuelve el mismo pedido, no lo duplica. */
   idempotencyKey?: string;
   customerId?: string | null;
+  /** Tienda dueña de la venta (multi-tenancy). Por defecto, la tienda legacy. */
+  storeId?: string;
+  /** Identidad autenticada (Better Auth). NULL en guest checkout. */
+  userId?: string | null;
   contactEmail: string;
   contactPhone?: string | null;
   channel?: OrderChannel;

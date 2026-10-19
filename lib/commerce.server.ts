@@ -288,7 +288,7 @@ export async function createOrder(
 
   const orderStatement = sql`
     INSERT INTO orders (
-      id, idempotency_key, customer_id, contact_email, contact_phone,
+      id, idempotency_key, customer_id, store_id, user_id, contact_email, contact_phone,
       channel, fulfillment_type, locker_code,
       status, payment_status, currency,
       subtotal, discount_total, tax_total, shipping_total, total, item_count,
@@ -297,6 +297,8 @@ export async function createOrder(
       ${orderId}::uuid,
       ${input.idempotencyKey ?? null},
       ${input.customerId ?? null}::uuid,
+      ${input.storeId ?? '00000000-0000-0000-0000-000000000001'}::uuid,
+      ${input.userId ?? null},
       ${input.contactEmail},
       ${input.contactPhone ?? null},
       ${input.channel ?? 'web'}::order_channel,
@@ -1335,6 +1337,8 @@ export interface InventoryMovementInput {
   onHandDelta?: number;
   reservedDelta?: number;
   locationCode?: string;
+  /** Tienda dueña del SKU. Si falta, la función resuelve la del pedido o la legacy. */
+  storeId?: string;
   orderId?: string | null;
   orderItemId?: string | null;
   reason?: string | null;
@@ -1360,7 +1364,8 @@ export async function applyInventoryMovement(
       ${input.orderItemId ?? null}::uuid,
       ${input.reason ?? null},
       ${input.performedBy ?? null},
-      ${input.idempotencyKey ?? null}
+      ${input.idempotencyKey ?? null},
+      ${input.storeId ?? null}::uuid
     )
   `) as unknown as InventoryMovementRow[];
 
@@ -1404,12 +1409,14 @@ export async function getInventoryItem(
   productSlug: string,
   variantKey = '',
   locationCode = 'MAIN',
+  storeId = '00000000-0000-0000-0000-000000000001',
 ): Promise<InventoryItem | null> {
   const sql = requireSql();
 
   const rows = (await sql`
     SELECT * FROM inventory
-     WHERE location_code = ${locationCode}
+     WHERE store_id = ${storeId}::uuid
+       AND location_code = ${locationCode}
        AND product_slug = ${productSlug}
        AND variant_key = ${variantKey}
      LIMIT 1
@@ -1453,6 +1460,7 @@ export interface VariantAvailability {
 export async function getVariantAvailability(
   slugs: string[],
   locationCode = 'MAIN',
+  storeId = '00000000-0000-0000-0000-000000000001',
 ): Promise<VariantAvailability[]> {
   if (slugs.length === 0) return [];
   const sql = requireSql();
@@ -1466,7 +1474,8 @@ export async function getVariantAvailability(
              SUM(oi.quantity)::INTEGER AS held
         FROM orders o
         JOIN order_items oi ON oi.order_id = o.id
-       WHERE o.status = 'pending_payment'
+       WHERE o.store_id = ${storeId}::uuid
+         AND o.status = 'pending_payment'
          AND o.reservation_released = FALSE
          AND o.reservation_expires_at IS NOT NULL
          AND o.reservation_expires_at < NOW()
@@ -1482,7 +1491,8 @@ export async function getVariantAvailability(
       LEFT JOIN stale_holds sh
         ON sh.product_slug = i.product_slug
        AND sh.variant_key  = i.variant_key
-     WHERE i.location_code = ${locationCode}
+     WHERE i.store_id = ${storeId}::uuid
+       AND i.location_code = ${locationCode}
        AND i.product_slug = ANY(${slugs}::text[])
        AND i.is_active = TRUE
   `) as unknown as Array<{
@@ -1506,11 +1516,16 @@ export async function getVariantAvailability(
  * Inventario completo del local (solo lectura). Lo usa el panel de operación.
  * Ordenado por disponibilidad ascendente: lo que está por agotarse queda arriba.
  */
-export async function listInventory(locationCode = 'MAIN', limit = 500): Promise<InventoryItem[]> {
+export async function listInventory(
+  locationCode = 'MAIN',
+  limit = 500,
+  storeId = '00000000-0000-0000-0000-000000000001',
+): Promise<InventoryItem[]> {
   const sql = requireSql();
   const rows = (await sql`
     SELECT * FROM inventory
-     WHERE location_code = ${locationCode}
+     WHERE store_id = ${storeId}::uuid
+       AND location_code = ${locationCode}
      ORDER BY quantity_available ASC, product_slug, variant_key
      LIMIT ${limit}
   `) as unknown as InventoryRow[];
@@ -1521,11 +1536,15 @@ export async function listInventory(locationCode = 'MAIN', limit = 500): Promise
  * SKUs en o por debajo de su punto de reorden (`reorder_point > 0`).
  * Es la base de las alertas de stock bajo que revisa la tienda.
  */
-export async function listLowStock(locationCode = 'MAIN'): Promise<InventoryItem[]> {
+export async function listLowStock(
+  locationCode = 'MAIN',
+  storeId = '00000000-0000-0000-0000-000000000001',
+): Promise<InventoryItem[]> {
   const sql = requireSql();
   const rows = (await sql`
     SELECT * FROM inventory
-     WHERE location_code = ${locationCode}
+     WHERE store_id = ${storeId}::uuid
+       AND location_code = ${locationCode}
        AND is_active = TRUE
        AND reorder_point > 0
        AND quantity_available <= reorder_point
@@ -1544,12 +1563,13 @@ export async function setReorderPoint(
   variantKey: string,
   reorderPoint: number,
   locationCode = 'MAIN',
+  storeId = '00000000-0000-0000-0000-000000000001',
 ): Promise<InventoryItem | null> {
   const sql = requireSql();
   const rows = (await sql`
-    INSERT INTO inventory (location_code, product_slug, variant_key, reorder_point)
-    VALUES (${locationCode}, ${productSlug}, ${variantKey}, ${reorderPoint})
-    ON CONFLICT (location_code, product_slug, variant_key)
+    INSERT INTO inventory (store_id, location_code, product_slug, variant_key, reorder_point)
+    VALUES (${storeId}::uuid, ${locationCode}, ${productSlug}, ${variantKey}, ${reorderPoint})
+    ON CONFLICT (store_id, location_code, product_slug, variant_key)
     DO UPDATE SET reorder_point = EXCLUDED.reorder_point
     RETURNING *
   `) as unknown as InventoryRow[];

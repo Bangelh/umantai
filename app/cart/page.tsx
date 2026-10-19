@@ -82,6 +82,12 @@ export default function CartPage() {
   const isConfirming = phase === "confirming";
   const total = getTotalPrice();
 
+  // Un pedido pertenece a UNA tienda. Se puede llenar el carrito desde varias
+  // vitrinas, pero el checkout exige comprar una a la vez; el servidor también
+  // rechaza productos que no sean de la tienda declarada.
+  const cartStores = new Set(items.map((item) => item.storeSlug ?? "umantai"));
+  const isMixedStores = cartStores.size > 1;
+
   const summary = useMemo(
     () =>
       buildCheckoutSummary(
@@ -116,6 +122,10 @@ export default function CartPage() {
 
   const handleOpenConfirmation = () => {
     if (isSubmitting) return;
+    if (isMixedStores) {
+      toast.error("Tu carrito tiene productos de varias tiendas. Compra una tienda a la vez.");
+      return;
+    }
     if (!isValidContactEmail(email)) {
       toast.error("Enter your email so we can send you the order confirmation.");
       return;
@@ -154,6 +164,9 @@ export default function CartPage() {
           // El negocio opera con retiro en Locker. El locker/slot concreto lo asigna
           // operación al marcar el pedido como listo, no el checkout.
           fulfillmentType: "pickup_locker",
+          // Todas las líneas deben ser de la misma tienda. La UI bloquea el
+          // checkout mixto; el servidor igual valida producto por producto.
+          storeSlug: items[0]?.storeSlug,
           items: items.map((item) => ({
             productSlug: item.slug,
             quantity: item.quantity,
@@ -236,6 +249,13 @@ export default function CartPage() {
     <div className="min-h-screen bg-neutral-950 text-white">
       <div className="max-w-4xl mx-auto px-8 py-12">
         <h1 className="text-5xl tracking-tighter font-semibold mb-10">Your Cart</h1>
+
+        {isMixedStores && (
+          <div role="alert" className="mb-6 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
+            Tu carrito mezcla productos de varias tiendas. El checkout crea un pedido por tienda:
+            quita los productos de una de ellas para continuar.
+          </div>
+        )}
 
         <div className="space-y-6">
           {items.map((item) => (

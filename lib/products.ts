@@ -28,6 +28,12 @@ export interface Product {
    * Si existe, manda sobre `colors`/`storage` (que quedan como formato legacy).
    */
   options?: ProductOption[];
+  /**
+   * Tienda de la que proviene el ítem. Ausente = catálogo legacy de la fase 1.
+   * El checkout lo usa para resolver precio y stock en el servidor.
+   */
+  storeSlug?: string;
+  storeName?: string;
 }
 
 /**
