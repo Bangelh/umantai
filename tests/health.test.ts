@@ -12,15 +12,23 @@ import assert from 'node:assert/strict';
 import {
   buildHealthReport,
   healthResponse,
-  resolveBuildCommit,
   type HealthDatabase,
 } from '../lib/health.server';
+import { DEFAULT_BUILD_MANIFEST, resolveBuildIdentity } from '../lib/build-info';
 
 function fixedDeps(database: HealthDatabase) {
   return {
     checkDatabase: async () => database,
     env: { APP_ENV: 'staging' },
     commit: 'abc1234',
+    // Identidad inyectada: el test no depende de si alguien corrió `npm run build`
+    // antes (el manifiesto real se regenera en cada build).
+    build: {
+      buildId: 'dev',
+      commit: null,
+      commitSource: 'none',
+      builtAt: null,
+    },
     now: () => new Date('2026-10-19T12:00:00.000Z'),
   };
 }
@@ -92,11 +100,21 @@ test('HTTP: 200 cuando la base responde y 503 cuando no', async () => {
   assert.equal((await down.json()).ok, false);
 });
 
-test('commit: Railway y Vercel exponen variables distintas', () => {
-  assert.equal(resolveBuildCommit({ RAILWAY_GIT_COMMIT_SHA: 'railway-sha' }), 'railway-sha');
-  assert.equal(resolveBuildCommit({ VERCEL_GIT_COMMIT_SHA: 'vercel-sha' }), 'vercel-sha');
-  assert.equal(resolveBuildCommit({ GIT_COMMIT_SHA: '  ' }), null);
-  assert.equal(resolveBuildCommit({}), null);
+test('commit: la plataforma es el último recurso si el build no lo resolvió', () => {
+  // Con el manifiesto por defecto (sin build sellado) sí se usan las variables.
+  assert.equal(
+    resolveBuildIdentity({ RAILWAY_GIT_COMMIT_SHA: 'railway-sha' }, DEFAULT_BUILD_MANIFEST).commit,
+    'railway-sha',
+  );
+  assert.equal(
+    resolveBuildIdentity({ VERCEL_GIT_COMMIT_SHA: 'vercel-sha' }, DEFAULT_BUILD_MANIFEST).commit,
+    'vercel-sha',
+  );
+  assert.equal(
+    resolveBuildIdentity({ GIT_COMMIT_SHA: '  ' }, DEFAULT_BUILD_MANIFEST).commit,
+    null,
+  );
+  assert.equal(resolveBuildIdentity({}, DEFAULT_BUILD_MANIFEST).commit, null);
 });
 
 test('el build embebido gana sobre un RAILWAY_GIT_COMMIT_SHA desfasado', async () => {
