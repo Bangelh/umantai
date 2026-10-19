@@ -5,9 +5,17 @@ import { getSupabaseConfig } from "./env";
 const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
 
 export const createClient = (cookieStore: Awaited<ReturnType<typeof cookies>>) => {
+  if (!supabaseUrl || !supabaseKey) {
+    // Falla explícita al USARLO, no al importar el módulo: así el build y las
+    // rutas que no necesitan Supabase siguen funcionando sin configuración.
+    throw new Error(
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or the BANGELH_ prefixed variants).",
+    );
+  }
+
   return createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {

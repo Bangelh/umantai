@@ -7,6 +7,8 @@
  * Supports the project's Vercel integration prefixes (BANGELH_, UMANTAI_URL_, UMANTAI_).
  */
 
+import { isSupabaseConfigured, isValidHttpUrl } from '../../lib/supabase/config';
+
 const VERCEL_ENV_PREFIXES = ['BANGELH_', 'UMANTAI_URL_', 'UMANTAI_'] as const;
 
 /**
@@ -43,5 +45,7 @@ export function getSupabaseConfig() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     '';
 
-  return { url, key };
+  // Un placeholder inválido cuenta como "no configurado": los clientes SSR no
+  // se construyen y las rutas degradan a 503 en vez de romper el build.
+  return { url: isValidHttpUrl(url) ? url : '', key, configured: isSupabaseConfigured(url, key) };
 }
