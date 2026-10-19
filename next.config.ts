@@ -36,6 +36,21 @@ const nextConfig: NextConfig = {
   },
 
   reactStrictMode: true,
+
+  // Headers de seguridad portables: se aplican en Vercel, Railway y cualquier
+  // hosting Node (antes vivían sólo en vercel.json, que Railway no lee).
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+        ],
+      },
+    ];
+  },
 };
 
 export default withPayload(nextConfig);
