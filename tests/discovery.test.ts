@@ -26,6 +26,8 @@ function product(partial: Partial<DiscoveryProduct> & Pick<DiscoveryProduct, 'na
     available: 1,
     inStock: true,
     distanceKm: null,
+    variantCount: 0,
+    hasVariants: false,
     ...partial,
   };
 }
