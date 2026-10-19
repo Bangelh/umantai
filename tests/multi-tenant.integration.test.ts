@@ -476,6 +476,8 @@ test('aislamiento: B no puede leer ni escribir el catálogo de A', async () => {
     stores.createStoreProduct(userB.id, storeA.id, {
       name: 'Intruso',
       priceCents: 100,
+      // `initialStock` escribe inventario: el portero debe cortar ANTES del ledger.
+      initialStock: 5,
     }),
     'crear producto en A',
   );
@@ -623,6 +625,45 @@ test('pedido y stock quedan en la tienda correcta', async () => {
   assert.equal(rows.length, 1);
   assert.equal(Number(rows[0]?.quantity_on_hand), 10);
   assert.equal(Number(rows[0]?.quantity_reserved), 2, 'la reserva guest debe descontar en A');
+});
+
+test('aislamiento: inventario de A y B es independiente y no cruza pedidos', async () => {
+  // Mismo SKU en dos tiendas: cada una tiene su propia fila y su propio stock.
+  await seedProduct({ store: storeA, slug: 'sku-compartido', name: 'SKU compartido A', priceCents: 100, stock: 3 });
+  await seedProduct({ store: storeB, slug: 'sku-compartido', name: 'SKU compartido B', priceCents: 200, stock: 7 });
+
+  const productsA = await stores.listStoreProducts(userA.id, storeA.id);
+  const productsB = await stores.listStoreProducts(userB.id, storeB.id);
+  assert.equal(productsA.find((product) => product.slug === 'sku-compartido')?.available, 3);
+  assert.equal(productsB.find((product) => product.slug === 'sku-compartido')?.available, 7);
+
+  // B no puede leer el inventario de A ni siquiera cuando el SKU coincide.
+  await assertForbidden(stores.listStoreProducts(userB.id, storeA.id), 'leer inventario A');
+
+  // Mover stock de A citando un pedido de B lo impide la base, no solo la app.
+  const sql = platform.requirePlatformSql();
+  await assert.rejects(
+    async () => {
+      await sql`
+        SELECT inventory_apply_movement(
+          'sku-compartido', '', 'receipt'::inventory_movement_type,
+          5, 0, 'MAIN', ${authOrder.orderId}::uuid, NULL, NULL,
+          'integration-test', ${`cross-store-${randomUUID()}`}, ${storeA.id}::uuid
+        )
+      `;
+    },
+    (error: unknown) => String((error as { message?: string }).message).includes('store_scope_mismatch'),
+  );
+
+  const rows = await sql`
+    SELECT store_id, quantity_on_hand
+      FROM inventory
+     WHERE product_slug = 'sku-compartido'
+     ORDER BY store_id
+  `;
+  const byStore = new Map(rows.map((row) => [String(row.store_id), Number(row.quantity_on_hand)]));
+  assert.equal(byStore.get(storeA.id), 3, 'A conserva su stock');
+  assert.equal(byStore.get(storeB.id), 7, 'B conserva su stock');
 });
 
 test('analytics de tienda: suma solo los pedidos de esa tienda', async () => {
