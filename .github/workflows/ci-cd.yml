@@ -1,21 +1,30 @@
 name: CI / CD
 
+# Base del lint incremental: el commit donde arrancó la migración a Railway.
+# El lint ESTRICTO cubre lo nuevo; la deuda histórica (113 archivos) queda
+# documentada y no bloquea la migración. Al saldar la deuda, subir esta ref.
+env:
+  LINT_BASE_REF: e4d39ad
+
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feat/railway-staging ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, feat/railway-staging ]
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # El diff de lint necesita historia completa para comparar contra la base.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
@@ -24,11 +33,35 @@ jobs:
       - name: Generate Payload types
         run: npm run payload:generate-types
 
+      # Sin `|| true`: un error de tipos rompe el build.
       - name: Type check
-        run: npx tsc --noEmit --skipLibCheck || true
+        run: npx tsc --noEmit
 
-      - name: Lint
-        run: npm run lint || true
+      # Los tests unitarios fallan de verdad (antes no se ejecutaban en CI).
+      - name: Unit tests
+        run: npm test
+
+      # Deuda histórica: lint estricto sólo sobre archivos nuevos/modificados.
+      # El lint global queda documentado en ENVIRONMENT_VARIABLES.md; no se
+      # mezcla la limpieza masiva con la migración de infraestructura.
+      - name: Lint (changed files only)
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="$LINT_BASE_REF"
+          else
+            BASE="${{ github.event.before }}"
+            if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="origin/main"
+            fi
+          fi
+          FILES=$(git diff --name-only --diff-filter=ACMR "$BASE" HEAD -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs')
+          if [ -z "$FILES" ]; then
+            echo "Sin archivos JS/TS modificados; lint omitido."
+            exit 0
+          fi
+          echo "Lint estricto sobre:"
+          echo "$FILES"
+          npx eslint $FILES
 
       - name: Build (Vercel/Next.js)
         run: npm run build
@@ -39,6 +72,25 @@ jobs:
       - name: Payload migrate (dry run / check)
         # In real CD, run with production secrets for actual migrations
         run: npm run payload:migrate -- --help || echo "Payload migrate available. Run with prod DB in deploy job."
+
+  # Integración REAL contra PostgreSQL 17 efímero (embedded-postgres).
+  # No usa secretos, no toca Producción ni Preview: crea su propio cluster local.
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: PostgreSQL integration tests
+        run: npm run test:integration
 
   # Vercel and Cloudflare deploys are primarily handled via their GitHub integrations
   # (recommended for automatic deploys on push).
