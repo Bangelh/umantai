@@ -3,7 +3,7 @@
  *
  * Cubre la fase MULTI-STORE CATALOG:
  *   · MasterProduct create / duplicate / search / archive
- *   · StoreProduct desde maestro, propio, edição y archivo lógico
+ *   · StoreProduct desde maestro, propio, edición y archivo lógico
  *   · Variantes genéricas, SKU único, inventario independiente
  *   · Búsqueda con acentos, geo y sin duplicar productos
  *   · Checkout: tienda derivada, cross-store, precio server-side, variantes,

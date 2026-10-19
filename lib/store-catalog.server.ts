@@ -201,6 +201,17 @@ export async function createStoreProductCatalog(
     productId = String((results[0]?.[0] as Row | undefined)?.id ?? '');
   } catch (error) {
     if (isUniqueViolation(error)) {
+      const text = String((error as Error).message ?? '');
+      if (
+        text.includes('product_variants_store_sku_unique') ||
+        text.includes('product_variants_product_key_unique')
+      ) {
+        throw new CatalogError(
+          'variant_sku_taken',
+          'Ese SKU o combinación de opciones ya existe en la tienda.',
+          409,
+        );
+      }
       throw new CatalogError(
         'store_product_slug_taken',
         'Ya existe un producto con ese identificador en tu tienda.',
