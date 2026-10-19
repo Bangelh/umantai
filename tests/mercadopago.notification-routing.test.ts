@@ -13,13 +13,13 @@ import {
   toStoredPreferenceSnapshot,
   type StoredCheckoutPreference,
 } from '../lib/mercadopago.server';
+import { POST } from '../app/api/payments/preference/route';
 import {
   MP_DIAGNOSTIC_HEADER,
   MP_DIAGNOSTIC_OMIT_NOTIFICATION_URL,
-  POST,
   decideNotificationRouting,
   requestedNotificationUrlOmission,
-} from '../app/api/payments/preference/route';
+} from '../lib/payment-preference-routing';
 
 /**
  * Diagnóstico A/B de `notification_url` (SOLO Preview).
