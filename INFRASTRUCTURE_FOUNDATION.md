@@ -246,6 +246,10 @@ No se agregaron credenciales falsas ni reales de Supabase.
    ambas DBs candidatas están vacías.
 7. **Datos de smoke en staging**: 1 pedido (`UM-2026-001017`) y 1 evento de
    webhook de prueba; no afectan esquema ni tests.
+8. **`umantai_integration` quedó sucio** de corridas previas (inventario
+   duplicado): la suite 5/8 falló ahí por datos acumulados, no por esquema. La
+   corrida válida se hizo sobre un clon limpio de la base staging: **8/8**.
+   Limpiar/rotar esa DB de test antes de reutilizarla.
 
 ## 12. Veredicto
 
