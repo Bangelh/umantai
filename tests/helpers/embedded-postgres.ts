@@ -32,6 +32,11 @@ const MIGRATIONS = [
   '008_inventory_ledger_filters.sql',
   '009_analytics_orders_index.sql',
   '010_contact_messages.sql',
+  '011_stores.sql',
+  '012_auth.sql',
+  '013_catalog.sql',
+  '014_store_scoping.sql',
+  '015_search_indexes.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {
