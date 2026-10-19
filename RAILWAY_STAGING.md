@@ -14,8 +14,8 @@
 - **No** se reutilizan credenciales live de Mercado Pago.
 - **No** se toca `umantai.com`, DNS ni el proyecto Vercel.
 - **No** se ejecutan migraciones ni se copia el dump en esta etapa.
-- **No** se cambia el driver todavía: el código actual usa `@neondatabase/serverless`
-  (HTTP) y **no funcionará contra Railway Postgres** hasta el adaptador de la Fase E.
+- El driver YA es portable: `lib/db-driver.server.ts` usa Neon por defecto y `pg`
+  para cualquier otro host (Railway). `DB_DRIVER=pg` lo fuerza explícitamente.
 
 ---
 
@@ -45,7 +45,7 @@ Railway Project: UMANTAI
 | `build.builder` | `NIXPACKS` | Build estándar de Next.js |
 | `build.buildCommand` | `npm ci && npm run build` | Instala desde lockfile y compila |
 | `deploy.startCommand` | `npm run start` | `next start` respeta `PORT` de Railway |
-| `deploy.healthcheckPath` | `/` | Endpoint existente; `/api/health` queda como pendiente |
+| `deploy.healthcheckPath` | `/api/health` | Chequeo barato y sin secretos (200/503) |
 | `deploy.healthcheckTimeout` | `120` | Margen para el primer arranque |
 | `deploy.restartPolicyType` | `ON_FAILURE` | Reinicio acotado |
 | `deploy.restartPolicyMaxRetries` | `5` | Evita bucles infinitos |
@@ -65,6 +65,8 @@ Los valores entre `<>` son placeholders. **Nunca** se commitean secretos.
 | `NIXPACKS_NODE_VERSION` | `22` | Sí | Next 16 requiere Node ≥ 20.9 |
 | `POSTGRES_URL_NON_POOLING` | `${{Postgres.DATABASE_URL}}` | Sí | Referencia interna de Railway |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Sí | Fallback y Payload |
+| `DB_DRIVER` | `pg` | Recomendada | Neon HTTP no funciona contra Railway; el autodetect por host también daría `pg` |
+| `PGPOOL_MAX` | `10` | No | Pool por proceso; bajar si hay muchas réplicas |
 | `PAYLOAD_SECRET` | `<openssl rand -hex 32>` | **Sí, también en build** | Sin él, `next build` falla en Railway |
 | `ADMIN_API_SECRET` | `<32+ chars aleatorios>` | Sí | Panel y APIs de admin |
 | `KIOSK_ACCESS_CODE` | `<10+ chars aleatorios>` | Sí | Kiosco |
@@ -79,7 +81,8 @@ Los valores entre `<>` son placeholders. **Nunca** se commitean secretos.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `<...>` | No | Idem |
 | `SUPABASE_SERVICE_ROLE_KEY` | `<...>` | No | Idem |
 | `NEXT_PUBLIC_WHATSAPP_*` | `<opcional>` | No | UI |
-| `MP_PAYMENT_SIMULATION` | **no definir todavía** | No | El gate actual exige `VERCEL_ENV=preview`; en Railway no funciona |
+| `MP_PAYMENT_SIMULATION` | `1` (sólo si se quiere simular pagos) | No | Gate migrado a `APP_ENV`; con `APP_ENV=staging` funciona |
+| `QA_CLEANUP` | `1` (opcional) | No | Limpieza de pedidos QA; mismo gate que la simulación |
 | `MP_ORDERS_*` | **no definir** | No | Experimento congelado |
 | `VERCEL_ENV` | **no definir** | No | No existe en Railway; el código debe usar `APP_ENV` |
 
@@ -110,36 +113,47 @@ GET /api/cron/expire-reservations
 Authorization: Bearer <CRON_SECRET>
 ```
 
-Plan: un servicio programado cada 15 minutos que llame a la URL interna de `web` con
-`CRON_SECRET`. Se configura recién en la Fase E/F; no en esta fase.
+Entrypoint listo (no depende de Vercel):
+
+```bash
+APP_BASE_URL=http://web.railway.internal:3000 \
+CRON_SECRET=<secreto> \
+node scripts/trigger-expire-reservations.mjs
+```
+
+En Railway: servicio cron con schedule `*/15 * * * *` y ese start command.
+El cron de Vercel (`0 3 * * *`) NO se elimina hasta el cutover.
 
 ---
 
 ## 7. Orden de ejecución futuro (no ejecutado)
 
-1. Crear proyecto/entorno `staging` en Railway.
+1. Crear proyecto/entorno `staging` en Railway (requiere login/token de Railway).
 2. Crear el servicio PostgreSQL 17 y su volumen.
 3. Cargar variables del servicio `web` (sin secretos live).
-4. Tomar el backup de la base origen y verificar la restauración (Fase A).
-5. Copiar la base a staging y correr `audit-schema` en origen y destino (Fases C–D).
+4. Tomar el backup de la base origen y verificar la restauración.
+5. Copiar la base a staging y correr `audit-schema` en origen y destino.
 6. Aplicar 004–007 **sobre la copia** y volver a comparar el fingerprint.
-7. Crear `release/railway-staging` e introducir el adaptador de driver (Fase E).
-8. Recién entonces desplegar `web` y conectar la app.
-9. Smoke tests y checklist de QA (Fase F–G).
+7. Desplegar `web` con el driver `pg` (ya implementado en esta rama).
+8. Smoke tests, `/api/health` y integración contra la base staging.
 
-Cada paso requiere autorización explícita. Este documento no ejecuta ninguno.
+Los pasos 1–3 están **bloqueados** hasta contar con autenticación de Railway
+(ver `PRODUCTION_BASELINE.md` §7). El código de los pasos 4–8 ya está listo.
 
 ---
 
 ## 8. Pre-flight obligatorio antes de conectar la app
 
-- [ ] Driver `pg` implementado y probado (el actual es HTTP de Neon).
+- [x] Driver `pg` implementado y probado contra PostgreSQL 17 real (integración).
 - [ ] `PAYLOAD_SECRET` presente en build y runtime.
-- [ ] `APP_ENV=staging` (no `VERCEL_ENV`).
+- [x] `APP_ENV=staging` (no `VERCEL_ENV`).
 - [ ] Esquema reconciliado: 001–007 presentes y verificados con fingerprint.
-- [ ] Gates QA migrados de `VERCEL_ENV` a `APP_ENV` (simulación, cleanup, captura).
-- [ ] `vercel.json` headers movidos a `next.config.ts`.
-- [ ] Cron de Railway con `CRON_SECRET`.
+- [x] Gates QA (simulación y cleanup) migrados de `VERCEL_ENV` a `APP_ENV`.
+- [ ] Captura de soporte de webhook: sigue atada a `VERCEL_ENV=preview` (diagnóstico Vercel; en staging queda apagada).
+- [x] Headers de `vercel.json` movidos a `next.config.ts`.
+- [x] Entrypoint de cron portable con `CRON_SECRET` (falta crear el servicio en Railway).
+- [x] `/api/health` con chequeo de base y timeout de 2 s.
+- [x] CI bloqueante: tsc, unitarios, integración y lint incremental.
 - [ ] Backup verificado y runbook de rollback escrito.
 - [ ] Correo con dominio verificado (o aceptar que no llega al comprador).
 - [ ] Ninguna credencial live de Mercado Pago en staging.
@@ -161,7 +175,7 @@ Cada paso requiere autorización explícita. Este documento no ejecuta ninguno.
 - No se creó ningún proyecto, servicio ni base en Railway.
 - No se copió ni se dumpeó ninguna base.
 - No se desplegó la app.
-- No se cambió el driver.
+- El driver `pg` está implementado y probado localmente, pero no conectado a Railway.
 - No se aplicaron migraciones.
 - No se tocó DNS, Vercel, Neon ni Mercado Pago.
 - No se movió código.

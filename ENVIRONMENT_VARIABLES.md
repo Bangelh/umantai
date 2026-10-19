@@ -85,6 +85,18 @@ POSTGRES_HOST=...
 POSTGRES_DATABASE=...
 ```
 
+### Driver de base de datos (portable)
+```env
+# Fuerza el driver. Valores: neon | pg. Si falta, se autodetecta por host:
+# *.neon.tech → neon; cualquier otro host (Railway, Supabase, local) → pg.
+# Neon sigue siendo el comportamiento por defecto en la base actual.
+DB_DRIVER=pg
+
+# Tamaño máximo del pool de `pg` por proceso (default 10, rango 1–50).
+# Sólo aplica al driver pg; el driver HTTP de Neon no usa pool TCP.
+PGPOOL_MAX=10
+```
+
 ### Mercado Pago (Checkout Pro)
 ```env
 # Private key of your Mercado Pago application. REQUIRED to create payment links.
@@ -345,15 +357,71 @@ VERCEL_ENV=development
 
 ---
 
+## Healthcheck y cron (portables)
+
+### `GET /api/health`
+
+Healthcheck para Railway (y cualquier hosting). Devuelve sólo:
+
+```json
+{
+  "ok": true,
+  "version": "0.1.0",
+  "commit": "<sha o null>",
+  "environment": "staging",
+  "database": { "reachable": true, "type": "pg" },
+  "timestamp": "2026-10-19T12:00:00.000Z"
+}
+```
+
+- `200` si la base responde, `503` si no (o si no hay connection string).
+- `COMMIT` se toma de `VERCEL_GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`,
+  `GIT_COMMIT_SHA` o `GIT_COMMIT` (el primero presente).
+- **Nunca** incluye URL, host, usuario, password ni tokens. Puede quedar público.
+
+### Cron portable (Railway)
+
+`vercel.json` sólo lo lee Vercel. Para Railway hay un entrypoint que llama al
+MISMO endpoint protegido por `CRON_SECRET`:
+
+```bash
+APP_BASE_URL=http://web.railway.internal:3000 \
+CRON_SECRET=... \
+node scripts/trigger-expire-reservations.mjs
+```
+
+En Railway: servicio cron con schedule `*/15 * * * *` y ese comando. El cron de
+Vercel queda intacto hasta el cutover.
+
+---
+
+## CI (qué bloquea y qué no)
+
+Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
+
+- `npx tsc --noEmit` (sin `|| true`).
+- `npm test` — 287 tests unitarios.
+- `npm run test:integration` — PostgreSQL 17 efímero con `embedded-postgres`
+  (job separado; no usa secretos ni toca Producción).
+- **Lint incremental**: `eslint` estricto sólo sobre archivos JS/TS modificados
+  desde `e4d39ad` (inicio de la migración). La deuda de lint histórica (113
+  archivos de la etapa comercial) queda documentada y se salda aparte; al
+  terminarla, subir `LINT_BASE_REF` en `.github/workflows/ci-cd.yml`.
+
+---
+
 ## Summary of Recommended Additions
 
 | Variable                        | Why It's Useful                                      | Recommended For |
 |--------------------------------|------------------------------------------------------|-----------------|
-| `VERCEL_ENV`                   | Detect runtime environment (prod/preview/dev)        | All             |
+| `APP_ENV`                      | Señal primaria de entorno, independiente del hosting | All             |
+| `DB_DRIVER`                    | Fuerza `neon` o `pg`; si falta, se autodetecta       | All             |
+| `VERCEL_ENV`                   | Fallback de entorno en Vercel                        | Vercel          |
 | `VERCEL_URL`                   | Get the public URL of the current deployment         | All             |
 | `POSTGRES_URL_NON_POOLING`     | More reliable direct connection for local dev        | Development     |
 | `BANGELH_*` / `UMANTAI_URL_*` prefixed keys | Match Supabase integration prefix (Bangelh or umantai vercel pulls) | All             |
 
 ---
 
-Let me know if you want any of these added to the code (for example, a small utility to read `VERCEL_ENV` safely) or if you'd like a minimal production-only version.
+Verificación local: `npm test` (unitarios) y `npm run test:integration`
+(PostgreSQL efímero, sin tocar ninguna base externa).
