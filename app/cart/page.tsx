@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore, cartLineKey, cartItemVariant } from "@/lib/cartStore";
 import { useHydrated } from "@/lib/useHydrated";
+import {
+  buildCheckoutSummary,
+  isValidContactEmail,
+  parseOrderErrorPayload,
+  transitionCheckout,
+  type CheckoutEvent,
+  type CheckoutPhase,
+  type ParsedOrderError,
+} from "@/lib/checkout";
 import { toast } from "sonner";
 
 /**
@@ -34,14 +43,22 @@ export default function CartPage() {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [docNumber, setDocNumber] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<CheckoutPhase>("cart");
+  // El error se guarda junto a la firma del carrito: si el carrito cambia, el
+  // error viejo deja de mostrarse sin necesidad de un setState dentro de un effect.
+  const [orderErrorState, setOrderErrorState] = useState<{
+    signature: string;
+    error: ParsedOrderError;
+  } | null>(null);
+
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
   /**
    * Una clave por INTENTO de pago, no por render.
    *
-   * Se reutiliza mientras el envío falle, así un reintento devuelve el MISMO pedido
-   * en vez de crear dos. Se descarta cuando el carrito cambia, porque eso ya es
-   * otro pedido (otra intención de pago).
+   * Se crea recién al confirmar y se reutiliza mientras el envío falle, así un
+   * reintento devuelve el MISMO pedido en vez de crear dos. Se descarta cuando el
+   * carrito cambia, porque eso ya es otra intención de pago.
    */
   const idempotencyKeyRef = useRef<string | null>(null);
 
@@ -54,22 +71,75 @@ export default function CartPage() {
     idempotencyKeyRef.current = null;
   }, [cartSignature]);
 
+  const orderError =
+    orderErrorState && orderErrorState.signature === cartSignature ? orderErrorState.error : null;
+
+  const setOrderError = (error: ParsedOrderError | null) => {
+    setOrderErrorState(error ? { signature: cartSignature, error } : null);
+  };
+
+  const isSubmitting = phase === "submitting";
+  const isConfirming = phase === "confirming";
   const total = getTotalPrice();
 
-  const handleCheckout = async () => {
-    if (isSubmitting) return;
+  const summary = useMemo(
+    () =>
+      buildCheckoutSummary(
+        items.map((item) => ({
+          name: item.name,
+          brand: item.brand,
+          price: item.price,
+          quantity: item.quantity,
+          variant: cartItemVariant(item),
+        })),
+      ),
+    [items],
+  );
 
-    const contactEmail = email.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+  const advance = useCallback((event: CheckoutEvent) => {
+    setPhase((current) => transitionCheckout(current, event));
+  }, []);
+
+  // Escape cierra la confirmación, salvo que la petición esté en vuelo.
+  useEffect(() => {
+    if (!isConfirming) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting) {
+        setOrderErrorState(null);
+        advance("cancel");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    confirmButtonRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [advance, isConfirming, isSubmitting]);
+
+  const handleOpenConfirmation = () => {
+    if (isSubmitting) return;
+    if (!isValidContactEmail(email)) {
       toast.error("Enter your email so we can send you the order confirmation.");
       return;
     }
+    setOrderError(null);
+    advance("open");
+  };
 
-    // Se crea una sola vez y sobrevive a los reintentos fallidos.
+  const handleCancelConfirmation = () => {
+    if (isSubmitting) return;
+    setOrderError(null);
+    advance("cancel");
+  };
+
+  const handleConfirmPurchase = async () => {
+    // Doble candado: el reducer ignora `confirm` fuera de `confirming` y el estado
+    // deshabilita el botón. Un doble clic no dispara dos POST.
+    if (phase !== "confirming") return;
+    advance("confirm");
+
+    const contactEmail = email.trim();
     const idempotencyKey =
       idempotencyKeyRef.current ?? (idempotencyKeyRef.current = newIdempotencyKey());
 
-    setIsSubmitting(true);
     try {
       const response = await fetch("/api/orders", {
         method: "POST",
@@ -99,11 +169,15 @@ export default function CartPage() {
       if (!response.ok) {
         // El pedido NO se creó: conservamos el carrito y la misma clave de idempotencia,
         // por lo que reintentar es seguro.
-        toast.error(payload?.error ?? "We could not place your order. Please try again.");
+        const parsed = parseOrderErrorPayload(payload);
+        setOrderError(parsed);
+        advance("failure");
+        if (parsed.shortages.length === 0) toast.error(parsed.message);
         return;
       }
 
       const publicToken = payload?.order?.publicToken;
+      advance("success");
       clearCart();
 
       if (publicToken) {
@@ -112,9 +186,13 @@ export default function CartPage() {
         toast.success("Order created.");
       }
     } catch {
+      setOrderError({
+        message: "Network error. Your order was not placed.",
+        code: null,
+        shortages: [],
+      });
+      advance("failure");
       toast.error("Network error. Your order was not placed.");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -143,8 +221,8 @@ export default function CartPage() {
           <div className="text-6xl mb-6">🛍️</div>
           <h1 className="text-4xl tracking-tight mb-4">Your cart is empty</h1>
           <p className="text-white/60 mb-8">Browse our collection and discover exceptional pieces.</p>
-          <Link 
-            href="/products" 
+          <Link
+            href="/products"
             className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
           >
             Browse the Collection
@@ -195,7 +273,9 @@ export default function CartPage() {
 
                 <div className="flex items-center gap-4 mt-4">
                   <div className="flex items-center border border-white/20 rounded-full">
-                    <button 
+                    <button
+                      type="button"
+                      aria-label={`Decrease quantity of ${item.name}`}
                       onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
                       disabled={isSubmitting}
                       className="px-3 py-1 hover:bg-white/10 rounded-l-full disabled:opacity-40"
@@ -203,7 +283,9 @@ export default function CartPage() {
                       −
                     </button>
                     <div className="px-4 font-mono">{item.quantity}</div>
-                    <button 
+                    <button
+                      type="button"
+                      aria-label={`Increase quantity of ${item.name}`}
                       onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
                       disabled={isSubmitting}
                       className="px-3 py-1 hover:bg-white/10 rounded-r-full disabled:opacity-40"
@@ -212,7 +294,8 @@ export default function CartPage() {
                     </button>
                   </div>
 
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => removeItem(cartLineKey(item))}
                     disabled={isSubmitting}
                     className="text-sm text-white/50 hover:text-white/80 disabled:opacity-40"
@@ -270,14 +353,15 @@ export default function CartPage() {
         </div>
 
         <div className="mt-8 flex gap-4">
-          <button 
-            onClick={handleCheckout}
+          <button
+            type="button"
+            onClick={handleOpenConfirmation}
             disabled={isSubmitting}
             className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:bg-white/60"
           >
-            {isSubmitting ? "Placing order…" : "Proceed to Checkout"}
+            Review order
           </button>
-          <Link 
+          <Link
             href="/products"
             className="flex-1 h-14 rounded-2xl border border-white/40 font-medium hover:bg-white/5 transition-colors flex items-center justify-center"
           >
@@ -285,7 +369,8 @@ export default function CartPage() {
           </Link>
         </div>
 
-        <button 
+        <button
+          type="button"
           onClick={() => {
             clearCart();
             toast.info("Cart cleared");
@@ -296,6 +381,124 @@ export default function CartPage() {
           Clear cart
         </button>
       </div>
+
+      {isConfirming && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) handleCancelConfirmation();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-confirm-title"
+            className="w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-white/15 bg-neutral-900 p-6 sm:p-8"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="uppercase tracking-[3px] text-xs text-white/50">PASO FINAL</div>
+                <h2 id="checkout-confirm-title" className="text-3xl font-semibold tracking-tight mt-1">
+                  Confirm your purchase
+                </h2>
+                <p className="text-sm text-white/60 mt-2">
+                  Review the items. Your stock is reserved only after you confirm.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelConfirmation}
+                disabled={isSubmitting}
+                aria-label="Close confirmation"
+                className="text-2xl text-white/50 hover:text-white disabled:opacity-40"
+              >
+                ×
+              </button>
+            </div>
+
+            <ul className="mt-6 divide-y divide-white/10 border-y border-white/10">
+              {summary.lines.map((line, index) => (
+                <li key={`${line.name}-${index}`} className="py-4 flex justify-between gap-4">
+                  <div>
+                    <div className="font-medium">{line.name}</div>
+                    {line.brand && <div className="text-xs text-white/50">{line.brand}</div>}
+                    {line.variantLabel && (
+                      <div className="text-xs text-white/60 mt-1">{line.variantLabel}</div>
+                    )}
+                    <div className="text-sm text-white/60 mt-1">
+                      {line.quantity} × {money(line.unitPrice)}
+                    </div>
+                  </div>
+                  <div className="font-mono text-right">{money(line.lineTotal)}</div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 flex justify-between text-lg font-medium">
+              <span>Total</span>
+              <span className="font-mono tracking-tight">{money(summary.total)}</span>
+            </div>
+            <p className="text-xs text-white/40 mt-1">
+              Prices are recalculated on the server before creating the order.
+            </p>
+
+            {orderError && (
+              <div
+                role="alert"
+                className="mt-5 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100"
+              >
+                <p className="font-medium">{orderError.message}</p>
+                {orderError.shortages.length > 0 && (
+                  <>
+                    <p className="mt-2 text-red-200/90">These items no longer have enough stock:</p>
+                    <ul className="mt-2 space-y-1">
+                      {orderError.shortages.map((shortage) => (
+                        <li key={`${shortage.productSlug}:${shortage.variantKey}`}>
+                          <span className="font-medium">
+                            {shortage.productName ?? shortage.productSlug}
+                          </span>
+                          {shortage.variantKey && (
+                            <span className="text-red-200/80"> ({shortage.variantKey})</span>
+                          )}
+                          : you asked {shortage.requested}, available {shortage.available}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={handleCancelConfirmation}
+                      className="mt-3 rounded-full border border-red-300/40 px-4 py-1.5 text-xs hover:bg-red-500/10"
+                    >
+                      Back to cart and fix quantities
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={handleCancelConfirmation}
+                disabled={isSubmitting}
+                className="flex-1 h-12 rounded-2xl border border-white/30 font-medium hover:bg-white/5 disabled:opacity-40"
+              >
+                Volver al carrito
+              </button>
+              <button
+                ref={confirmButtonRef}
+                type="button"
+                onClick={() => void handleConfirmPurchase()}
+                disabled={isSubmitting}
+                className="flex-1 h-12 rounded-2xl bg-white text-black font-medium hover:bg-white/90 disabled:bg-white/60 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? "Creating order…" : "Confirmar compra"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
