@@ -10,29 +10,32 @@ export interface CartItem extends Product {
    * Es la forma nueva y la que alimenta `variant_key` en el checkout.
    */
   selectedOptions?: Record<string, string>;
-  /**
-   * @deprecated Campos del carrito antiguo. Se conservan SOLO para leer carritos
-   * ya persistidos en localStorage; todo item nuevo usa `selectedOptions`.
-   */
+  /** @deprecated Campos del carrito antiguo. Solo para leer carritos persistidos. */
   selectedColor?: string;
   selectedStorage?: string;
 }
 
-/** Forma mínima que identifica una línea (sirve para carritos viejos y nuevos). */
 export type CartLineIdentity = Pick<CartItem, 'slug'> & {
   selectedOptions?: Record<string, string>;
   selectedColor?: string;
   selectedStorage?: string;
-  /** Tienda de origen. Dos tiendas pueden vender el mismo slug sin colisionar. */
   storeSlug?: string;
 };
 
-/**
- * Opciones efectivas de una línea, normalizando el formato legacy.
- *
- * Un carrito guardado antes de este cambio solo trae `selectedColor`/`selectedStorage`;
- * este helper lo traduce al modelo genérico sin mutar el item persistido.
- */
+export interface CartStoreIdentity {
+  storeId: string | null;
+  storeSlug: string | null;
+  storeName: string | null;
+}
+
+export interface CartConflict {
+  status: 'conflict';
+  current: CartStoreIdentity;
+  next: CartStoreIdentity;
+}
+
+export type AddItemResult = { status: 'added' } | CartConflict;
+
 export function cartItemVariant(item: CartLineIdentity): ProductVariant {
   if (item.selectedOptions && Object.keys(item.selectedOptions).length > 0) {
     return normalizeVariantSelection(item.selectedOptions);
@@ -40,81 +43,146 @@ export function cartItemVariant(item: CartLineIdentity): ProductVariant {
   return normalizeVariantSelection({ color: item.selectedColor, storage: item.selectedStorage });
 }
 
-/**
- * Identificador estable de una LÍNEA del carrito: un producto + una combinación de
- * variante.
- *
- * El mismo `slug` puede aparecer varias veces con distinta variante, así que el slug
- * NO es una clave única. Toda operación que apunte a una sola línea (cantidad, borrar,
- * `key` de React) debe usar esto. Se deriva de los campos persistidos, por lo que los
- * carritos guardados siguen funcionando sin migración.
- */
+/** Identificador de una línea: tienda + producto + combinación de variante. */
 export function cartLineKey(item: CartLineIdentity): string {
-  // La tienda forma parte de la identidad: el mismo producto en dos comercios
-  // es una línea distinta (precio, stock y pedido distintos).
   return [item.storeSlug ?? '', item.slug, buildVariantKey(cartItemVariant(item))].join('::');
 }
 
-interface CartStore {
+function identityOfProduct(product: Product): CartStoreIdentity {
+  return {
+    storeId: product.storeId ?? null,
+    storeSlug: product.storeSlug ?? null,
+    storeName: product.storeName ?? null,
+  };
+}
+
+function identityOfState(
+  state: Pick<CartStore, 'items' | 'storeId' | 'storeSlug' | 'storeName'>,
+): CartStoreIdentity {
+  if (state.storeSlug || state.storeId) {
+    return { storeId: state.storeId, storeSlug: state.storeSlug, storeName: state.storeName };
+  }
+  const first = state.items[0];
+  return {
+    storeId: first?.storeId ?? null,
+    storeSlug: first?.storeSlug ?? null,
+    storeName: first?.storeName ?? null,
+  };
+}
+
+function sameStore(a: CartStoreIdentity, b: CartStoreIdentity): boolean {
+  if (!a.storeSlug && !b.storeSlug) return true;
+  return a.storeSlug === b.storeSlug;
+}
+
+interface CartStore extends CartStoreIdentity {
   items: CartItem[];
-  addItem: (product: Product, quantity?: number, options?: ProductVariant) => void;
+  /**
+   * Agrega una línea. Si el carrito ya pertenece a otra tienda devuelve
+   * `conflict` y NO modifica nada: la confirmación es explícita en la UI.
+   */
+  addItem: (product: Product, quantity?: number, options?: ProductVariant) => AddItemResult;
+  /** Reemplaza el carrito por el de otra tienda (solo tras confirmación). */
+  switchStore: (product: Product, quantity?: number, options?: ProductVariant) => void;
   removeItem: (lineKey: string) => void;
   updateQuantity: (lineKey: string, quantity: number) => void;
   clearCart: () => void;
   getTotalItems: () => number;
   getTotalPrice: () => number;
+  getStore: () => CartStoreIdentity;
+}
+
+function buildLine(product: Product, quantity: number, options?: ProductVariant): CartItem {
+  const normalized = normalizeVariantSelection(options);
+  const selectedOptions =
+    Object.keys(normalized).length > 0 ? (normalized as Record<string, string>) : undefined;
+  return { ...product, quantity, selectedOptions };
 }
 
 export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      storeId: null,
+      storeSlug: null,
+      storeName: null,
 
       addItem: (product, quantity = 1, options) => {
-        const normalized = normalizeVariantSelection(options);
-        const selectedOptions = Object.keys(normalized).length > 0 ? (normalized as Record<string, string>) : undefined;
+        const current = identityOfState(get());
+        const next = identityOfProduct(product);
 
+        if (get().items.length > 0 && !sameStore(current, next)) {
+          return { status: 'conflict', current, next };
+        }
+
+        const line = buildLine(product, quantity, options);
         const existing = get().items.findIndex(
-          (item) =>
-            cartLineKey(item) ===
-            cartLineKey({ slug: product.slug, storeSlug: product.storeSlug, selectedOptions }),
+          (item) => cartLineKey(item) === cartLineKey(line),
         );
 
         if (existing !== -1) {
           const updated = [...get().items];
-          updated[existing].quantity += quantity;
-          set({ items: updated });
+          updated[existing] = {
+            ...updated[existing],
+            quantity: updated[existing].quantity + quantity,
+          };
+          set({ items: updated, ...next });
         } else {
-          set({
-            items: [...get().items, { ...product, quantity, selectedOptions }],
-          });
+          set({ items: [...get().items, line], ...next });
         }
+        return { status: 'added' };
+      },
+
+      switchStore: (product, quantity = 1, options) => {
+        const next = identityOfProduct(product);
+        set({ items: [buildLine(product, quantity, options)], ...next });
       },
 
       removeItem: (lineKey) => {
-        set({
-          items: get().items.filter((item) => cartLineKey(item) !== lineKey),
-        });
+        const items = get().items.filter((item) => cartLineKey(item) !== lineKey);
+        if (items.length === 0) {
+          set({ items: [], storeId: null, storeSlug: null, storeName: null });
+        } else {
+          set({ items });
+        }
       },
 
       updateQuantity: (lineKey, quantity) => {
         if (quantity < 1) return;
         set({
           items: get().items.map((item) =>
-            cartLineKey(item) === lineKey ? { ...item, quantity } : item
+            cartLineKey(item) === lineKey ? { ...item, quantity } : item,
           ),
         });
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: () =>
+        set({ items: [], storeId: null, storeSlug: null, storeName: null }),
 
       getTotalItems: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
 
       getTotalPrice: () =>
         get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+
+      getStore: () => identityOfState(get()),
     }),
     {
       name: 'umantai-cart',
-    }
-  )
+      // Carritos anteriores no tenían metadata de tienda: se deriva de la
+      // primera línea, sin descartar el contenido.
+      merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Partial<CartStore>;
+        const items = Array.isArray(stored.items) ? stored.items : [];
+        const first = items[0];
+        return {
+          ...current,
+          ...stored,
+          items,
+          storeId: stored.storeId ?? first?.storeId ?? null,
+          storeSlug: stored.storeSlug ?? first?.storeSlug ?? null,
+          storeName: stored.storeName ?? first?.storeName ?? null,
+        };
+      },
+    },
+  ),
 );

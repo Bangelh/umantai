@@ -169,6 +169,7 @@ export default function CartPage() {
           storeSlug: items[0]?.storeSlug,
           items: items.map((item) => ({
             productSlug: item.slug,
+            storeSlug: item.storeSlug,
             quantity: item.quantity,
             // Solo opciones: el servidor valida la combinación y recalcula nombre y
             // precio contra el catálogo. `cartItemVariant` normaliza carritos antiguos.
@@ -235,10 +236,10 @@ export default function CartPage() {
           <h1 className="text-4xl tracking-tight mb-4">Your cart is empty</h1>
           <p className="text-white/60 mb-8">Browse our collection and discover exceptional pieces.</p>
           <Link
-            href="/products"
+            href="/"
             className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
           >
-            Browse the Collection
+            Buscar productos
           </Link>
         </div>
       </div>
@@ -248,12 +249,25 @@ export default function CartPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <div className="max-w-4xl mx-auto px-8 py-12">
-        <h1 className="text-5xl tracking-tighter font-semibold mb-10">Your Cart</h1>
+        <h1 className="text-5xl tracking-tighter font-semibold mb-2">Your Cart</h1>
+        <p className="mb-8 text-sm text-white/50">
+          Tienda: {items[0]?.storeName ?? items[0]?.storeSlug ?? 'UMANTAI'}
+        </p>
 
         {isMixedStores && (
           <div role="alert" className="mb-6 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
-            Tu carrito mezcla productos de varias tiendas. El checkout crea un pedido por tienda:
-            quita los productos de una de ellas para continuar.
+            Tu carrito contiene productos de tiendas distintas (formato antiguo). Un pedido pertenece
+            a una sola tienda. Vacía el carrito y agrega los productos de la tienda que quieras comprar.
+            <button
+              type="button"
+              onClick={() => {
+                clearCart();
+                toast.info('Carrito vacío. Elige una tienda.');
+              }}
+              className="ml-2 underline underline-offset-2 hover:text-white"
+            >
+              Vaciar carrito
+            </button>
           </div>
         )}
 
@@ -382,10 +396,10 @@ export default function CartPage() {
             Review order
           </button>
           <Link
-            href="/products"
+            href="/"
             className="flex-1 h-14 rounded-2xl border border-white/40 font-medium hover:bg-white/5 transition-colors flex items-center justify-center"
           >
-            Continue Shopping
+            Seguir comprando
           </Link>
         </div>
 

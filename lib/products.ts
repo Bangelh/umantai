@@ -34,6 +34,8 @@ export interface Product {
    */
   storeSlug?: string;
   storeName?: string;
+  /** Identidad estable de la tienda (UUID). El carrito la guarda junto al slug. */
+  storeId?: string;
 }
 
 /**
