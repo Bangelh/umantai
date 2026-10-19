@@ -4,7 +4,9 @@
 **Entorno:** `staging` (`c19f1bca-5aba-4eaf-8117-20761a6e9d37`) — el entorno
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
-**Commit desplegado:** `c96e9dd` (rama `feat/railway-staging`)
+**Commit desplegado:** build de `c96e9dd` (rama `feat/railway-staging`). Los
+commits posteriores solo cambian formato de `lib/env.ts`, tests, scripts y docs;
+no alteran el runtime desplegado.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
@@ -16,7 +18,7 @@
 |---|---|
 | `web` | App Next.js 16, builder Nixpacks, Node 22, healthcheck `/api/health` |
 | `Postgres17` | **PostgreSQL 17.11**, imagen `postgres:17`, volumen `postgres17-volume` montado en `/var/lib/postgresql/data` |
-| `cron` | Mismo repo, `startCommand=node scripts/trigger-expire-reservations.mjs`, schedule `*/15 * * * *` |
+| `cron` | Mismo repo, `buildCommand=echo cron: no build required` (no compila Next), `startCommand=node scripts/trigger-expire-reservations.mjs`, schedule `*/15 * * * *` |
 | `Postgres` | PostgreSQL 18 creado por la template por defecto; quedó **sin uso** (no se borra sin aprobación) |
 
 Variables del `web` (sin valores): `APP_ENV=staging`, `DB_DRIVER=pg`,
@@ -81,6 +83,8 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 - `POST /api/orders` → 201, pedido `UM-2026-001017`, total 299; stock reservado
   (`on_hand=312, reserved=1, available=311`).
 - `GET /api/cron/expire-reservations` con `CRON_SECRET` → 200; sin token → 401.
+- Ejecución real del servicio `cron` (`railway cron run`): `EXITED` en 6 s con
+  `[cron] ok {"ok":true,"expiredOrders":0}`. Programado cada 15 min.
 - Headers: `x-content-type-options`, `x-frame-options`, `x-xss-protection`.
 - Integración real contra `umantai_integration` (Railway PG17):
   **8/8 tests**.
@@ -89,8 +93,9 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 
 - La template `--database postgres` creó **PG18**; se agregó un `Postgres17`
   aparte. El servicio PG18 sigue existiendo sin uso (no se borra sin aprobación).
-- El cron se configuró vía API de Railway (`serviceInstanceUpdate`); verificar la
-  primera ejecución programada en el dashboard.
+- El cron se configuró vía API de Railway (`serviceInstanceUpdate`). El primer
+  build falló porque compilaba la app completa sin `PAYLOAD_SECRET`; se fijó un
+  `buildCommand` no-op y se verificó una ejecución real.
 - `web` no tiene `NEXT_PUBLIC_SUPABASE_*`; las funciones de notas/listas quedan
   inactivas (el resto del comercio funciona).
 - Sin credenciales de prueba de Mercado Pago: el checkout queda 503 y no se creó

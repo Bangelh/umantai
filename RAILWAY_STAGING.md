@@ -123,7 +123,9 @@ CRON_SECRET=<secreto> \
 node scripts/trigger-expire-reservations.mjs
 ```
 
-En Railway: servicio cron con schedule `*/15 * * * *` y ese start command.
+En Railway: servicio cron con `buildCommand=echo cron: no build required`
+(el servicio solo ejecuta el script; compilar Next requiere secretos que no usa),
+schedule `*/15 * * * *` y ese start command.
 El cron de Vercel (`0 3 * * *`) NO se elimina hasta el cutover.
 
 ---
@@ -139,24 +141,25 @@ El cron de Vercel (`0 3 * * *`) NO se elimina hasta el cutover.
 7. Desplegar `web` con el driver `pg` (ya implementado en esta rama).
 8. Smoke tests, `/api/health` y integración contra la base staging.
 
-Los pasos 1–3 están **bloqueados** hasta contar con autenticación de Railway
-(ver `PRODUCTION_BASELINE.md` §7). El código de los pasos 4–8 ya está listo.
+Los pasos 1–8 se ejecutaron el 2026-10-19; evidencia y estado real en
+`STAGING_RAILWAY.md`. El entorno `production` de Railway sigue vacío.
 
 ---
 
 ## 8. Pre-flight obligatorio antes de conectar la app
 
 - [x] Driver `pg` implementado y probado contra PostgreSQL 17 real (integración).
-- [ ] `PAYLOAD_SECRET` presente en build y runtime.
+- [x] `PAYLOAD_SECRET` presente en build y runtime.
 - [x] `APP_ENV=staging` (no `VERCEL_ENV`).
-- [ ] Esquema reconciliado: 001–007 presentes y verificados con fingerprint.
+- [x] Esquema reconciliado: 001–007 presentes y verificados con fingerprint.
 - [x] Gates QA (simulación y cleanup) migrados de `VERCEL_ENV` a `APP_ENV`.
 - [ ] Captura de soporte de webhook: sigue atada a `VERCEL_ENV=preview` (diagnóstico Vercel; en staging queda apagada).
 - [x] Headers de `vercel.json` movidos a `next.config.ts`.
-- [x] Entrypoint de cron portable con `CRON_SECRET` (falta crear el servicio en Railway).
+- [x] Entrypoint de cron portable con `CRON_SECRET`; servicio creado y ejecución verificada.
 - [x] `/api/health` con chequeo de base y timeout de 2 s.
 - [x] CI bloqueante: tsc, unitarios, integración y lint incremental.
-- [ ] Backup verificado y runbook de rollback escrito.
+- [x] Backup verificado (restore + fingerprint) y estado documentado en `STAGING_RAILWAY.md`.
+- [ ] Runbook de rollback escrito.
 - [ ] Correo con dominio verificado (o aceptar que no llega al comprador).
 - [ ] Ninguna credencial live de Mercado Pago en staging.
 
