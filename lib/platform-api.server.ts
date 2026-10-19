@@ -7,8 +7,16 @@
 
 import { NextResponse } from 'next/server';
 import { TenancyError } from './tenancy';
+import { CatalogError } from './catalog';
 
 export function platformErrorResponse(error: unknown): NextResponse {
+  if (error instanceof CatalogError) {
+    return NextResponse.json(
+      { error: error.message, code: error.code },
+      { status: error.status },
+    );
+  }
+
   if (error instanceof TenancyError) {
     return NextResponse.json(
       { error: error.message, code: error.code },
