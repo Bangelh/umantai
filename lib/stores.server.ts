@@ -19,6 +19,12 @@
  */
 
 import { boundingBox, type GeoPoint } from './geo';
+import {
+  normalizeSearchText,
+  parseOptionSchema,
+  type CatalogVariant,
+  type ProductOptionSchema,
+} from './catalog';
 import type { DiscoveryProduct, DiscoveryQuery, DiscoveryStore } from './discovery';
 import { normalizeQuery } from './discovery';
 import {
@@ -88,6 +94,11 @@ export interface StoreProduct {
   visible: boolean;
   available: number;
   inStock: boolean;
+  /** Ejes declarados (talla/color/peso…). Vacío = producto sin variantes. */
+  optionSchema: ProductOptionSchema[];
+  /** Variantes vendibles activas, con su stock real. */
+  variants: CatalogVariant[];
+  archivedAt: string | null;
 }
 
 export interface Storefront {
@@ -120,7 +131,7 @@ export interface StoreOrderSummary {
 
 type Row = Record<string, unknown>;
 
-function toStore(row: Row): Store {
+export function toStore(row: Row): Store {
   return {
     id: String(row.id),
     name: String(row.name),
@@ -143,6 +154,47 @@ function toStore(row: Row): Store {
   };
 }
 
+function toCatalogVariant(raw: unknown): CatalogVariant | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const available = toNumber(row.available);
+  return {
+    id: String(row.id),
+    sku: String(row.sku),
+    variantKey: String(row.variantKey ?? row.variant_key ?? ''),
+    optionValues:
+      row.optionValues && typeof row.optionValues === 'object'
+        ? (row.optionValues as Record<string, string>)
+        : row.option_values && typeof row.option_values === 'object'
+          ? (row.option_values as Record<string, string>)
+          : {},
+    priceCents:
+      row.priceCents === null || row.priceCents === undefined
+        ? row.price_cents === null || row.price_cents === undefined
+          ? null
+          : toNumber(row.price_cents)
+        : toNumber(row.priceCents),
+    available,
+    inStock: available > 0,
+    active: row.active === undefined ? row.is_active !== false : row.active !== false,
+  };
+}
+
+function parseVariantsField(value: unknown): CatalogVariant[] {
+  let list: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      list = JSON.parse(value);
+    } catch {
+      list = [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  return list
+    .map(toCatalogVariant)
+    .filter((variant): variant is CatalogVariant => variant !== null);
+}
+
 function toStoreProduct(row: Row): StoreProduct {
   const available = toNumber(row.available);
   return {
@@ -161,6 +213,9 @@ function toStoreProduct(row: Row): StoreProduct {
     visible: row.visible === true,
     available,
     inStock: available > 0,
+    optionSchema: parseOptionSchema(row.option_schema),
+    variants: parseVariantsField(row.variants),
+    archivedAt: row.archived_at ? toIsoString(row.archived_at) : null,
   };
 }
 
@@ -197,8 +252,9 @@ export async function searchDiscovery(
   if (!sql) return { products: [], stores: [], total: 0 };
 
   const q = normalizeQuery(query.q);
-  const likes = q ? `%${escapeLike(q)}%` : '%';
-  const prefix = q ? `${escapeLike(q)}%` : '%';
+  const nq = normalizeSearchText(q);
+  const likes = q ? `%${escapeLike(nq)}%` : '%';
+  const prefix = q ? `${escapeLike(nq)}%` : '%';
   const hasGeo = query.location !== null;
   const location: GeoPoint = query.location ?? { latitude: 0, longitude: 0 };
   const bounds = hasGeo ? boundingBox(location, query.radiusKm) : null;
@@ -217,10 +273,12 @@ export async function searchDiscovery(
             sp.brand                 AS brand,
             sp.category              AS category,
             sp.description           AS description,
-            sp.price_cents           AS price_cents,
+            CASE WHEN COALESCE(variants.variant_count, 0) > 0
+              THEN variants.min_price ELSE sp.price_cents END AS price_cents,
             sp.currency              AS currency,
             sp.unit                  AS unit,
             COALESCE(inv.available, 0)::int AS available,
+            COALESCE(variants.variant_count, 0)::int AS variant_count,
             CASE WHEN ${hasGeo}::boolean
               THEN geo_distance_km(
                 ${location.latitude}::float8, ${location.longitude}::float8,
@@ -229,34 +287,58 @@ export async function searchDiscovery(
               ELSE NULL
             END AS distance_km,
             CASE
-              WHEN ${q} = '' THEN 5
-              WHEN lower(sp.name) = lower(${q}) THEN 0
-              WHEN lower(sp.name) LIKE lower(${prefix}) ESCAPE '\\' THEN 1
-              WHEN lower(sp.name) LIKE lower(${likes}) ESCAPE '\\' THEN 2
-              WHEN lower(COALESCE(sp.brand, '')) LIKE lower(${likes}) ESCAPE '\\'
-                OR lower(COALESCE(sp.category, '')) LIKE lower(${likes}) ESCAPE '\\' THEN 3
-              WHEN lower(COALESCE(mp.name, '')) LIKE lower(${likes}) ESCAPE '\\'
-                OR lower(COALESCE(mp.brand, '')) LIKE lower(${likes}) ESCAPE '\\' THEN 4
+              WHEN ${nq} = '' THEN 5
+              WHEN sp.normalized_name = ${nq} THEN 0
+              WHEN sp.normalized_name LIKE ${prefix} ESCAPE '\\' THEN 1
+              WHEN sp.normalized_name LIKE ${likes} ESCAPE '\\' THEN 2
+              WHEN normalize_search_text(COALESCE(sp.brand, '')) LIKE ${likes} ESCAPE '\\'
+                OR normalize_search_text(COALESCE(sp.category, '')) LIKE ${likes} ESCAPE '\\' THEN 3
+              WHEN normalize_search_text(COALESCE(mp.name, '')) LIKE ${likes} ESCAPE '\\'
+                OR normalize_search_text(COALESCE(mp.brand, '')) LIKE ${likes} ESCAPE '\\' THEN 4
               ELSE 5
             END AS relevance
           FROM store_products sp
           JOIN stores s ON s.id = sp.store_id AND s.active = TRUE
           LEFT JOIN master_products mp ON mp.id = sp.master_product_id
           LEFT JOIN LATERAL (
-            SELECT SUM(i.quantity_available)::int AS available
+            SELECT COALESCE(SUM(i.quantity_available), 0)::int AS available
               FROM inventory i
              WHERE i.store_id = sp.store_id
                AND i.product_slug = sp.slug
                AND i.is_active = TRUE
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM product_variants vx
+                    WHERE vx.store_product_id = sp.id
+                      AND vx.archived_at IS NULL AND vx.is_active
+                      AND vx.variant_key = i.variant_key
+                 )
+                 OR (
+                   NOT EXISTS (
+                     SELECT 1 FROM product_variants vx
+                      WHERE vx.store_product_id = sp.id
+                        AND vx.archived_at IS NULL AND vx.is_active
+                   )
+                   AND i.variant_key = ''
+                 )
+               )
           ) inv ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS variant_count,
+                   MIN(COALESCE(v.price_cents, sp.price_cents)) AS min_price
+              FROM product_variants v
+             WHERE v.store_product_id = sp.id
+               AND v.archived_at IS NULL AND v.is_active
+          ) variants ON TRUE
           WHERE sp.visible = TRUE
+            AND sp.archived_at IS NULL
             AND (
-              ${q} = ''
-              OR sp.name ILIKE ${likes} ESCAPE '\\'
-              OR sp.brand ILIKE ${likes} ESCAPE '\\'
-              OR sp.category ILIKE ${likes} ESCAPE '\\'
-              OR mp.name ILIKE ${likes} ESCAPE '\\'
-              OR mp.brand ILIKE ${likes} ESCAPE '\\'
+              ${nq} = ''
+              OR sp.normalized_name LIKE ${likes} ESCAPE '\\'
+              OR normalize_search_text(COALESCE(sp.brand, '')) LIKE ${likes} ESCAPE '\\'
+              OR normalize_search_text(COALESCE(sp.category, '')) LIKE ${likes} ESCAPE '\\'
+              OR normalize_search_text(COALESCE(mp.name, '')) LIKE ${likes} ESCAPE '\\'
+              OR normalize_search_text(COALESCE(mp.brand, '')) LIKE ${likes} ESCAPE '\\'
             )
             AND (
               NOT ${hasGeo}::boolean
@@ -299,31 +381,48 @@ export async function searchDiscovery(
             COUNT(sp.id) FILTER (WHERE COALESCE(inv.available, 0) > 0)::int AS in_stock_count
           FROM stores s
           LEFT JOIN store_products sp
-            ON sp.store_id = s.id AND sp.visible = TRUE
+            ON sp.store_id = s.id AND sp.visible = TRUE AND sp.archived_at IS NULL
           LEFT JOIN LATERAL (
-            SELECT SUM(i.quantity_available)::int AS available
+            SELECT COALESCE(SUM(i.quantity_available), 0)::int AS available
               FROM inventory i
              WHERE i.store_id = sp.store_id
                AND i.product_slug = sp.slug
                AND i.is_active = TRUE
+               AND (
+                 EXISTS (
+                   SELECT 1 FROM product_variants vx
+                    WHERE vx.store_product_id = sp.id
+                      AND vx.archived_at IS NULL AND vx.is_active
+                      AND vx.variant_key = i.variant_key
+                 )
+                 OR (
+                   NOT EXISTS (
+                     SELECT 1 FROM product_variants vx
+                      WHERE vx.store_product_id = sp.id
+                        AND vx.archived_at IS NULL AND vx.is_active
+                   )
+                   AND i.variant_key = ''
+                 )
+               )
           ) inv ON TRUE
           WHERE s.active = TRUE
             AND (
-              ${q} = ''
-              OR s.name ILIKE ${likes} ESCAPE '\\'
-              OR s.category ILIKE ${likes} ESCAPE '\\'
+              ${nq} = ''
+              OR normalize_search_text(s.name) LIKE ${likes} ESCAPE '\\'
+              OR normalize_search_text(COALESCE(s.category, '')) LIKE ${likes} ESCAPE '\\'
               OR EXISTS (
                 SELECT 1
                   FROM store_products sp2
                   LEFT JOIN master_products mp2 ON mp2.id = sp2.master_product_id
                  WHERE sp2.store_id = s.id
                    AND sp2.visible = TRUE
+                   AND sp2.archived_at IS NULL
                    AND (
-                     sp2.name ILIKE ${likes} ESCAPE '\\'
-                     OR sp2.brand ILIKE ${likes} ESCAPE '\\'
-                     OR sp2.category ILIKE ${likes} ESCAPE '\\'
-                     OR mp2.name ILIKE ${likes} ESCAPE '\\'
-                     OR mp2.brand ILIKE ${likes} ESCAPE '\\'
+                     sp2.normalized_name LIKE ${likes} ESCAPE '\\'
+                     OR normalize_search_text(COALESCE(sp2.brand, '')) LIKE ${likes} ESCAPE '\\'
+                     OR normalize_search_text(COALESCE(sp2.category, '')) LIKE ${likes} ESCAPE '\\'
+                     OR normalize_search_text(COALESCE(mp2.name, '')) LIKE ${likes} ESCAPE '\\'
+                     OR normalize_search_text(COALESCE(mp2.brand, '')) LIKE ${likes} ESCAPE '\\'
                    )
               )
             )
@@ -363,6 +462,8 @@ export async function searchDiscovery(
     available: toNumber(row.available),
     inStock: toNumber(row.available) > 0,
     distanceKm: toNullableNumber(row.distance_km),
+    variantCount: toNumber(row.variant_count),
+    hasVariants: toNumber(row.variant_count) > 0,
   }));
 
   const stores: DiscoveryStore[] = (storeRows as Row[]).map((row) => ({
@@ -396,17 +497,54 @@ export async function getStorefront(slug: string): Promise<Storefront | null> {
   if (!store) return null;
 
   const rows = await sql`
-    SELECT sp.*, COALESCE(inv.available, 0)::int AS available
+    SELECT sp.*, COALESCE(inv.available, 0)::int AS available,
+           COALESCE(vv.variants, '[]'::json) AS variants
       FROM store_products sp
       LEFT JOIN LATERAL (
-        SELECT SUM(i.quantity_available)::int AS available
+        SELECT COALESCE(SUM(i.quantity_available), 0)::int AS available
           FROM inventory i
          WHERE i.store_id = sp.store_id
            AND i.product_slug = sp.slug
            AND i.is_active = TRUE
+           AND (
+             EXISTS (
+               SELECT 1 FROM product_variants vx
+                WHERE vx.store_product_id = sp.id
+                  AND vx.archived_at IS NULL AND vx.is_active
+                  AND vx.variant_key = i.variant_key
+             )
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM product_variants vx
+                  WHERE vx.store_product_id = sp.id
+                    AND vx.archived_at IS NULL AND vx.is_active
+               )
+               AND i.variant_key = ''
+             )
+           )
       ) inv ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object(
+                 'id', v.id, 'sku', v.sku, 'variantKey', v.variant_key,
+                 'optionValues', v.option_values, 'priceCents', v.price_cents,
+                 'active', v.is_active,
+                 'available', COALESCE((
+                   SELECT SUM(i2.quantity_available)::int
+                     FROM inventory i2
+                    WHERE i2.store_id = v.store_id
+                      AND i2.product_slug = sp.slug
+                      AND i2.variant_key = v.variant_key
+                      AND i2.is_active
+                 ), 0)
+               ) ORDER BY v.variant_key) AS variants
+          FROM product_variants v
+         WHERE v.store_product_id = sp.id
+           AND v.archived_at IS NULL
+           AND v.is_active
+      ) vv ON TRUE
      WHERE sp.store_id = ${store.id}::uuid
        AND sp.visible = TRUE
+       AND sp.archived_at IS NULL
      ORDER BY lower(COALESCE(sp.category, '')), lower(sp.name)
      LIMIT 500
   `;
@@ -428,18 +566,55 @@ export async function getStoreProductDetail(
   // Dos consultas (tienda + producto), sin joins ambiguos de columnas
   // homónimas (`name`/`slug`/`category` existen en ambas tablas).
   const rows = await sql`
-    SELECT sp.*, COALESCE(inv.available, 0)::int AS available
+    SELECT sp.*, COALESCE(inv.available, 0)::int AS available,
+           COALESCE(vv.variants, '[]'::json) AS variants
       FROM store_products sp
       LEFT JOIN LATERAL (
-        SELECT SUM(i.quantity_available)::int AS available
+        SELECT COALESCE(SUM(i.quantity_available), 0)::int AS available
           FROM inventory i
          WHERE i.store_id = sp.store_id
            AND i.product_slug = sp.slug
            AND i.is_active = TRUE
+           AND (
+             EXISTS (
+               SELECT 1 FROM product_variants vx
+                WHERE vx.store_product_id = sp.id
+                  AND vx.archived_at IS NULL AND vx.is_active
+                  AND vx.variant_key = i.variant_key
+             )
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM product_variants vx
+                  WHERE vx.store_product_id = sp.id
+                    AND vx.archived_at IS NULL AND vx.is_active
+               )
+               AND i.variant_key = ''
+             )
+           )
       ) inv ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object(
+                 'id', v.id, 'sku', v.sku, 'variantKey', v.variant_key,
+                 'optionValues', v.option_values, 'priceCents', v.price_cents,
+                 'active', v.is_active,
+                 'available', COALESCE((
+                   SELECT SUM(i2.quantity_available)::int
+                     FROM inventory i2
+                    WHERE i2.store_id = v.store_id
+                      AND i2.product_slug = sp.slug
+                      AND i2.variant_key = v.variant_key
+                      AND i2.is_active
+                 ), 0)
+               ) ORDER BY v.variant_key) AS variants
+          FROM product_variants v
+         WHERE v.store_product_id = sp.id
+           AND v.archived_at IS NULL
+           AND v.is_active
+      ) vv ON TRUE
      WHERE sp.store_id = ${store.id}::uuid
        AND sp.slug = ${productSlug}
        AND sp.visible = TRUE
+       AND sp.archived_at IS NULL
      LIMIT 1
   `;
 
@@ -627,16 +802,53 @@ export async function listStoreProducts(
   const sql = requirePlatformSql();
 
   const rows = await sql`
-    SELECT sp.*, COALESCE(inv.available, 0)::int AS available
+    SELECT sp.*, COALESCE(inv.available, 0)::int AS available,
+           COALESCE(vv.variants, '[]'::json) AS variants
       FROM store_products sp
       LEFT JOIN LATERAL (
-        SELECT SUM(i.quantity_available)::int AS available
+        SELECT COALESCE(SUM(i.quantity_available), 0)::int AS available
           FROM inventory i
          WHERE i.store_id = sp.store_id
            AND i.product_slug = sp.slug
            AND i.is_active = TRUE
+           AND (
+             EXISTS (
+               SELECT 1 FROM product_variants vx
+                WHERE vx.store_product_id = sp.id
+                  AND vx.archived_at IS NULL AND vx.is_active
+                  AND vx.variant_key = i.variant_key
+             )
+             OR (
+               NOT EXISTS (
+                 SELECT 1 FROM product_variants vx
+                  WHERE vx.store_product_id = sp.id
+                    AND vx.archived_at IS NULL AND vx.is_active
+               )
+               AND i.variant_key = ''
+             )
+           )
       ) inv ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT json_agg(json_build_object(
+                 'id', v.id, 'sku', v.sku, 'variantKey', v.variant_key,
+                 'optionValues', v.option_values, 'priceCents', v.price_cents,
+                 'active', v.is_active,
+                 'available', COALESCE((
+                   SELECT SUM(i2.quantity_available)::int
+                     FROM inventory i2
+                    WHERE i2.store_id = v.store_id
+                      AND i2.product_slug = sp.slug
+                      AND i2.variant_key = v.variant_key
+                      AND i2.is_active
+                 ), 0)
+               ) ORDER BY v.variant_key) AS variants
+          FROM product_variants v
+         WHERE v.store_product_id = sp.id
+           AND v.archived_at IS NULL
+           AND v.is_active
+      ) vv ON TRUE
      WHERE sp.store_id = ${storeId}::uuid
+       AND sp.archived_at IS NULL
      ORDER BY lower(sp.name)
      LIMIT 500
   `;

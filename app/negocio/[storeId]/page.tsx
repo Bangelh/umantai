@@ -9,7 +9,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { MerchantProductForm } from './MerchantProductForm';
+import { MerchantCatalog } from './MerchantCatalog';
 import { ORDER_STATUS_LABELS, resolveAnalyticsRange } from '@/lib/analytics';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { formatPriceCents } from '@/lib/discovery';
@@ -144,40 +144,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
           <span className="text-xs text-muted tabular-nums">{products.length}</span>
         </div>
 
-        {products.length === 0 ? (
-          <p className="py-4 text-sm text-tertiary">Aún no hay productos. Agrega el primero abajo.</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {products.map((product) => (
-              <li key={product.id} className="flex items-center justify-between gap-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{product.name}</span>
-                    {!product.visible && (
-                      <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted">
-                        oculto
-                      </span>
-                    )}
-                  </div>
-                  <div className="truncate text-xs text-tertiary">
-                    /{product.slug}
-                    {product.category && ` · ${product.category}`}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="font-mono text-sm tabular-nums">
-                    {formatPriceCents(product.priceCents, product.currency)}
-                  </div>
-                  <div className={`text-[11px] ${product.inStock ? 'text-success' : 'text-destructive'}`}>
-                    {product.inStock ? `${product.available} disp.` : 'agotado'}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <MerchantProductForm storeId={storeId} />
+        <MerchantCatalog storeId={storeId} products={products} />
       </section>
 
       {/* Pedidos */}
