@@ -23,6 +23,10 @@ const saved = {
   emails: process.env.PLATFORM_ADMIN_EMAILS,
   admin: process.env.ADMIN_API_SECRET,
   appEnv: process.env.APP_ENV,
+  databaseUrl: process.env.DATABASE_URL,
+  postgresUrl: process.env.POSTGRES_URL,
+  postgresUrlDirect: process.env.POSTGRES_URL_NON_POOLING,
+  integrationUrl: process.env.INTEGRATION_DATABASE_URL,
 };
 
 before(() => {
@@ -30,6 +34,11 @@ before(() => {
   process.env.PLATFORM_ADMIN_EMAILS = 'Admin@Example.com';
   delete process.env.ADMIN_API_SECRET;
   delete process.env.APP_ENV;
+  // Este test es de unidad: nunca debe consultar una base externa.
+  delete process.env.DATABASE_URL;
+  delete process.env.POSTGRES_URL;
+  delete process.env.POSTGRES_URL_NON_POOLING;
+  delete process.env.INTEGRATION_DATABASE_URL;
 });
 
 after(() => {
@@ -41,6 +50,12 @@ after(() => {
   else process.env.ADMIN_API_SECRET = saved.admin;
   if (saved.appEnv === undefined) delete process.env.APP_ENV;
   else process.env.APP_ENV = saved.appEnv;
+  if (saved.databaseUrl !== undefined) process.env.DATABASE_URL = saved.databaseUrl;
+  if (saved.postgresUrl !== undefined) process.env.POSTGRES_URL = saved.postgresUrl;
+  if (saved.postgresUrlDirect !== undefined)
+    process.env.POSTGRES_URL_NON_POOLING = saved.postgresUrlDirect;
+  if (saved.integrationUrl !== undefined)
+    process.env.INTEGRATION_DATABASE_URL = saved.integrationUrl;
 });
 
 test('crea y verifica una sesión de admin', () => {
