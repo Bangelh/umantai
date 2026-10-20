@@ -60,8 +60,10 @@ export function isAuthTestMode(): boolean {
 }
 
 export function resolveEmailProviderName(): EmailProviderName {
-  if (readEnv('RESEND_API_KEY')) return 'resend';
+  // Test mode GANA sobre una API key real: el E2E y el staging con clave no
+  // deben enviar correos de verdad ni depender de un dominio verificado.
   if (isAuthTestMode()) return 'test';
+  if (readEnv('RESEND_API_KEY')) return 'resend';
   return 'disabled';
 }
 

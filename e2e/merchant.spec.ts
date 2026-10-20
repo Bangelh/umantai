@@ -23,7 +23,7 @@ test.describe.serial('merchant', () => {
     await page.getByLabel(/Dirección del local/).fill('Av. E2E 123');
     await page.getByLabel(/Zona/).selectOption({ index: 1 });
     await page.getByRole('button', { name: /Crear mi tienda/ }).click();
-    await expect(page.getByText('Tienda creada', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Tienda creada' })).toBeVisible();
     await expect(page.getByText(/pendiente de aprobación/)).toBeVisible();
 
     const link = page.getByRole('link', { name: /Ir al panel/ });

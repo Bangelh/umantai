@@ -63,7 +63,7 @@ test.describe('home y búsqueda', () => {
     await page.getByLabel('Latitud').fill('999');
     await page.getByLabel('Longitud').fill('-77');
     await page.getByRole('button', { name: /^Aplicar$/ }).click();
-    await expect(page.getByRole('alert')).toContainText(/Coordenadas inválidas/);
+    await expect(page.getByRole('alert').filter({ hasText: /Coordenadas inválidas/ })).toBeVisible();
   });
 });
 

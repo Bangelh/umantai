@@ -29,6 +29,9 @@ test.describe.serial('auth lifecycle', () => {
   });
 
   test('logout y login con la misma contraseña', async ({ page }) => {
+    // Cada test de Playwright arranca con un contexto limpio (sin cookies), así
+    // que la sesión se crea acá antes de probar el cierre de sesión.
+    await loginUi(page, email);
     await logoutUi(page);
     await loginUi(page, email);
     await expect(page.getByText(email)).toBeVisible();
@@ -52,6 +55,7 @@ test.describe.serial('auth lifecycle', () => {
   });
 
   test('cambio de contraseña desde la cuenta y revocación de otras sesiones', async ({ page }) => {
+    await loginUi(page, email, newPassword);
     await page.goto('/cuenta');
     await page.getByLabel('Contraseña actual').fill(newPassword);
     await page.getByLabel('Nueva contraseña', { exact: true }).fill(E2E_PASSWORD);
