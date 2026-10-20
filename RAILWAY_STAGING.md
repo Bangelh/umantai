@@ -139,6 +139,22 @@ El cron de Vercel (`0 3 * * *`) NO se elimina hasta el cutover.
 Disparos manuales: `scripts/trigger-expire-reservations.mjs` y
 `scripts/trigger-billing.mjs` (mismo cliente compartido).
 
+### Verificación real en staging (2026-10-20)
+
+Servicio `cron` actualizado a `node scripts/run-cron.mjs`, schedule
+`*/15 * * * *`, sin crear un segundo servicio.
+
+- Corrida off-schedule (deployment `08bca6cb`, 6 s):
+  `[cron] expire-reservations ok … {"ok":true,"expiredOrders":0}` y
+  `[cron] billing ok … {"ok":true,"renewed":0,"failed":0}`; resumen
+  `"ok": true` y exit 0.
+- Ejecución con los secretos reales del servicio
+  (`railway run -s cron … node scripts/run-cron.mjs`): ambos endpoints 200,
+  reservas 751 ms y billing 499 ms, exit 0.
+- El aislamiento de fallos y el exit 1 están cubiertos por
+  `tests/cron-runner.test.ts` (job caído, fallo parcial `ok:false`, secreto
+  ausente).
+
 ---
 
 ## 7. Orden de ejecución futuro (no ejecutado)
