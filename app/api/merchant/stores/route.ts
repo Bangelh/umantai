@@ -4,7 +4,7 @@
  *   GET  → tiendas a las que pertenece el usuario (una identidad puede tener
  *          varias) con su rol.
  *   POST → alta controlada: crea la tienda INACTIVA y asocia al usuario como
- *          `owner`. No crea planes ni cobra nada.
+ *          `owner`. La DB le asigna Free 25 por trigger; no cobra nada.
  *
  * Autenticación: cookie de Better Auth. Sin sesión → 401.
  */

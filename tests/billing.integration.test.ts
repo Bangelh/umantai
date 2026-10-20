@@ -142,6 +142,7 @@ test('toda tienda nueva recibe Free 25 explícito, sin método de pago', async (
   assert.equal(billing.usage.current, 0);
   assert.equal(billing.subscription.cancelAtPeriodEnd, false);
   assert.ok(billing.subscription.id, 'debe existir una fila de suscripción');
+  assert.ok((await eventTypes(storeId)).includes('subscription_created'));
 
   const plans = await subscriptions.listPlans();
   assert.deepEqual(

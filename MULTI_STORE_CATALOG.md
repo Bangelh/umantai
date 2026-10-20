@@ -212,8 +212,10 @@ snapshot.
 - **017** (`db/migrations/017_plans_subscriptions.sql`): planes SaaS,
   suscripciones, eventos, promociones y la vista `store_sku_usage`. No modifica
   el catálogo ni Mercado Pago de pedidos.
+- **018** (`db/migrations/018_subscription_created_events.sql`): evento
+  `subscription_created` en el alta y backfill del inicio.
 - 001–016 no se editan.
-- Aplicar solo en staging. El test efímero aplica 001–017.
+- Aplicar solo en staging. El test efímero aplica 001–018.
 - `npm run test:integration` resetea únicamente una base cuyo nombre contenga
   `test` o `integration`.
 

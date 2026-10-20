@@ -199,12 +199,14 @@ recomienda un segundo servicio cron con schedule horario. El job:
 
 | Tienda | Plan | SKU aproximados |
 |---|---|---:|
-| Bodega La Esquina | Free | 6 |
+| Bodega La Esquina | Free | 9 (incluye datos previos de smoke) |
 | Hilos & Estilo | Starter | 8 |
 | Telas del Sur | Growth | 7 |
 | Ferretería Central | Starter + promo `FERIA1M` | 4 |
 
 El seed es idempotente y usa el mismo camino de cambio de plan (deja historial).
+La migración **018** registra el evento `subscription_created` en el alta y
+rellena el inicio de las suscripciones existentes.
 
 ## 10. Límites y deuda
 
