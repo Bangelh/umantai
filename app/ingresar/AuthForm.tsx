@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useI18n } from '@/components/i18n/I18nProvider';
 
 type Mode = 'login' | 'register';
 
@@ -18,6 +19,7 @@ interface AuthErrorPayload {
 
 export function AuthForm({ next }: Props) {
   const router = useRouter();
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -31,15 +33,15 @@ export function AuthForm({ next }: Props) {
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      setError('Ingresa un correo válido.');
+      setError(t('auth.invalidEmail'));
       return;
     }
     if (password.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres.');
+      setError(t('auth.weakPassword'));
       return;
     }
     if (mode === 'register' && name.trim().length < 2) {
-      setError('Ingresa tu nombre.');
+      setError(t('auth.nameRequired'));
       return;
     }
 
@@ -65,17 +67,15 @@ export function AuthForm({ next }: Props) {
         const message =
           payload?.message ??
           payload?.error ??
-          (mode === 'login'
-            ? 'No pudimos iniciar sesión. Revisa tus datos.'
-            : 'No pudimos crear la cuenta.');
+          (mode === 'login' ? t('auth.loginFailed') : t('auth.registerFailed'));
         throw new Error(message);
       }
 
-      toast.success(mode === 'login' ? 'Bienvenido de vuelta' : 'Cuenta creada');
+      toast.success(mode === 'login' ? t('auth.welcomeBack') : t('auth.accountCreated'));
       router.push(next);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.');
+      setError(err instanceof Error ? err.message : t('auth.unexpected'));
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +83,7 @@ export function AuthForm({ next }: Props) {
 
   return (
     <form onSubmit={submit} className="mt-6 space-y-3" noValidate>
-      <div className="flex rounded-xl border border-border p-1" role="tablist" aria-label="Modo">
+      <div className="flex rounded-xl border border-border p-1" role="tablist" aria-label={t('auth.mode')}>
         <button
           type="button"
           role="tab"
@@ -96,7 +96,7 @@ export function AuthForm({ next }: Props) {
             mode === 'login' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
           }`}
         >
-          Ya tengo cuenta
+          {t('auth.loginTab')}
         </button>
         <button
           type="button"
@@ -110,13 +110,13 @@ export function AuthForm({ next }: Props) {
             mode === 'register' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
           }`}
         >
-          Crear cuenta
+          {t('auth.registerTab')}
         </button>
       </div>
 
       {mode === 'register' && (
         <label className="block text-xs text-tertiary">
-          Nombre
+          {t('auth.name')}
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -128,7 +128,7 @@ export function AuthForm({ next }: Props) {
       )}
 
       <label className="block text-xs text-tertiary">
-        Correo
+        {t('auth.email')}
         <input
           type="email"
           value={email}
@@ -141,7 +141,7 @@ export function AuthForm({ next }: Props) {
       </label>
 
       <label className="block text-xs text-tertiary">
-        Contraseña
+        {t('auth.password')}
         <input
           type="password"
           value={password}
@@ -151,7 +151,7 @@ export function AuthForm({ next }: Props) {
           required
           className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
         />
-        <span className="mt-1 block text-[11px] text-muted">Mínimo 8 caracteres.</span>
+        <span className="mt-1 block text-[11px] text-muted">{t('auth.passwordHint')}</span>
       </label>
 
       {error && (
@@ -165,12 +165,14 @@ export function AuthForm({ next }: Props) {
         disabled={submitting}
         className="h-11 w-full rounded-xl bg-brand text-sm font-semibold text-background disabled:opacity-50"
       >
-        {submitting ? 'Procesando…' : mode === 'login' ? 'Ingresar' : 'Crear cuenta'}
+        {submitting
+          ? t('auth.processing')
+          : mode === 'login'
+            ? t('auth.submitLogin')
+            : t('auth.submitRegister')}
       </button>
 
-      <p className="text-center text-[11px] text-muted">
-        También puedes comprar como invitado, sin crear cuenta.
-      </p>
+      <p className="text-center text-[11px] text-muted">{t('auth.guest')}</p>
     </form>
   );
 }

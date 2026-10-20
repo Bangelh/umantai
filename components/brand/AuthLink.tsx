@@ -7,9 +7,10 @@
 
 import Link from 'next/link';
 import { getCurrentUser } from '@/lib/current-user.server';
+import { getTranslator } from '@/lib/i18n/server';
 
 export async function AuthLink() {
-  const user = await getCurrentUser();
+  const [user, { t }] = await Promise.all([getCurrentUser(), getTranslator()]);
 
   if (!user) {
     return (
@@ -17,12 +18,12 @@ export async function AuthLink() {
         href="/ingresar"
         className="inline-flex h-9 items-center justify-center rounded-full border border-border-strong px-4 text-sm font-medium text-primary transition-colors hover:bg-surface-raised"
       >
-        Ingresar
+        {t('nav.login')}
       </Link>
     );
   }
 
-  const firstName = user.name.trim().split(/\s+/)[0] || 'Mi cuenta';
+  const firstName = user.name.trim().split(/\s+/)[0] || t('nav.account');
 
   return (
     <Link

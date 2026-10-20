@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import {
   formatSkuUsage,
   formatUsdCents,
@@ -13,10 +14,10 @@ interface Props {
   initialBilling: StoreBillingView;
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | null, locale: string): string {
   if (!value) return '—';
   try {
-    return new Intl.DateTimeFormat('es-PE', {
+    return new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'es-PE', {
       dateStyle: 'medium',
       timeZone: 'America/Lima',
     }).format(new Date(value));
@@ -33,6 +34,7 @@ function formatDate(value: string | null): string {
  * pinta y llama a la API.
  */
 export function StoreBilling({ storeId, initialBilling }: Props) {
+  const { locale, t } = useI18n();
   const [billing, setBilling] = useState(initialBilling);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -61,16 +63,19 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
       if (!response.ok || !payload?.billing) {
         if (payload?.code === 'plan_sku_limit_reached') {
           throw new Error(
-            `Tu plan ${payload.plan} permite ${payload.limit} SKU y usas ${payload.current}. ` +
-              'Archiva o despublica productos antes de publicar más.',
+            t('billing.planLimitReached', {
+              plan: payload.plan ?? '',
+              limit: payload.limit ?? 0,
+              current: payload.current ?? 0,
+            }),
           );
         }
-        throw new Error(payload?.error ?? 'No se pudo actualizar el plan.');
+        throw new Error(payload?.error ?? t('billing.updateFailed'));
       }
       setBilling(payload.billing);
-      setNotice('Plan actualizado.');
+      setNotice(t('billing.updated'));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo actualizar el plan.');
+      setError(err instanceof Error ? err.message : t('billing.updateFailed'));
     } finally {
       setBusy(null);
     }
@@ -81,10 +86,12 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
     const overTarget = billing.usage.current > targetLimit;
     const message = downgrade
       ? overTarget
-        ? `Tu tienda usa ${billing.usage.current} SKU y el plan destino permite ${targetLimit}. ` +
-          'El cambio se programará al final del período y las nuevas publicaciones quedarán bloqueadas hasta bajar del límite.'
-        : 'El cambio de plan se programará al final del período actual.'
-      : 'El upgrade se aplica ahora en staging.';
+        ? t('billing.downgradeOver', {
+            current: billing.usage.current,
+            limit: targetLimit,
+          })
+        : t('billing.downgradeConfirm')
+      : t('billing.upgradeConfirm');
     if (!window.confirm(message)) return;
     void post(
       'change-plan',
@@ -94,7 +101,7 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
   };
 
   const cancel = () => {
-    if (!window.confirm('¿Cancelar el plan de pago? Conservarás los beneficios hasta el final del período.')) {
+    if (!window.confirm(t('billing.cancelConfirm'))) {
       return;
     }
     void post('cancel', {}, 'cancel');
@@ -111,18 +118,18 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
   const cancellationPending = billing.subscription.cancelAtPeriodEnd || billing.status === 'cancelled';
 
   return (
-    <section className="mt-8 rounded-2xl border border-border bg-surface p-4" aria-label="Plan y facturación">
+    <section className="mt-8 rounded-2xl border border-border bg-surface p-4" aria-label={t('billing.title')}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Plan y facturación</h2>
-          <p className="mt-1 text-xs text-tertiary">
-            Cobro recurrente de UMANTAI. Separado del pago de pedidos de tus clientes.
-          </p>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('billing.title')}
+          </h2>
+          <p className="mt-1 text-xs text-tertiary">{t('billing.subtitle')}</p>
         </div>
         <div className="text-right">
           <div className="font-mono text-2xl font-semibold tabular-nums">
             {formatUsdCents(billing.plan.priceCents)}
-            <span className="ml-1 text-xs font-normal text-muted">/mes</span>
+            <span className="ml-1 text-xs font-normal text-muted">{t('billing.perMonth')}</span>
           </div>
           <div className="text-xs text-secondary">{billing.plan.name}</div>
           <div className="text-[11px] text-tertiary">
@@ -146,26 +153,30 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
         </div>
         {usage.overLimit && (
           <p className="mt-2 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
-            Tu tienda usa {usage.current} SKU y el plan {billing.plan.name} permite {usage.limit}. Los
-            productos publicados siguen visibles, pero no puedes publicar ni activar más SKU hasta
-            archivar/despublicar o mejorar de plan.
+            {t('billing.overLimitBody', {
+              current: usage.current,
+              plan: billing.plan.name,
+              limit: usage.limit,
+            })}
           </p>
         )}
       </div>
 
       <dl className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
         <div>
-          <dt className="text-muted">Próxima renovación</dt>
-          <dd className="text-secondary">{formatDate(billing.nextRenewalAt)}</dd>
+          <dt className="text-muted">{t('billing.nextRenewal')}</dt>
+          <dd className="text-secondary">{formatDate(billing.nextRenewalAt, locale)}</dd>
         </div>
         <div>
-          <dt className="text-muted">Moneda</dt>
+          <dt className="text-muted">{t('billing.currency')}</dt>
           <dd className="text-secondary">{billing.plan.currency}</dd>
         </div>
         <div>
-          <dt className="text-muted">Proveedor</dt>
+          <dt className="text-muted">{t('billing.provider')}</dt>
           <dd className="text-secondary">
-            {billing.subscription.provider === 'manual' ? 'Manual (staging)' : billing.subscription.provider}
+            {billing.subscription.provider === 'manual'
+              ? t('billing.manual')
+              : billing.subscription.provider}
           </dd>
         </div>
       </dl>
@@ -173,7 +184,10 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
       {billing.pendingPlan && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
           <span>
-            Cambio programado a {billing.pendingPlan.name} el {formatDate(billing.subscription.pendingPlanEffectiveAt)}.
+            {t('billing.pendingChange', {
+              plan: billing.pendingPlan.name,
+              date: formatDate(billing.subscription.pendingPlanEffectiveAt, locale),
+            })}
           </span>
           <button
             type="button"
@@ -181,13 +195,16 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
             onClick={() => void post('change-plan', { planCode: billing.plan.code, effective: 'immediate' }, 'keep')}
             className="rounded-md border border-warning/50 px-2 py-1 text-[11px] disabled:opacity-50"
           >
-            Mantener {billing.plan.name}
+            {t('billing.keep', { plan: billing.plan.name })}
           </button>
         </div>
       )}
       {cancellationPending && (
         <p className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
-          Cancelación programada. Mantienes {billing.plan.name} hasta {formatDate(billing.subscription.currentPeriodEnd)}.
+          {t('billing.cancellationPending', {
+            plan: billing.plan.name,
+            date: formatDate(billing.subscription.currentPeriodEnd, locale),
+          })}
         </p>
       )}
 
@@ -200,7 +217,9 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
                 <span className="text-sm font-semibold">{plan.name}</span>
                 <span className="font-mono text-xs tabular-nums">{formatUsdCents(plan.priceCents)}</span>
               </div>
-              <p className="mt-0.5 text-xs text-tertiary">Hasta {plan.skuLimit} SKU</p>
+              <p className="mt-0.5 text-xs text-tertiary">
+                {t('billing.upTo', { limit: plan.skuLimit })}
+              </p>
               <button
                 type="button"
                 onClick={() => changePlan(plan.code, plan.skuLimit)}
@@ -208,10 +227,10 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
                 className="mt-2 h-8 w-full rounded-lg border border-border-strong text-xs hover:bg-surface-raised disabled:opacity-50"
               >
                 {busy === `plan:${plan.code}`
-                  ? 'Aplicando…'
+                  ? t('billing.applying')
                   : plan.skuLimit > billing.plan.skuLimit
-                    ? `Subir a ${plan.name}`
-                    : `Programar ${plan.name}`}
+                    ? t('billing.upgradeTo', { plan: plan.name })
+                    : t('billing.schedule', { plan: plan.name })}
               </button>
             </div>
           ))}
@@ -224,7 +243,7 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
           disabled={busy !== null}
           className="mt-3 h-8 rounded-lg border border-border px-3 text-xs text-secondary hover:bg-surface-raised disabled:opacity-50"
         >
-          {busy === 'cancel' ? 'Cancelando…' : 'Cancelar plan al final del período'}
+          {busy === 'cancel' ? t('billing.cancelling') : t('billing.cancelAtEnd')}
         </button>
       )}
 
@@ -232,23 +251,21 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
         <input
           value={promo}
           onChange={(event) => setPromo(event.target.value.toUpperCase())}
-          placeholder="Código +1 mes"
+          placeholder={t('billing.promoPlaceholder')}
           className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-xs uppercase tracking-wide outline-none focus:border-primary"
           maxLength={40}
-          aria-label="Código promocional"
+          aria-label={t('billing.promoLabel')}
         />
         <button
           type="submit"
           disabled={busy !== null || !promo.trim()}
           className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background disabled:opacity-50"
         >
-          {busy === 'redeem' ? 'Canjeando…' : 'Canjear'}
+          {busy === 'redeem' ? t('billing.redeeming') : t('billing.redeem')}
         </button>
       </form>
       {!paid && (
-        <p className="mt-2 text-[11px] text-tertiary">
-          Los códigos de mes gratis aplican a un plan de pago; no convierten Free en un plan pago automáticamente.
-        </p>
+        <p className="mt-2 text-[11px] text-tertiary">{t('billing.freePromoNote')}</p>
       )}
 
       {error && <p className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">{error}</p>}

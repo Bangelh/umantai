@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCartStore } from "@/lib/cartStore";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
 import { useHydrated } from "@/lib/useHydrated";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 /**
  * Acciones del header.
@@ -19,6 +20,7 @@ export function NavActions() {
   // Ambos stores se persisten en localStorage: sus contadores no se pueden pintar
   // hasta después del montaje (ver `lib/useHydrated.ts`).
   const hydrated = useHydrated();
+  const { t } = useI18n();
   const cartCount = useCartStore((state) => state.getTotalItems());
   const listCount = useShoppingListStore((state) => state.getTotalItems());
 
@@ -28,15 +30,19 @@ export function NavActions() {
         href="/kiosk"
         className="hidden md:inline-flex items-center rounded-full border border-border-strong px-4 py-1.5 text-sm text-primary transition-colors hover:bg-surface-raised"
       >
-        Ready for Pickup Kiosk
+        {t('nav.readyPickup')}
       </Link>
 
       <Link
         href="/list"
         className="hidden sm:inline-flex items-center gap-2 rounded-full border border-border-strong px-4 py-1.5 text-sm text-primary transition-colors hover:bg-surface-raised"
-        aria-label={hydrated && listCount > 0 ? `Lista de compras, ${listCount} artículos` : "Lista de compras"}
+        aria-label={
+          hydrated && listCount > 0
+            ? t('nav.listAriaCount', { count: listCount })
+            : t('nav.listAria')
+        }
       >
-        Shopping List
+        {t('nav.shoppingList')}
         {hydrated && listCount > 0 && (
           <span
             aria-hidden="true"
@@ -50,9 +56,13 @@ export function NavActions() {
       <Link
         href="/cart"
         className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
-        aria-label={hydrated && cartCount > 0 ? `Ver carrito, ${cartCount} artículos` : "Ver carrito"}
+        aria-label={
+          hydrated && cartCount > 0
+            ? t('nav.cartAriaCount', { count: cartCount })
+            : t('nav.cartAria')
+        }
       >
-        <span aria-hidden="true">Cart</span>
+        <span aria-hidden="true">{t('nav.cart')}</span>
         {hydrated && cartCount > 0 && (
           <span
             aria-hidden="true"

@@ -44,7 +44,7 @@
   --um-shadow-card: 0 1px 0 rgb(255 255 255 / 0.04), 0 12px 32px -24px rgb(0 0 0 / 0.9);
 }
 
-/* Preparado para la fase de Dark/Light Mode; no se aplica todavía. */
+/* Tema claro. El script de arranque fija `data-theme` antes del paint. */
 [data-theme="light"] {
   color-scheme: light;
   --um-background: #f7f7f5;
@@ -58,6 +58,53 @@
   --um-border: #e2e2df;
   --um-border-strong: #cfcfca;
   --um-brand: #16161a;
+  --um-shadow-card: 0 1px 0 rgb(0 0 0 / 0.03), 0 12px 32px -24px rgb(0 0 0 / 0.18);
+}
+
+/*
+ * Puente de compatibilidad para pantallas legacy que aún usan utilidades
+ * blancas/negras hardcodeadas. En claro se remapean a los tokens; la deuda es
+ * migrarlas a `text-primary`/`bg-surface` y borrar este bloque.
+ */
+[data-theme="light"] .text-white {
+  color: var(--um-primary);
+}
+[data-theme="light"] .text-white\/90,
+[data-theme="light"] .text-white\/80 {
+  color: var(--um-secondary);
+}
+[data-theme="light"] .text-white\/70,
+[data-theme="light"] .text-white\/60 {
+  color: var(--um-tertiary);
+}
+[data-theme="light"] .text-white\/50,
+[data-theme="light"] .text-white\/40,
+[data-theme="light"] .text-white\/30 {
+  color: var(--um-muted);
+}
+[data-theme="light"] .bg-black,
+[data-theme="light"] .bg-neutral-950,
+[data-theme="light"] .bg-neutral-950\/95,
+[data-theme="light"] .bg-neutral-950\/80 {
+  background-color: var(--um-background);
+}
+[data-theme="light"] .bg-white\/5,
+[data-theme="light"] .bg-white\/10 {
+  background-color: var(--um-surface);
+}
+[data-theme="light"] .hover\:bg-white\/5:hover,
+[data-theme="light"] .hover\:bg-white\/10:hover {
+  background-color: var(--um-surface-raised);
+}
+[data-theme="light"] .border-white\/5,
+[data-theme="light"] .border-white\/10 {
+  border-color: var(--um-border);
+}
+[data-theme="light"] .text-black {
+  color: var(--um-background);
+}
+[data-theme="light"] .bg-white {
+  background-color: var(--um-brand);
 }
 
 body {
@@ -204,7 +251,7 @@ body {
 }
 
 .filter-checkbox {
-  accent-color: #ffffff;
+  accent-color: var(--um-brand);
 }
 
 .kiosk-screen {
@@ -340,4 +387,16 @@ body {
 /* Floating WhatsApp Button (styles now primarily in component via Tailwind for consistency) */
 .wa-float {
   /* Legacy fallback - component uses Tailwind classes primarily */
+}
+
+/* Respeta la preferencia del sistema de reducir movimiento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
