@@ -8,8 +8,30 @@
 import { NextResponse } from 'next/server';
 import { TenancyError } from './tenancy';
 import { CatalogError } from './catalog';
+import { BillingError, PlanLimitError } from './billing';
 
 export function platformErrorResponse(error: unknown): NextResponse {
+  if (error instanceof PlanLimitError) {
+    return NextResponse.json(
+      {
+        error: error.message,
+        code: error.code,
+        plan: error.plan,
+        limit: error.limit,
+        current: error.current,
+        requested: error.requested,
+      },
+      { status: error.status },
+    );
+  }
+
+  if (error instanceof BillingError) {
+    return NextResponse.json(
+      { error: error.message, code: error.code, ...error.details },
+      { status: error.status },
+    );
+  }
+
   if (error instanceof CatalogError) {
     return NextResponse.json(
       { error: error.message, code: error.code },

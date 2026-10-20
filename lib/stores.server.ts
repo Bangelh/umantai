@@ -42,6 +42,11 @@ import {
   validateStoreSlug,
   type StoreRole,
 } from './tenancy';
+import {
+  assertCanCreateStoreProduct,
+  assertCanPublishStoreProduct,
+  refreshStoreOverLimit,
+} from './billing/sku.server';
 
 /** Tienda interna de la fase 1. UUID fijo: también es el DEFAULT de las tablas. */
 export const DEFAULT_STORE_ID = '00000000-0000-0000-0000-000000000001';
@@ -717,8 +722,8 @@ function errorText(error: unknown): string {
  *   · asocia al creador como `owner`,
  *   · valida el slug en la app y en la DB.
  *
- * No cobra nada: los planes todavía no existen. El campo `metadata.plan` queda
- * libre para cuando se definan.
+ * La tienda nace en Free por trigger de DB (migración 017); no requiere método
+ * de pago. El alta no cobra nada.
  */
 export async function createStoreForOwner(input: CreateStoreInput): Promise<Store> {
   const sql = requirePlatformSql();
@@ -891,6 +896,8 @@ export async function createStoreProduct(
   const slug = normalizeStoreSlug(input.slug || name) || 'producto';
   const initialStock = Math.max(0, Math.floor(Number(input.initialStock ?? 0)));
 
+  await assertCanCreateStoreProduct(storeId, { visible: input.visible ?? true, activeVariants: 0 });
+
   try {
     const rows = await sql`
       INSERT INTO store_products (
@@ -919,6 +926,7 @@ export async function createStoreProduct(
       `;
     }
 
+    await refreshStoreOverLimit(storeId);
     const available = initialStock;
     return toStoreProduct({ ...row, available });
   } catch (error) {
@@ -953,6 +961,10 @@ export async function updateStoreProduct(
     }
   }
 
+  if (patch.visible === true) {
+    await assertCanPublishStoreProduct(storeId, productId);
+  }
+
   const rows = await sql`
     UPDATE store_products
        SET name        = COALESCE(${patch.name ?? null}, name),
@@ -970,6 +982,7 @@ export async function updateStoreProduct(
   if (!row) {
     throw new TenancyError('store_product_not_found', 'Producto no encontrado en esta tienda.');
   }
+  await refreshStoreOverLimit(storeId);
   return toStoreProduct({ ...row, available: 0 });
 }
 

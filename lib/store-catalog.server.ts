@@ -30,6 +30,13 @@ import {
 } from './platform-db.server';
 import { requireStoreAccess, toStore, type Store } from './stores.server';
 import { normalizeStoreSlug } from './tenancy';
+import {
+  assertCanActivateStoreVariant,
+  assertCanAddStoreVariant,
+  assertCanCreateStoreProduct,
+  assertCanPublishStoreProduct,
+  refreshStoreOverLimit,
+} from './billing/sku.server';
 
 type Row = Record<string, unknown>;
 
@@ -146,6 +153,13 @@ export async function createStoreProductCatalog(
     // Producto sin ejes: stock en variant_key ''.
   }
 
+  // Un draft no consume SKU; uno visible se valida ANTES de insertar. Así el
+  // límite exacto se permite y el 26.º (Free) se rechaza sin escribir nada.
+  await assertCanCreateStoreProduct(storeId, {
+    visible,
+    activeVariants: variants.filter((variant) => variant.active).length,
+  });
+
   const statements = [
     sql`
       INSERT INTO store_products (
@@ -161,10 +175,10 @@ export async function createStoreProductCatalog(
     ...variants.map(
       (variant) => sql`
         INSERT INTO product_variants (
-          store_id, store_product_id, variant_key, sku, option_values, price_cents
+          store_id, store_product_id, variant_key, sku, option_values, price_cents, is_active
         )
         SELECT ${storeId}::uuid, sp.id, ${variant.variantKey}, ${variant.sku},
-               ${JSON.stringify(variant.optionValues)}::jsonb, ${variant.priceCents}
+               ${JSON.stringify(variant.optionValues)}::jsonb, ${variant.priceCents}, ${variant.active}
           FROM store_products sp
          WHERE sp.store_id = ${storeId}::uuid AND sp.slug = ${slug}
       `,
@@ -255,6 +269,10 @@ export async function updateStoreProductCatalog(
     }
   }
 
+  if (patch.visible === true && patch.archived !== true) {
+    await assertCanPublishStoreProduct(storeId, productId);
+  }
+
   const rows = await sql`
     UPDATE store_products
        SET name = COALESCE(${clean(patch.name, 160)}, name),
@@ -272,6 +290,8 @@ export async function updateStoreProductCatalog(
   `;
   const row = rows[0] as Row | undefined;
   if (!row) throw new CatalogError('store_product_not_found', 'Producto no encontrado.', 404);
+  // Archivar/ocultar reduce o mantiene el consumo; publicar ya validó antes.
+  await refreshStoreOverLimit(storeId);
   return row;
 }
 
@@ -329,13 +349,15 @@ export async function addStoreVariant(
     { optionValues: normalized.optionValues },
   ]);
 
+  await assertCanAddStoreVariant(storeId, productId, { active: normalized.active });
+
   const statements = [
     sql`
       INSERT INTO product_variants (
-        store_id, store_product_id, variant_key, sku, option_values, price_cents
+        store_id, store_product_id, variant_key, sku, option_values, price_cents, is_active
       ) VALUES (
         ${storeId}::uuid, ${productId}::uuid, ${normalized.variantKey}, ${normalized.sku},
-        ${JSON.stringify(normalized.optionValues)}::jsonb, ${normalized.priceCents}
+        ${JSON.stringify(normalized.optionValues)}::jsonb, ${normalized.priceCents}, ${normalized.active}
       )
       RETURNING *
     `,
@@ -358,6 +380,7 @@ export async function addStoreVariant(
 
   try {
     const results = await sql.transaction(statements);
+    await refreshStoreOverLimit(storeId);
     return (results[0]?.[0] as Row) ?? {};
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -381,6 +404,10 @@ export async function updateStoreVariant(
     if (!Number.isInteger(patch.priceCents) || patch.priceCents < 0) {
       throw new CatalogError('invalid_variant', 'El precio debe ser un entero >= 0.');
     }
+  }
+
+  if (patch.active === true && patch.archived !== true) {
+    await assertCanActivateStoreVariant(storeId, productId, variantId);
   }
 
   const setPrice = patch.priceCents !== undefined;
@@ -421,6 +448,7 @@ export async function updateStoreVariant(
     `;
   }
 
+  await refreshStoreOverLimit(storeId);
   return row;
 }
 
