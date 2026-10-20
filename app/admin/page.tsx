@@ -951,6 +951,7 @@ export default function AdminPage() {
             <div className="text-sm px-3 py-1 rounded-full bg-white/10 text-white/80">Backend</div>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/admin/planes" className="text-sm text-white/70 hover:text-white">Planes y suscripciones</Link>
             <Link href="/products" className="text-sm text-white/70 hover:text-white">View Store →</Link>
             <button onClick={resetAll} disabled={!hasLocalChanges} className="px-4 py-2 text-sm rounded-lg border border-white/20 disabled:opacity-40">Reset All</button>
           </div>
