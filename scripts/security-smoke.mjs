@@ -129,9 +129,14 @@ try {
   );
 
   const inventory = await json(`/api/merchant/stores/${storeId}/inventory`, {
-    method: 'PATCH',
+    method: 'POST',
     headers: { 'content-type': 'application/json', origin: base },
-    body: JSON.stringify({ productSlug: 'x', quantityOnHand: 0 }),
+    body: JSON.stringify({
+      productId: '00000000-0000-0000-0000-000000000000',
+      variantKey: '',
+      delta: -1,
+      reason: 'smoke sin sesión',
+    }),
   });
   record(
     'inventario de otra tienda sin sesión → 401',
@@ -211,10 +216,16 @@ try {
   record('búsqueda hostil', false, error instanceof Error ? error.message : String(error));
 }
 
-// 9. Rate limit de credenciales (15/min). Al final: deja esta IP limitada 1 min.
+// 9. Rate limit de credenciales (15/min; 120/min con AUTH_TEST_MODE).
+// Se detecta el modo test por el outbox: si está habilitado, el cupo es mayor y
+// hay que empujar más intentos para comprobar que el 429 sigue existiendo.
+// Al final deja esta IP limitada durante la ventana.
 try {
+  const probe = await fetch(`${base}/api/auth/test/outbox?email=smoke-probe%40example.invalid`);
+  const testMode = probe.status === 200;
+  const maxAttempts = testMode ? 130 : 18;
   let limitedAt = null;
-  for (let index = 1; index <= 18; index += 1) {
+  for (let index = 1; index <= maxAttempts; index += 1) {
     const response = await fetch(`${base}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: base },

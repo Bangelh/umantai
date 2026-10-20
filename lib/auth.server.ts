@@ -131,6 +131,10 @@ export function getAuthServer(): BetterAuthInstance {
     baseURL,
     secret: resolveSecret(),
     database: cachedPool,
+    // El rate limit vive en `app/api/auth/[...all]/route.ts` (una sola capa,
+    // con backend sustituible). Si Better Auth también limitara, cada intento
+    // contaría dos veces y el cupo real sería la mitad del anunciado.
+    rateLimit: { enabled: false },
 
     user: {
       modelName: 'users',

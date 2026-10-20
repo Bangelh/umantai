@@ -49,6 +49,7 @@ interface Counts {
   stores: number;
   orders: number;
   orderItems: number;
+  inventory: number;
   movements: number;
   outbox: number;
 }
@@ -90,6 +91,15 @@ async function countAll(): Promise<Counts> {
                      )
             )`,
   );
+  const inventory = await client.query(
+    `SELECT count(*)::int AS n FROM inventory i
+      WHERE i.store_id IN (
+              SELECT s.id FROM stores s
+               WHERE lower(s.slug) LIKE 'e2e-%'
+                  OR lower(s.slug) LIKE 'smoke-%'
+                  OR s.metadata->>'smoke' = 'true'
+            )`,
+  );
   const movements = await client.query(
     `SELECT count(*)::int AS n FROM inventory_movements m
       WHERE m.store_id IN (
@@ -116,6 +126,7 @@ async function countAll(): Promise<Counts> {
     stores: Number(stores.rows[0].n),
     orders: Number(orders.rows[0].n),
     orderItems: Number(orderItems.rows[0].n),
+    inventory: Number(inventory.rows[0].n),
     movements: Number(movements.rows[0].n),
     outbox: Number(outbox.rows[0].n),
   };
@@ -168,6 +179,18 @@ async function main() {
               )`,
     );
 
+    // `inventory` referencia stores con ON DELETE RESTRICT: sin esta fila el
+    // borrado de la tienda falla aunque el resto de dependencias sean CASCADE.
+    const inventory = await client.query(
+      `DELETE FROM inventory i
+        WHERE i.store_id IN (
+                SELECT s.id FROM stores s
+                 WHERE lower(s.slug) LIKE 'e2e-%'
+                    OR lower(s.slug) LIKE 'smoke-%'
+                    OR s.metadata->>'smoke' = 'true'
+              )`,
+    );
+
     const stores = await client.query(
       `DELETE FROM stores s
         WHERE lower(s.slug) LIKE 'e2e-%'
@@ -189,6 +212,7 @@ async function main() {
     await client.query('COMMIT');
 
     console.info('[cleanup] borrado:', {
+      inventory: inventory.rowCount,
       movements: movements.rowCount,
       orders: orders.rowCount,
       stores: stores.rowCount,

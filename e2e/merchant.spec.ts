@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { createStoreViaApi, signUpUi, uniqueEmail, uniqueSlug } from './helpers';
+import { createStoreViaApi, loginUi, signUpUi, uniqueEmail, uniqueSlug } from './helpers';
 
 /**
  * Merchant: alta de tienda, catálogo propio y aislamiento entre tiendas.
@@ -33,6 +33,8 @@ test.describe.serial('merchant', () => {
   });
 
   test('catálogo: crear producto propio y verlo en el panel', async ({ page }) => {
+    // Contexto nuevo por test: se vuelve a entrar con la misma cuenta.
+    await loginUi(page, email);
     await page.goto(`/negocio/${storeId}`);
     await page.getByRole('button', { name: '+ Producto propio' }).click();
     await page.getByLabel('Nombre', { exact: true }).fill('Producto E2E');
@@ -43,6 +45,7 @@ test.describe.serial('merchant', () => {
   });
 
   test('inventario, analytics y planes están en el panel del comerciante', async ({ page }) => {
+    await loginUi(page, email);
     await page.goto(`/negocio/${storeId}`);
     await expect(page.getByText(/Ventas 30d/)).toBeVisible();
     await expect(page.getByText(/Ticket medio/)).toBeVisible();
@@ -84,12 +87,18 @@ test.describe.serial('merchant', () => {
     expect(payload.stores.some((store) => store.id === storeId)).toBe(false);
   });
 
-  test('slug duplicado se rechaza', async ({ page }) => {
+  test('slug duplicado se resuelve con un sufijo en vez de fallar', async ({ page }) => {
     await signUpUi(page, uniqueEmail('e2e-dup'), 'E2E Dup');
+    const first = await createStoreViaApi(page, 'Duplicada', slug);
+    expect(first.slug).toBe(slug);
+
     const response = await page.request.post('/api/merchant/stores', {
       data: { name: 'Duplicada', slug },
     });
-    expect(response.status()).toBeGreaterThanOrEqual(400);
+    // El alta reintenta con `-2`, `-3`… antes de rendirse (createStoreForOwner).
+    expect(response.status()).toBe(201);
+    const payload = (await response.json()) as { store: { slug: string } };
+    expect(payload.store.slug).toMatch(new RegExp(`^${slug}-\\d+$`));
   });
 
   test('crear tienda por API funciona para el flujo automatizado', async ({ page }) => {

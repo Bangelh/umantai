@@ -21,7 +21,9 @@ export default function RecoverPage() {
     if (sending) return;
     setSending(true);
     try {
-      await fetch('/api/auth/forget-password', {
+      // Better Auth expone `/request-password-reset`; `/forget-password` no
+      // existe y devolvía 404 silencioso (la UI mostraba éxito igual).
+      await fetch('/api/auth/request-password-reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', accept: 'application/json' },
         credentials: 'same-origin',
