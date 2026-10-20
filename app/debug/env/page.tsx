@@ -31,12 +31,23 @@ export default function DebugEnvPage() {
   }
 
   useEffect(() => {
-    if (admin.status === 'authenticated') {
-      // La carga ocurre cuando la sesión pasa a autenticada; no hay evento de
-      // usuario que la dispare (mismo patrón que los paneles /admin).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      void loadDebugInfo();
-    }
+    if (admin.status !== 'authenticated') return;
+    // Carga inicial sin `setState` síncrono dentro del efecto: la respuesta se
+    // aplica en el callback y se descarta si la sesión cambió mientras tanto.
+    let cancelled = false;
+    fetch('/api/debug/env', withAdminAuth({ cache: 'no-store' }))
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data: EnvDebugInfo) => {
+        if (!cancelled) setDebugInfo(data);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Failed to load diagnostics');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [admin.status]);
 
   async function copyReport() {
