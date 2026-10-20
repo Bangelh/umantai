@@ -474,6 +474,20 @@ node scripts/trigger-expire-reservations.mjs
 En Railway: servicio cron con schedule `*/15 * * * *` y ese comando. El cron de
 Vercel queda intacto hasta el cutover.
 
+### Billing de planes (SaaS, separado de pedidos)
+
+```bash
+BILLING_PROVIDER=manual      # manual|test; cualquier otro valor falla cerrado
+BILLING_GRACE_DAYS=3         # días de gracia de past_due
+APP_BASE_URL=http://web.railway.internal:3000 \
+CRON_SECRET=... \
+node scripts/trigger-billing.mjs
+```
+
+`/api/cron/billing` es un job **distinto** del de reservas. Se recomienda un
+segundo servicio cron con schedule `0 * * * *`. El provider real no está
+implementado todavía; ver `BILLING_PROVIDER.md`.
+
 ---
 
 ## CI (qué bloquea y qué no)
@@ -497,6 +511,8 @@ Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
 |--------------------------------|------------------------------------------------------|-----------------|
 | `APP_ENV`                      | Señal primaria de entorno, independiente del hosting | All             |
 | `DB_DRIVER`                    | Fuerza `neon` o `pg`; si falta, se autodetecta       | All             |
+| `BILLING_PROVIDER`             | `manual`/`test` para staging; real falla cerrado     | Staging         |
+| `BILLING_GRACE_DAYS`           | Días de gracia antes de expirar `past_due`           | Staging/Prod    |
 | `VERCEL_ENV`                   | Fallback de entorno en Vercel                        | Vercel          |
 | `VERCEL_URL`                   | Get the public URL of the current deployment         | All             |
 | `POSTGRES_URL_NON_POOLING`     | More reliable direct connection for local dev        | Development     |

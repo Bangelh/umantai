@@ -23,6 +23,9 @@
 import { getDatabaseUrl } from '../lib/db';
 import { createSqlClient } from '../lib/db-driver.server';
 import { buildOptionSchema, generateSku, variantKeyFromOptionValues } from '../lib/catalog';
+import { BillingError } from '../lib/billing';
+import { changeStorePlan } from '../lib/billing/subscriptions.server';
+import { createPromotion, redeemPromotion } from '../lib/billing/promotions.server';
 
 interface SeedVariant {
   optionValues: Record<string, string>;
@@ -141,6 +144,14 @@ const STORES: SeedStore[] = [
   },
 ];
 
+/** Demostración de la fase comercial: cada tienda con un plan distinto. */
+const STORE_PLAN_CODES: Record<string, string> = {
+  'bodega-la-esquina': 'free',
+  'hilos-y-estilo': 'starter',
+  'telas-del-sur': 'growth',
+  'ferreteria-central': 'starter',
+};
+
 const MASTER_PRODUCTS: Array<{ slug: string; name: string; brand: string | null; category: string }> = [
   { slug: 'arroz', name: 'Arroz', brand: null, category: 'abarrotes' },
   { slug: 'aceite', name: 'Aceite', brand: null, category: 'abarrotes' },
@@ -157,7 +168,7 @@ export async function seedPlatform(): Promise<void> {
 
   const sql = createSqlClient(getDatabaseUrl()!);
   const ownerEmail = (process.env.SEED_OWNER_EMAIL ?? '').trim().toLowerCase();
-  const summary: Array<{ store: string; products: number; linkedOwner: boolean }> = [];
+  const summary: Array<{ store: string; plan: string; products: number; linkedOwner: boolean; skuUsage?: number }> = [];
 
   for (const master of MASTER_PRODUCTS) {
     await sql`
@@ -284,14 +295,58 @@ export async function seedPlatform(): Promise<void> {
       }
     }
 
-    summary.push({ store: store.slug, products: store.products.length, linkedOwner });
+    // Plan comercial de demostración. `changeStorePlan` es el MISMO camino que
+    // usa la app y deja evento auditable; si ya está en ese plan, es idempotente.
+    const planCode = STORE_PLAN_CODES[store.slug] ?? 'free';
+    if (planCode !== 'free') {
+      await changeStorePlan({
+        storeId,
+        planCode,
+        effective: 'immediate',
+        reason: 'seed_platform',
+        source: 'system',
+      });
+    }
+
+    summary.push({ store: store.slug, plan: planCode, products: store.products.length, linkedOwner });
+  }
+
+  // Ferretería: Starter + código de +1 mes (demostración de promoción).
+  const ferreteriaRows = await sql`
+    SELECT id FROM stores WHERE lower(slug) = 'ferreteria-central' LIMIT 1
+  `;
+  const ferreteriaId = ferreteriaRows[0]?.id ? String(ferreteriaRows[0].id) : null;
+  if (ferreteriaId) {
+    try {
+      await createPromotion({
+        code: 'FERIA1M',
+        name: 'Ferretería +1 mes',
+        description: 'Demostración de staging: +1 mes en Starter.',
+        durationMonths: 1,
+        maxRedemptions: 10,
+        planCode: 'starter',
+        active: true,
+      });
+    } catch (error) {
+      if (!(error instanceof BillingError) || error.code !== 'promotion_code_taken') throw error;
+    }
+    try {
+      await redeemPromotion({ storeId: ferreteriaId, code: 'FERIA1M', source: 'seed' });
+    } catch (error) {
+      if (!(error instanceof BillingError) || error.code !== 'promotion_already_redeemed') throw error;
+    }
   }
 
   const availability = await sql`
     SELECT s.slug,
+           p.code AS plan_code,
+           COALESCE(u.sku_count, 0)::int AS sku_usage,
            COUNT(sp.id)::int AS products,
            COALESCE(SUM(inv.available), 0)::int AS available
       FROM stores s
+      LEFT JOIN store_subscriptions ss ON ss.store_id = s.id
+      LEFT JOIN plans p ON p.id = ss.plan_id
+      LEFT JOIN store_sku_usage u ON u.store_id = s.id
       LEFT JOIN store_products sp ON sp.store_id = s.id AND sp.visible = TRUE
       LEFT JOIN LATERAL (
         SELECT SUM(i.quantity_available)::int AS available
@@ -299,7 +354,7 @@ export async function seedPlatform(): Promise<void> {
          WHERE i.store_id = sp.store_id AND i.product_slug = sp.slug AND i.is_active
       ) inv ON TRUE
      WHERE s.slug = ANY(${STORES.map((store) => store.slug)}::text[])
-     GROUP BY s.slug
+     GROUP BY s.slug, p.code, u.sku_count
      ORDER BY s.slug
   `;
 

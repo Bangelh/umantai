@@ -209,8 +209,11 @@ snapshot.
   búsqueda, columnas de maestro/store product, `product_variants`,
   `order_items.variant_sku`, `media_assets` y triggers. Aditiva e idempotente en
   lo razonable.
-- 001–015 no se editan.
-- Aplicar solo en staging. El test efímero aplica 001–016.
+- **017** (`db/migrations/017_plans_subscriptions.sql`): planes SaaS,
+  suscripciones, eventos, promociones y la vista `store_sku_usage`. No modifica
+  el catálogo ni Mercado Pago de pedidos.
+- 001–016 no se editan.
+- Aplicar solo en staging. El test efímero aplica 001–017.
 - `npm run test:integration` resetea únicamente una base cuyo nombre contenga
   `test` o `integration`.
 
