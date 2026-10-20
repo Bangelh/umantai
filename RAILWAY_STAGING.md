@@ -108,25 +108,36 @@ de Producción ni `MP_ORDERS_*`.
 
 ## 6. Cron
 
-`vercel.json` no se lee en Railway. El endpoint sigue existiendo:
+`vercel.json` no se lee en Railway. Los endpoints siguen existiendo y
+protegidos por `CRON_SECRET`:
 
 ```
-GET /api/cron/expire-reservations
+GET /api/cron/expire-reservations   → reservas vencidas de pedidos
+GET /api/cron/billing               → planes: renovación, cancelación, gracia
 Authorization: Bearer <CRON_SECRET>
 ```
 
-Entrypoint listo (no depende de Vercel):
+**Un solo servicio cron** (sin crear otro recurso) ejecuta ambos jobs:
 
 ```bash
 APP_BASE_URL=http://web.railway.internal:3000 \
 CRON_SECRET=<secreto> \
-node scripts/trigger-expire-reservations.mjs
+node scripts/run-cron.mjs
 ```
 
-En Railway: servicio cron con `buildCommand=echo cron: no build required`
-(el servicio solo ejecuta el script; compilar Next requiere secretos que no usa),
-schedule `*/15 * * * *` y ese start command.
+- corre los dos jobs en orden, con timeout independiente;
+- si uno falla se registra y el otro se ejecuta igual;
+- exit 1 si cualquiera falla (incluye billing 200 con `ok:false`);
+- no duplica lógica: cada job llama a su endpoint;
+- billing sigue idempotente, así que cada 15 minutos es seguro.
+
+En Railway: servicio `cron` existente con
+`buildCommand=echo cron: no build required`, schedule `*/15 * * * *` y
+start command `node scripts/run-cron.mjs`.
 El cron de Vercel (`0 3 * * *`) NO se elimina hasta el cutover.
+
+Disparos manuales: `scripts/trigger-expire-reservations.mjs` y
+`scripts/trigger-billing.mjs` (mismo cliente compartido).
 
 ---
 
@@ -155,7 +166,7 @@ Los pasos 1–8 se ejecutaron el 2026-10-19; evidencia y estado real en
 - [x] Gates QA (simulación y cleanup) migrados de `VERCEL_ENV` a `APP_ENV`.
 - [ ] Captura de soporte de webhook: sigue atada a `VERCEL_ENV=preview` (diagnóstico Vercel; en staging queda apagada).
 - [x] Headers de `vercel.json` movidos a `next.config.ts`.
-- [x] Entrypoint de cron portable con `CRON_SECRET`; servicio creado y ejecución verificada.
+- [x] Entrypoint de cron portable con `CRON_SECRET`; servicio único creado y ejecución verificada (reservas + billing).
 - [x] `/api/health` con chequeo de base y timeout de 2 s.
 - [x] CI bloqueante: tsc, unitarios, integración y lint incremental.
 - [x] Backup verificado (restore + fingerprint) y estado documentado en `STAGING_RAILWAY.md`.

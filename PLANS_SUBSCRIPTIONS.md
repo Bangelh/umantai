@@ -182,10 +182,13 @@ No hay cobranza agresiva ni despublicación automática.
 ## 8. Cron
 
 Endpoint: `GET /api/cron/billing`, protegido por `CRON_SECRET` (o admin token
-manual en dev). Script portable: `scripts/trigger-billing.mjs`.
+manual en dev). Disparo manual: `scripts/trigger-billing.mjs`.
 
-Es **conceptualmente separado** de `/api/cron/expire-reservations` (pedidos). Se
-recomienda un segundo servicio cron con schedule horario. El job:
+Sigue **conceptualmente separado** de `/api/cron/expire-reservations` (pedidos),
+pero comparte el **mismo servicio cron** de Railway: `scripts/run-cron.mjs`
+(schedule `*/15 * * * *`) ejecuta reservas y billing de forma independiente. Si
+un job falla, el otro corre y la corrida sale con exit ≠ 0; billing conserva su
+idempotencia. No hay un segundo servicio ni lógica duplicada. El job:
 
 - renueva suscripciones manuales vencidas;
 - aplica cancelaciones al final del período;
