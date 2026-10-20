@@ -10,10 +10,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { MerchantCatalog } from './MerchantCatalog';
+import { StoreBilling } from './StoreBilling';
 import { ORDER_STATUS_LABELS, resolveAnalyticsRange } from '@/lib/analytics';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { formatPriceCents } from '@/lib/discovery';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
+import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
 import {
   listStoreOrders,
   listStoreProducts,
@@ -54,9 +56,10 @@ export default async function MerchantStorePage({ params }: PageProps) {
     notFound();
   }
 
-  const [products, orders] = await Promise.all([
+  const [products, orders, billing] = await Promise.all([
     listStoreProducts(user.id, storeId),
     listStoreOrders(user.id, storeId, 30),
+    getStoreBillingForUser(user.id, storeId).catch(() => null),
   ]);
 
   const rangeResult = resolveAnalyticsRange({ preset: '30d' });
@@ -110,6 +113,8 @@ export default async function MerchantStorePage({ params }: PageProps) {
           Puedes preparar el catálogo mientras tanto.
         </div>
       )}
+
+      {billing && <StoreBilling storeId={storeId} initialBilling={billing} />}
 
       {/* KPIs */}
       <section aria-label="Resumen" className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
