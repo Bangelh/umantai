@@ -150,10 +150,13 @@ export function AuthForm({ next }: Props) {
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           minLength={8}
           required
+          aria-describedby="auth-password-hint"
           className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
         />
-        <span className="mt-1 block text-[11px] text-muted">{t('auth.passwordHint')}</span>
       </label>
+      <span id="auth-password-hint" className="mt-1 block text-[11px] text-muted">
+        {t('auth.passwordHint')}
+      </span>
 
       {error && (
         <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
