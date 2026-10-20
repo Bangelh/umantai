@@ -16,6 +16,7 @@ import { platformErrorResponse } from '@/lib/platform-api.server';
 import { requirePlatformSql } from '@/lib/platform-db.server';
 import { putImage } from '@/lib/storage.server';
 import { requireStoreAccess } from '@/lib/stores.server';
+import { consumeRateLimit } from '@/lib/rate-limit.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,15 @@ export async function POST(request: Request, context: RouteContext) {
   const user = await getSessionUser(request.headers);
   if (!user) {
     return NextResponse.json({ error: 'Necesitas iniciar sesión.', code: 'not_authenticated' }, { status: 401 });
+  }
+
+  // 10 subidas por minuto y usuario: frena bucles sin molestar el uso normal.
+  const limit = consumeRateLimit(`media:${user.id}`, 10, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Demasiadas subidas seguidas. Espera un momento.', code: 'rate_limited' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+    );
   }
 
   const { storeId } = await context.params;

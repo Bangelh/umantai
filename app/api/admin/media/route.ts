@@ -9,6 +9,7 @@ import { CatalogError } from '@/lib/catalog';
 import { platformErrorResponse } from '@/lib/platform-api.server';
 import { requirePlatformSql } from '@/lib/platform-db.server';
 import { putImage } from '@/lib/storage.server';
+import { consumeRateLimit, rateLimitKeyFor } from '@/lib/rate-limit.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,14 @@ export async function POST(request: Request) {
   const access = requireAdminToken(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
+  }
+
+  const limit = consumeRateLimit(rateLimitKeyFor(request, 'admin-media'), 20, 60_000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Demasiadas subidas seguidas. Espera un momento.', code: 'rate_limited' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+    );
   }
 
   try {

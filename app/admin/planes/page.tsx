@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clearAdminToken, setAdminToken, withAdminAuth } from '@/lib/adminAuth';
 import {
@@ -34,6 +34,7 @@ interface HistoryResponse {
 export default function AdminPlansPage() {
   const [token, setTokenState] = useState('');
   const [authorized, setAuthorized] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -80,6 +81,61 @@ export default function AdminPlansPage() {
       setBusy(false);
     }
   }, [token]);
+
+  const activateSession = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/session', { method: 'POST' });
+      const payload = (await response.json().catch(() => null)) as {
+        authenticated?: boolean;
+        user?: { email?: string } | null;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.authenticated) {
+        throw new Error(payload?.error ?? 'No se pudo activar la sesión de administrador.');
+      }
+      setSessionEmail(payload.user?.email ?? null);
+      await load('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo activar la sesión.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Al abrir: si ya hay sesión de admin, carga; si hay sesión de Better Auth
+  // autorizada, la canjea por la cookie firmada. No hay parpadeo de token.
+  const bootstrapped = useRef(false);
+  useEffect(() => {
+    if (bootstrapped.current) return;
+    bootstrapped.current = true;
+    void (async () => {
+      try {
+        const stateResponse = await fetch('/api/admin/session', { cache: 'no-store' });
+        const state = (await stateResponse.json().catch(() => null)) as {
+          authenticated?: boolean;
+          user?: { email?: string } | null;
+        } | null;
+        if (state?.authenticated) {
+          setSessionEmail(state.user?.email ?? null);
+          await load('');
+          return;
+        }
+        const response = await fetch('/api/admin/session', { method: 'POST' });
+        const payload = (await response.json().catch(() => null)) as {
+          authenticated?: boolean;
+          user?: { email?: string } | null;
+        } | null;
+        if (response.ok && payload?.authenticated) {
+          setSessionEmail(payload.user?.email ?? null);
+          await load('');
+        }
+      } catch {
+        // Sin sesión: queda el formulario de token / login.
+      }
+    })();
+  }, [load]);
 
   const adminPost = async (path: string, body: Record<string, unknown>) => {
     setBusy(true);
@@ -202,8 +258,26 @@ export default function AdminPlansPage() {
       <main className="mx-auto max-w-md px-4 py-16">
         <h1 className="text-2xl font-semibold">Planes y suscripciones</h1>
         <p className="mt-1 text-sm text-tertiary">
-          Platform Admin de UMANTAI. Usa el token de administración (ADMIN_API_SECRET).
+          Platform Admin de UMANTAI. Inicia sesión con una cuenta autorizada.
         </p>
+        <div className="mt-6 space-y-2">
+          <button
+            type="button"
+            onClick={() => void activateSession()}
+            disabled={busy}
+            className="h-11 w-full rounded-xl bg-brand text-sm font-semibold text-background disabled:opacity-50"
+          >
+            {busy ? 'Comprobando…' : 'Activar sesión de administrador'}
+          </button>
+          <Link
+            href="/ingresar?next=%2Fadmin%2Fplanes"
+            className="block text-center text-xs text-tertiary underline underline-offset-4 hover:text-primary"
+          >
+            Iniciar sesión con mi cuenta
+          </Link>
+        </div>
+        <details className="mt-4 rounded-xl border border-border p-3 text-xs text-tertiary">
+          <summary className="cursor-pointer text-secondary">Respaldo de desarrollo (token)</summary>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -226,6 +300,7 @@ export default function AdminPlansPage() {
             {busy ? 'Verificando…' : 'Entrar'}
           </button>
         </form>
+        </details>
         {error && <p className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
         <Link href="/admin" className="mt-6 inline-block text-xs text-muted hover:text-primary">
           ← Panel de administración
@@ -245,6 +320,9 @@ export default function AdminPlansPage() {
           <p className="mt-1 text-sm text-tertiary">
             Free 25 · Starter US$4/50 SKU · Growth US$6/100 SKU. Provider actual: manual/test.
           </p>
+          {sessionEmail && (
+            <p className="mt-1 text-xs text-success">Sesión de administrador: {sessionEmail}</p>
+          )}
         </div>
         <div className="flex gap-2">
           <button
@@ -261,6 +339,8 @@ export default function AdminPlansPage() {
               clearAdminToken();
               setAuthorized(false);
               setTokenState('');
+              setSessionEmail(null);
+              void fetch('/api/admin/session', { method: 'DELETE' });
             }}
             className="h-9 rounded-xl border border-border px-3 text-xs text-tertiary"
           >

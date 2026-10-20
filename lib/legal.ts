@@ -59,6 +59,10 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Datos de pedido: correo electrónico de contacto, teléfono (opcional), tipo de entrega, dirección de envío cuando corresponde y el detalle de los productos comprados.',
           'Datos de pago: el sitio no almacena números de tarjeta. El procesamiento lo realiza el proveedor de pagos y solo se conserva la referencia de la operación y su estado.',
           'Datos técnicos: registros de errores y de seguridad del servidor (por ejemplo, intentos fallidos de administración). No se usan para perfilado publicitario.',
+          'Cuenta e inicio de sesión: nombre, correo y contraseña (almacenada con hash). Si eres comerciante, también la tienda, tu rol y el plan contratado. No guardamos números de tarjeta ni credenciales del proveedor de cobros.',
+          'Suscripciones de comerciantes: plan, estado, fechas de período, eventos de renovación/cancelación y códigos promocionales canjeados. Este historial es necesario para facturar y atender reclamos.',
+          'Imágenes que subes (logo o fotos de productos): el archivo, su tipo real, tamaño y la relación con tu tienda o producto. No se conserva el nombre original del archivo ni metadatos del dispositivo.',
+          'Preferencias de interfaz: tema (claro/oscuro/sistema) e idioma (español/inglés) en cookies propias. No identifican a la persona ni se usan para publicidad.',
           'Formulario de contacto: nombre, correo, teléfono opcional y el mensaje que nos escribes.',
           'Ubicación (opcional): si pulsas “Usar mi ubicación”, el navegador te pide permiso y nos envía coordenadas aproximadas para mostrar productos y comercios cercanos. No se guarda una ubicación precisa en la base de datos ni se crea un historial de ubicaciones: se mantiene solo en la sesión del navegador y se descarta al cerrar la pestaña. Puedes rechazar el permiso o revocarlo en la configuración del navegador; el buscador sigue funcionando con una zona elegida manualmente.',
         ],
@@ -83,7 +87,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '5. Con quién se comparten',
         paragraphs: [
-          'Con proveedores que hacen posible el servicio: hosting y base de datos, envío de correos transaccionales y procesamiento de pagos. Solo reciben los datos necesarios para su función.',
+          'Con proveedores que hacen posible el servicio: hosting y base de datos, almacenamiento de imágenes (base de datos o almacenamiento de objetos), envío de correos transaccionales y procesamiento de pagos. Solo reciben los datos necesarios para su función.',
           'No vendemos datos personales ni los usamos para publicidad de terceros.',
           'Podemos entregar información cuando exista una obligación legal o un requerimiento válido de autoridad competente.',
         ],
@@ -98,7 +102,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '7. Seguridad',
         paragraphs: [
-          'Las cuentas usan sesiones con cookie HttpOnly y contraseñas almacenadas con hash; el acceso administrativo mantiene además un token de servidor y las rutas de pago validan la autenticidad de las notificaciones del proveedor.',
+          'Las cuentas usan sesiones con cookie HttpOnly y contraseñas almacenadas con hash. El acceso de Platform Admin exige una sesión autenticada y una segunda cookie firmada de corta duración; el token compartido queda solo como respaldo operativo. Las rutas de pago validan la autenticidad de las notificaciones del proveedor y las mutaciones de API verifican el origen.',
           'Ningún sistema es infalible: si detectamos un incidente que afecte datos personales, actuaremos según el procedimiento que defina el negocio con su asesoría legal.',
         ],
       },
@@ -137,6 +141,9 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Un pedido queda registrado al confirmarse el checkout. La reserva de stock tiene un tiempo limitado; si el pago no se completa, el pedido puede expirar y el stock liberarse.',
           'El pago se procesa a través de un proveedor externo. El pedido se considera pagado cuando el proveedor confirma la operación, no cuando el comprador inicia el pago.',
           'Si un cobro se confirma después de que la reserva venció, el sistema intenta recuperar el stock. Si ya no hay unidades, el negocio contactará al comprador para acordar reembolso o alternativa.',
+          'Planes de comerciante (SaaS): los planes Free, Starter y Growth se cobran en dólares estadounidenses (USD), por mes, con los límites de SKU publicados. El cobro recurrente es independiente del pago de los pedidos de tus clientes.',
+          'La suscripción se renueva al final de cada período. El comerciante puede cancelar y conservar los beneficios hasta el final del período; después la tienda pasa al plan Free. Un downgrade con exceso de SKU deja la tienda en estado over_limit y bloquea nuevas publicaciones, sin borrar ni ocultar productos ya publicados.',
+          'Los códigos promocionales de meses gratis aplican a un plan de pago vigente, no convierten automáticamente una tienda Free en paga y no son transferibles. El cobro real se activará cuando el negocio defina el proveedor; en staging se usa un proveedor manual sin cargos.',
         ],
       },
       {

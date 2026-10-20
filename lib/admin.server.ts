@@ -26,6 +26,8 @@
  */
 
 import { getPrefixedEnv } from './env';
+import { getPlatformAdminSession } from './platform-admin.server';
+import { logSecurityEvent } from './observability.server';
 
 /** Header donde viaja el token de administración. */
 export const ADMIN_TOKEN_HEADER = 'x-admin-token';
@@ -84,7 +86,7 @@ export function verifyAdminToken(provided: string | null | undefined): boolean {
 }
 
 export type AdminAccessCheck =
-  | { ok: true }
+  | { ok: true; via?: 'session' | 'token'; userId?: string }
   | {
       ok: false;
       status: number;
@@ -100,6 +102,12 @@ export type AdminAccessCheck =
  * formato de error que ya usa esa ruta.
  */
 export function requireAdminToken(request: Request): AdminAccessCheck {
+  // 1. Sesión real de Platform Admin (cookie firmada emitida tras login).
+  const session = getPlatformAdminSession(request);
+  if (session) {
+    return { ok: true, via: 'session', userId: session.userId };
+  }
+
   if (!isAdminApiConfigured()) {
     return {
       ok: false,
@@ -111,13 +119,35 @@ export function requireAdminToken(request: Request): AdminAccessCheck {
   }
 
   if (!verifyAdminToken(request.headers.get(ADMIN_TOKEN_HEADER))) {
+    logSecurityEvent('admin_unauthorized', {
+      hasSessionCookie: !!request.headers.get('cookie'),
+      hasTokenHeader: !!request.headers.get(ADMIN_TOKEN_HEADER),
+      requestId: request.headers.get('x-request-id'),
+    });
     return {
       ok: false,
       status: 401,
       code: 'admin_unauthorized',
-      message: 'Token de administración inválido o ausente.',
+      message: 'Inicia sesión como Platform Admin o envía un token válido.',
     };
   }
 
-  return { ok: true };
+  // En Producción la autenticación real es obligatoria. El token compartido
+  // solo se admite como emergencia explícita.
+  if (
+    process.env.APP_ENV === 'production' &&
+    process.env.ALLOW_ADMIN_TOKEN_FALLBACK !== '1'
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'admin_session_required',
+      message: 'Platform Admin requiere una sesión autenticada.',
+    };
+  }
+
+  logSecurityEvent('admin_token_fallback_used', {
+    requestId: request.headers.get('x-request-id'),
+  });
+  return { ok: true, via: 'token' };
 }

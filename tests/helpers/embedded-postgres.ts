@@ -1,7 +1,7 @@
 /**
  * tests/helpers/embedded-postgres.ts — PostgreSQL REAL y efímero para tests.
  *
- * Levanta un cluster local con `embedded-postgres` (PG 17), crea una base *   `umantai_test` y aplica `db/migrations/001…018.sql` en orden.
+ * Levanta un cluster local con `embedded-postgres` (PG 17), crea una base *   `umantai_test` y aplica `db/migrations/001…020.sql` en orden.
  *
  * Reglas de seguridad:
  *   · Nunca lee `DATABASE_URL` ni ninguna URL externa.
@@ -40,6 +40,8 @@ const MIGRATIONS = [
   '016_multi_store_catalog.sql',
   '017_plans_subscriptions.sql',
   '018_subscription_created_events.sql',
+  '019_platform_admins.sql',
+  '020_tenant_guards.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {
@@ -55,7 +57,7 @@ export interface EmbeddedTestDatabase {
  *
  * - Sin `INTEGRATION_DATABASE_URL`: cluster efímero local (default seguro).
  * - Con `INTEGRATION_DATABASE_URL`: resetea el schema `public` de ESA base y
- *   aplica 001–018. Así cada corrida arranca limpia y no arrastra inventario de
+ *   aplica 001–020. Así cada corrida arranca limpia y no arrastra inventario de
  *   pruebas anteriores. Guards: el nombre de la base debe contener `test` o
  *   `integration` (p. ej. `umantai_integration`); si no, aborta.
  *
