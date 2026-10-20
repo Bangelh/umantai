@@ -13,6 +13,7 @@ import {
   parseRadius,
   type GeoPoint,
 } from './geo';
+import { formatMoney } from './format';
 
 export const MAX_QUERY_LENGTH = 80;
 export const MAX_OFFSET = 1000;
@@ -241,14 +242,12 @@ export function compareDiscoveryProducts(
 //  PRESENTACIÓN
 // =============================================================================
 
-const CURRENCY_SYMBOLS: Record<string, string> = { PEN: 'S/', USD: '$', EUR: '€' };
-
-/** Dinero siempre en centavos enteros; acá se formatea para mostrar. */
-export function formatPriceCents(cents: number, currency = 'PEN'): string {
-  const safe = Number.isFinite(cents) ? Math.max(0, Math.round(cents)) : 0;
-  const amount = (safe / 100).toFixed(2).replace('.', ',');
-  const symbol = CURRENCY_SYMBOLS[currency.toUpperCase()];
-  return symbol ? `${symbol} ${amount}` : `${currency.toUpperCase()} ${amount}`;
+/**
+ * Dinero siempre en centavos enteros; acá se formatea para mostrar.
+ * Delega en `lib/format.ts` (única fuente de formato de la UI).
+ */
+export function formatPriceCents(cents: number, currency = 'PEN', locale: 'es' | 'en' = 'es'): string {
+  return formatMoney(cents, currency, locale);
 }
 
 export function priceToCents(price: number): number {

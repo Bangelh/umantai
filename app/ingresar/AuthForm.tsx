@@ -72,6 +72,7 @@ export function AuthForm({ next }: Props) {
       }
 
       toast.success(mode === 'login' ? t('auth.welcomeBack') : t('auth.accountCreated'));
+      if (mode === 'register') toast.info(t('auth.verifySent'));
       router.push(next);
       router.refresh();
     } catch (err) {
@@ -171,6 +172,17 @@ export function AuthForm({ next }: Props) {
             ? t('auth.submitLogin')
             : t('auth.submitRegister')}
       </button>
+
+      {mode === 'login' && (
+        <p className="text-center text-xs">
+          <a
+            href="/recuperar"
+            className="text-tertiary underline-offset-2 hover:text-primary hover:underline"
+          >
+            {t('auth.forgot')}
+          </a>
+        </p>
+      )}
 
       <p className="text-center text-[11px] text-muted">{t('auth.guest')}</p>
     </form>

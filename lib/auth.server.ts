@@ -29,6 +29,12 @@
 import { betterAuth } from 'better-auth';
 import { Pool } from 'pg';
 import { getDatabaseUrl } from './db';
+import {
+  buildResetPasswordEmail,
+  buildVerifyEmail,
+  sendTransactionalEmail,
+} from './email.server';
+import { isProductionRuntime } from './runtime-environment.server';
 import { TenancyError } from './tenancy';
 
 const DEV_SECRET = 'umantai-development-only-secret-change-me';
@@ -67,6 +73,18 @@ export function resolveAuthBaseUrl(): string {
   if (explicit) return explicit.replace(/\/+$/, '');
   if (process.env.NODE_ENV === 'development') return 'http://localhost:3000';
   return 'https://umantai.com';
+}
+
+/**
+ * Verificación obligatoria: en Producción, salvo opt-out explícito. En staging
+ * y tests queda desactivada para no bloquear cuentas históricas; el envío del
+ * correo y el endpoint de verificación sí se ejercitan (ver tests/E2E).
+ */
+function requireEmailVerification(): boolean {
+  const explicit = (process.env.AUTH_REQUIRE_EMAIL_VERIFICATION ?? '').trim();
+  if (explicit === '1') return true;
+  if (explicit === '0') return false;
+  return isProductionRuntime();
 }
 
 function trustedOrigins(baseUrl: string): string[] {
@@ -132,8 +150,11 @@ export function getAuthServer(): BetterAuthInstance {
         userAgent: 'userAgent',
         userId: 'userId',
       },
+      // 30 días de vida, refresco como máximo una vez por día y “sesión fresca”
+      // de 1 día para operaciones sensibles (cambio de contraseña).
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
+      freshAge: 60 * 60 * 24,
       cookieCache: { enabled: false },
     },
     account: {
@@ -165,7 +186,40 @@ export function getAuthServer(): BetterAuthInstance {
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: true,
-      requireEmailVerification: false,
+      requireEmailVerification: requireEmailVerification(),
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true,
+      // Anti-enumeración: la respuesta es la misma exista o no la cuenta.
+      // El enlace solo se envía si el usuario existe (Better Auth no llama al
+      // callback en caso contrario).
+      sendResetPassword: async ({ user, url }) => {
+        await sendTransactionalEmail(buildResetPasswordEmail(String(user.email), url));
+      },
+      onPasswordReset: async () => {
+        // El hook existe para que un futuro aviso “tu contraseña cambió” no
+        // requiera tocar la configuración. No registra datos personales.
+      },
+    },
+
+    emailVerification: {
+      // Se envía al registrarse aunque la verificación no sea obligatoria, para
+      // que el usuario pueda confirmar su correo desde el primer día.
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 60 * 60 * 24,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendTransactionalEmail(buildVerifyEmail(String(user.email), url));
+      },
+    },
+
+    advanced: {
+      // Cookie `Secure` en cualquier despliegue https (staging incluido).
+      useSecureCookies: isProductionRuntime() || resolveAuthBaseUrl().startsWith('https://'),
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      },
     },
 
     trustedOrigins: trustedOrigins(baseURL),

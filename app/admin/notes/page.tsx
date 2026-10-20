@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getAdminToken, setAdminToken, withAdminAuth } from "@/lib/adminAuth";
+import { withAdminAuth } from "@/lib/adminAuth";
+import { AdminAccessScreen } from "@/components/admin/AdminAccessScreen";
+import { usePlatformAdminSession } from "@/lib/usePlatformAdminSession";
 
 interface Note {
   id: number;
@@ -10,10 +12,7 @@ interface Note {
 }
 
 export default function AdminNotesPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [authChecking, setAuthChecking] = useState(false);
+  const admin = usePlatformAdminSession();
   const [notes, setNotes] = useState<Note[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,52 +36,11 @@ export default function AdminNotesPage() {
     }
   };
 
-  /** Valida el token contra el servidor (GET /api/notes) antes de guardarlo. */
-  const verifyAdminToken = async (candidate: string): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/notes", withAdminAuth({}, candidate));
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const candidate = tokenInput.trim();
-    if (!candidate) {
-      setAuthError("Ingresa el token de administración.");
-      return;
-    }
-    setAuthChecking(true);
-    setAuthError("");
-    const ok = await verifyAdminToken(candidate);
-    setAuthChecking(false);
-    if (ok) {
-      setAdminToken(candidate);
-      setIsAuthenticated(true);
-      fetchNotes();
-    } else {
-      setAuthError("Token inválido. Revisa ADMIN_API_SECRET en el servidor.");
-    }
-  };
-
-  // Reutiliza el token guardado (si sigue siendo válido) al recargar la página.
+  // Con sesión de Platform Admin activa, carga las notas una vez.
   useEffect(() => {
-    const stored = getAdminToken();
-    if (!stored) return;
-    let cancelled = false;
-    void (async () => {
-      const ok = await verifyAdminToken(stored);
-      if (!cancelled && ok) {
-        setIsAuthenticated(true);
-        fetchNotes();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (admin.status === 'authenticated') void fetchNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga única al autenticar
+  }, [admin.status]);
 
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,48 +68,9 @@ export default function AdminNotesPage() {
     }
   };
 
-  if (!isAuthenticated) {
+  if (admin.status !== 'authenticated') {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
-        <div className="max-w-md w-full px-8">
-          <div className="text-center mb-8">
-            <div className="text-4xl font-semibold tracking-tighter mb-2">umantai</div>
-            <div className="text-white/60">Admin • Notes</div>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input
-              type="password"
-              value={tokenInput}
-              onChange={(e) => setTokenInput(e.target.value)}
-              placeholder="Enter admin token"
-              className="w-full bg-neutral-900 border border-white/20 rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-white/40"
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={authChecking}
-              className="w-full py-3 bg-white text-black rounded-xl font-medium hover:bg-white/90 transition-colors disabled:opacity-60"
-            >
-              {authChecking ? "Verificando…" : "Enter Notes Admin"}
-            </button>
-          </form>
-
-          {authError && (
-            <p className="text-center text-red-400 text-sm mt-3">{authError}</p>
-          )}
-
-          <p className="text-center text-white/40 text-sm mt-6">
-            Se valida en el servidor contra <span className="font-mono">ADMIN_API_SECRET</span>
-          </p>
-
-          <div className="mt-8 text-center">
-            <Link href="/admin" className="text-sm text-white/50 hover:text-white">
-              ← Back to Admin
-            </Link>
-          </div>
-        </div>
-      </div>
+      <AdminAccessScreen title="Notes" status={admin.status} onActivate={admin.activate} />
     );
   }
 

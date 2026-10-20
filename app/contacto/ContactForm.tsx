@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import { CONTACT_LIMITS } from '@/lib/contact';
 
 type FieldErrors = Partial<Record<'name' | 'email' | 'phone' | 'message' | 'consent', string>>;
@@ -29,6 +30,7 @@ const EMPTY_FORM = {
 };
 
 export function ContactForm() {
+  const { t } = useI18n();
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -63,19 +65,16 @@ export function ContactForm() {
         setSubmitError(
           failure.error ??
             (failure.code === 'rate_limited'
-              ? 'Recibimos varios mensajes seguidos. Espera unos minutos.'
-              : 'No pudimos enviar tu mensaje. Revisa los campos e intenta de nuevo.'),
+              ? t('contact.rateLimited')
+              : t('contact.sendFailed')),
         );
         return;
       }
 
-      setSuccess(
-        payload.message ??
-          'Recibimos tu mensaje. Te responderemos al correo que indicaste.',
-      );
+      setSuccess(payload.message ?? t('contact.sent'));
       setForm(EMPTY_FORM);
     } catch {
-      setSubmitError('No hay conexión con el servidor. Revisa tu red y reintenta.');
+      setSubmitError(t('contact.networkError'));
     } finally {
       setSubmitting(false);
     }
@@ -85,8 +84,8 @@ export function ContactForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="surface-card p-5 sm:p-7">
-      <h2 className="text-lg font-medium">Escríbenos</h2>
-      <p className="mt-1 text-sm text-tertiary">Respondemos de lunes a sábado.</p>
+      <h2 className="text-lg font-medium">{t('contact.formTitle')}</h2>
+      <p className="mt-1 text-sm text-tertiary">{t('contact.formSubtitle')}</p>
 
       {success && (
         <div
@@ -104,7 +103,7 @@ export function ContactForm() {
         >
           {submitError}{' '}
           <Link href="/contacto" className="underline underline-offset-4">
-            Volver a intentar
+            {t('contact.retry')}
           </Link>
         </div>
       )}
@@ -112,7 +111,7 @@ export function ContactForm() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="contact-name" className="field-label">
-            Nombre <span className="text-destructive">*</span>
+            {t('contact.name')} <span className="text-destructive">*</span>
           </label>
           <input
             id="contact-name"
@@ -126,7 +125,7 @@ export function ContactForm() {
             aria-invalid={Boolean(errors.name)}
             aria-describedby={errors.name ? 'contact-name-error' : undefined}
             className="field-input"
-            placeholder="Tu nombre"
+            placeholder={t('contact.namePlaceholder')}
           />
           {errors.name && (
             <p id="contact-name-error" className="mt-1 text-xs text-destructive">
@@ -137,7 +136,7 @@ export function ContactForm() {
 
         <div>
           <label htmlFor="contact-email" className="field-label">
-            Correo <span className="text-destructive">*</span>
+            {t('contact.emailLabel')} <span className="text-destructive">*</span>
           </label>
           <input
             id="contact-email"
@@ -163,7 +162,7 @@ export function ContactForm() {
 
       <div className="mt-4">
         <label htmlFor="contact-phone" className="field-label">
-          Teléfono <span className="text-tertiary">(opcional)</span>
+          {t('contact.phone')} <span className="text-tertiary">{t('contact.optional')}</span>
         </label>
         <input
           id="contact-phone"
@@ -187,7 +186,7 @@ export function ContactForm() {
 
       <div className="mt-4">
         <label htmlFor="contact-message" className="field-label">
-          Mensaje <span className="text-destructive">*</span>
+          {t('contact.message')} <span className="text-destructive">*</span>
         </label>
         <textarea
           id="contact-message"
@@ -201,11 +200,11 @@ export function ContactForm() {
           aria-invalid={Boolean(errors.message)}
           aria-describedby={`contact-message-help${errors.message ? ' contact-message-error' : ''}`}
           className="field-input resize-y"
-          placeholder="Cuéntanos qué necesitas (por ejemplo, el número de pedido UM-…)."
+          placeholder={t('contact.messagePlaceholder')}
         />
         <div className="mt-1 flex items-start justify-between gap-3">
           <p id="contact-message-help" className="text-xs text-tertiary">
-            No incluyas datos de tarjeta ni contraseñas.
+            {t('contact.privacyNote')}
           </p>
           <span className="shrink-0 text-xs text-muted">
             {messageLength}/{CONTACT_LIMITS.messageMax}
@@ -220,7 +219,7 @@ export function ContactForm() {
 
       {/* Honeypot: invisible para personas, tentador para bots. */}
       <div aria-hidden="true" className="pointer-events-none absolute left-[-9999px] h-0 w-0 overflow-hidden">
-        <label htmlFor="contact-company">Empresa</label>
+        <label htmlFor="contact-company">{t('contact.company')}</label>
         <input
           id="contact-company"
           name="company"
@@ -245,14 +244,14 @@ export function ContactForm() {
         />
         <div>
           <label htmlFor="contact-consent" className="text-sm text-secondary">
-            Acepto la{' '}
+            {t('contact.formConsentPrefix')}{' '}
             <Link
               href="/legal/privacidad"
               className="underline underline-offset-4 hover:text-primary"
             >
-              Política de Privacidad
+              {t('contact.privacyLink')}
             </Link>{' '}
-            y el tratamiento de mis datos para responder esta consulta.
+            {t('contact.formConsentSuffix')}
           </label>
           {errors.consent && (
             <p id="contact-consent-error" className="mt-1 text-xs text-destructive">
@@ -263,7 +262,7 @@ export function ContactForm() {
       </div>
 
       <button type="submit" disabled={submitting} className="btn-primary mt-6 w-full sm:w-auto">
-        {submitting ? 'Enviando…' : 'Enviar mensaje'}
+        {submitting ? t('contact.sending') : t('contact.send')}
       </button>
     </form>
   );

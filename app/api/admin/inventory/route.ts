@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const guard = guardAdminMutation(request, 'inventory-legacy-receipt');
+  const guard = await guardAdminMutation(request, 'inventory-legacy-receipt');
   if (!guard.ok) return guard.response;
 
   let body: unknown;
@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
 
 /** PATCH /api/admin/inventory — umbral de stock bajo (reorder_point). */
 export async function PATCH(request: NextRequest) {
-  const guard = guardAdminMutation(request, 'inventory-threshold');
+  const guard = await guardAdminMutation(request, 'inventory-threshold');
   if (!guard.ok) return guard.response;
 
   let body: unknown;

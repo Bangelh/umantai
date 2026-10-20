@@ -19,11 +19,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseDiscoveryQuery } from '@/lib/discovery';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { searchDiscovery } from '@/lib/stores.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
+import { withRequestLogging } from '@/lib/observability.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function handleSearch(request: NextRequest) {
+  // Búsqueda pública: 150/min por IP. El debounce del cliente ya evita ráfagas
+  // normales; esto corta scrapers y bucles.
+  const gate = await rateLimitGate(request, 'search', { limit: 150, windowMs: 60_000 });
+  if (gate) return gate;
+
   const parsed = parseDiscoveryQuery(request.nextUrl.searchParams);
   if (!parsed.ok) {
     return NextResponse.json(
@@ -73,3 +80,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withRequestLogging('/api/search', handleSearch as never);

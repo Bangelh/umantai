@@ -13,30 +13,25 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ProfileForm } from './ProfileForm';
 import { SignOutButton } from './SignOutButton';
-import { ORDER_STATUS_LABELS } from '@/lib/analytics';
+import { SecurityPanel } from './SecurityPanel';
+import { orderStatusLabel } from '@/lib/i18n/status';
 import { getCurrentUser } from '@/lib/current-user.server';
-import { formatPriceCents } from '@/lib/discovery';
 import { getCustomerProfile, listCustomerOrders, listStoresForUser } from '@/lib/stores.server';
+import { getTranslator } from '@/lib/i18n/server';
+import { formatDate as formatDateLocale, formatMoney } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Mi cuenta',
-  robots: { index: false, follow: false },
-};
-
-function formatDate(value: string): string {
-  if (!value) return '';
-  try {
-    return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeZone: 'America/Lima' }).format(
-      new Date(value),
-    );
-  } catch {
-    return value.slice(0, 10);
-  }
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getTranslator();
+  return {
+    title: t('account.kicker'),
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function AccountPage() {
+  const { locale, t } = await getTranslator();
   const user = await getCurrentUser();
   if (!user) redirect('/ingresar?next=/cuenta');
 
@@ -50,9 +45,14 @@ export default async function AccountPage() {
     <main className="mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6">
       <div className="flex items-start justify-between gap-4 border-b border-border pb-4">
         <div>
-          <p className="text-xs uppercase tracking-[2px] text-muted">Cuenta</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Hola, {user.name.split(' ')[0]}</h1>
+          <p className="text-xs uppercase tracking-[2px] text-muted">{t('account.kicker')}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+            {t('account.greeting', { name: user.name.split(' ')[0] })}
+          </h1>
           <p className="mt-1 text-sm text-tertiary">{user.email}</p>
+          <p className="mt-1 text-xs text-muted">
+            {user.emailVerified ? t('account.emailVerified') : t('account.emailUnverified')}
+          </p>
         </div>
         <SignOutButton />
       </div>
@@ -60,22 +60,22 @@ export default async function AccountPage() {
       {/* Negocios */}
       <section className="mt-6">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Tus negocios</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('account.businesses')}
+          </h2>
           <Link href="/vender" className="text-xs text-tertiary hover:text-primary">
-            + Crear tienda
+            {t('account.createStore')}
           </Link>
         </div>
 
         {stores.length === 0 ? (
           <div className="mt-3 rounded-2xl border border-border bg-surface p-4">
-            <p className="text-sm text-secondary">
-              Todavía no administras ninguna tienda. Puedes vender en UMANTAI con la misma cuenta.
-            </p>
+            <p className="text-sm text-secondary">{t('account.noStores')}</p>
             <Link
               href="/vender"
               className="mt-3 inline-flex h-10 items-center rounded-xl bg-brand px-4 text-sm font-semibold text-background"
             >
-              Quiero vender
+              {t('account.wantSell')}
             </Link>
           </div>
         ) : (
@@ -89,14 +89,18 @@ export default async function AccountPage() {
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{store.name}</span>
                     <span className="block truncate text-xs text-tertiary">
-                      /{store.slug} · {store.productCount} productos · {store.orderCount} pedidos
+                      /{store.slug} ·{' '}
+                      {t('account.productsOrders', {
+                        products: store.productCount,
+                        orders: store.orderCount,
+                      })}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-tertiary">
                     {store.active ? (
-                      <span className="text-success">Activa</span>
+                      <span className="text-success">{t('account.active')}</span>
                     ) : (
-                      <span className="text-warning">Pendiente</span>
+                      <span className="text-warning">{t('account.pending')}</span>
                     )}
                   </span>
                 </Link>
@@ -109,7 +113,7 @@ export default async function AccountPage() {
       {/* Perfil */}
       <section className="mt-8">
         <h2 className="border-b border-border pb-2 text-sm font-semibold uppercase tracking-[2px] text-secondary">
-          Datos personales
+          {t('account.profile')}
         </h2>
         <ProfileForm
           initial={{
@@ -121,18 +125,25 @@ export default async function AccountPage() {
         />
       </section>
 
+      {/* Seguridad */}
+      <section className="mt-8">
+        <h2 className="border-b border-border pb-2 text-sm font-semibold uppercase tracking-[2px] text-secondary">
+          {t('account.security')}
+        </h2>
+        <SecurityPanel />
+      </section>
+
       {/* Historial */}
       <section className="mt-8">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Tus pedidos</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('account.orders')}
+          </h2>
           <span className="text-xs text-muted tabular-nums">{orders.length}</span>
         </div>
 
         {orders.length === 0 ? (
-          <p className="py-5 text-sm text-tertiary">
-            Aún no tienes pedidos asociados a tu cuenta. Las compras como invitado no se muestran
-            aquí hasta que exista verificación de correo.
-          </p>
+          <p className="py-5 text-sm text-tertiary">{t('account.noOrders')}</p>
         ) : (
           <ul className="divide-y divide-border">
             {orders.map((order) => (
@@ -141,9 +152,11 @@ export default async function AccountPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span className="font-mono text-sm">{order.orderNumber}</span>
-                      <span className="text-xs text-tertiary">{formatDate(order.createdAt)}</span>
+                      <span className="text-xs text-tertiary">
+                        {formatDateLocale(order.createdAt, locale)}
+                      </span>
                       <span className="text-xs text-secondary">
-                        {(ORDER_STATUS_LABELS as Record<string, string>)[order.status] ?? order.status}
+                        {orderStatusLabel(t, order.status)}
                       </span>
                     </div>
                     <p className="mt-1 truncate text-xs text-tertiary">
@@ -153,14 +166,14 @@ export default async function AccountPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="font-mono text-sm font-semibold tabular-nums">
-                      {formatPriceCents(Math.round(order.total * 100), order.currency)}
+                      {formatMoney(Math.round(order.total * 100), order.currency, locale)}
                     </div>
                     {order.publicToken && (
                       <Link
                         href={`/pedido/${order.publicToken}`}
                         className="text-xs text-tertiary underline-offset-2 hover:text-primary hover:underline"
                       >
-                        Ver detalle
+                        {t('account.viewDetail')}
                       </Link>
                     )}
                   </div>

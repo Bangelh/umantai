@@ -14,6 +14,7 @@ import { getSessionUser } from '@/lib/auth.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { createStoreForOwner, listStoresForUser } from '@/lib/stores.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,14 @@ export async function POST(request: Request) {
       { status: 401 },
     );
   }
+
+  // Onboarding: 5 altas por hora y usuario. Evita crear tiendas en bucle.
+  const gate = await rateLimitGate(request, 'merchant-onboarding', {
+    limit: 5,
+    windowMs: 60 * 60_000,
+    key: `onboarding:${user.id}`,
+  });
+  if (gate) return gate;
 
   const body = await readJsonBody<CreateStoreBody>(request);
   if (!body) {

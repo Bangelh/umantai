@@ -24,6 +24,8 @@ import { getSessionUser } from '@/lib/auth.server';
 import { DEFAULT_STORE_ID, DEFAULT_STORE_SLUG } from '@/lib/stores.server';
 import { resolveStoreCheckout } from '@/lib/store-catalog.server';
 import { CatalogError } from '@/lib/catalog';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
+import { withRequestLogging } from '@/lib/observability.server';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -136,7 +138,12 @@ function pickImage(override: Record<string, unknown>, base: Product): string | n
   return base.images?.[0] ?? null;
 }
 
-export async function POST(request: NextRequest) {
+async function handleCreateOrder(request: NextRequest) {
+  // Un pedido es una operación cara (reserva stock y crea filas). 12/min por IP
+  // frena bucles de doble clic sin estorbar a una persona.
+  const gate = await rateLimitGate(request, 'orders', { limit: 12, windowMs: 60_000 });
+  if (gate) return gate;
+
   if (!hasDatabaseConnection() || !isCommerceDbConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured. Run `vercel env pull .env.local` and apply db/migrations/001_commerce_core.sql.' },
@@ -405,3 +412,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load order' }, { status: 500 });
   }
 }
+
+export const POST = withRequestLogging('/api/orders', handleCreateOrder as never);

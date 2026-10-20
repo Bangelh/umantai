@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { Toaster } from "sonner";
 import { NavActions } from "./components/NavActions";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
@@ -15,6 +15,13 @@ import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { getLocale, getMessages } from "@/lib/i18n/server";
 import { createTranslator } from "@/lib/i18n";
+import { isProductionRuntime } from "@/lib/runtime-environment.server";
+
+/**
+ * Staging/preview NUNCA se indexan: evita competir con Producción por las
+ * mismas URLs y evita que un catálogo de prueba aparezca en buscadores.
+ */
+const INDEXABLE = isProductionRuntime();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -64,9 +71,9 @@ export const metadata: Metadata = {
     description: DEFAULT_DESCRIPTION,
   },
   robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true },
+    index: INDEXABLE,
+    follow: INDEXABLE,
+    googleBot: { index: INDEXABLE, follow: INDEXABLE },
   },
   icons: {
     icon: "/favicon.ico",
@@ -94,6 +101,9 @@ export default async function RootLayout({
   const locale = await getLocale();
   const t = createTranslator(locale);
   const cookieStore = await cookies();
+  // El nonce lo genera `proxy.ts` en cada request; el script de tema lo lleva
+  // para que la CSP sin `'unsafe-inline'` lo permita.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   const preferredTheme = cookieStore.get('umantai_theme')?.value;
   const initialTheme =
     preferredTheme === 'light' || preferredTheme === 'dark' ? preferredTheme : 'dark';
@@ -106,7 +116,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col bg-background text-primary">
         <a href="#contenido" className="skip-link">

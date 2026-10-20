@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth.server';
 import { redeemPromotionForUser } from '@/lib/billing/promotions.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,14 @@ export async function POST(request: Request, context: RouteContext) {
   if (!user) {
     return NextResponse.json({ error: 'Necesitas iniciar sesión.', code: 'not_authenticated' }, { status: 401 });
   }
+  // Canje de códigos: 10/min por usuario (además de las validaciones del dominio).
+  const gate = await rateLimitGate(request, 'promo-redeem', {
+    limit: 10,
+    windowMs: 60_000,
+    key: `promo:${user.id}`,
+  });
+  if (gate) return gate;
+
   const body = await readJsonBody<Body>(request);
   const code = typeof body?.code === 'string' ? body.code.trim() : '';
   if (!code) {

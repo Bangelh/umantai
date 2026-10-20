@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { getAdminToken, setAdminToken, withAdminAuth } from '@/lib/adminAuth';
+import { useI18n } from '@/components/i18n/I18nProvider';
+import { withAdminAuth } from '@/lib/adminAuth';
+import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
+import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
 import {
   EMPTY_INVENTORY_FILTERS,
   filterInventoryItems,
@@ -30,10 +33,8 @@ interface InventoryPayload {
 const ACTOR_STORAGE_KEY = 'umantai-inventory-actor';
 
 export default function InventoryAdminPage() {
-  const [token, setToken] = useState('');
-  const [authed, setAuthed] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [authChecking, setAuthChecking] = useState(false);
+  const { t } = useI18n();
+  const admin = usePlatformAdminSession();
 
   const [items, setItems] = useState<AdminInventoryItem[]>([]);
   const [lowStock, setLowStock] = useState<AdminInventoryItem[]>([]);
@@ -66,60 +67,21 @@ export default function InventoryAdminPage() {
       const response = await fetch('/api/admin/inventory', withAdminAuth());
       const payload = (await response.json().catch(() => null)) as InventoryPayload | null;
       if (!response.ok || !payload?.ok) {
-        setError(payload?.error ?? 'No se pudo cargar el inventario.');
+        setError(payload?.error ?? t('inventory.loadFailed'));
         return;
       }
       applyPayload(payload);
     } catch {
-      setError('Error de red al cargar el inventario.');
+      setError(t('inventory.networkError'));
     } finally {
       setLoading(false);
     }
-  }, [applyPayload]);
+  }, [applyPayload, t]);
 
-  const handleLogin = async () => {
-    const candidate = token.trim();
-    if (!candidate) return;
-    setAuthError(null);
-    setAuthChecking(true);
-    try {
-      const response = await fetch('/api/admin/inventory', withAdminAuth({}, candidate));
-      const payload = (await response.json().catch(() => null)) as InventoryPayload | null;
-      if (!response.ok || !payload?.ok) {
-        setAuthError(payload?.error ?? 'Token de administración inválido.');
-        return;
-      }
-      setAdminToken(candidate);
-      applyPayload(payload);
-      setAuthed(true);
-    } catch {
-      setAuthError('No hay conexión con el servidor.');
-    } finally {
-      setAuthChecking(false);
-    }
-  };
-
-  // Reutiliza el token guardado si sigue siendo válido.
+  // Con sesión de Platform Admin activa, carga el inventario una vez.
   useEffect(() => {
-    const stored = getAdminToken();
-    if (!stored) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch('/api/admin/inventory', withAdminAuth({}, stored));
-        const payload = (await response.json().catch(() => null)) as InventoryPayload | null;
-        if (!cancelled && response.ok && payload?.ok) {
-          applyPayload(payload);
-          setAuthed(true);
-        }
-      } catch {
-        /* sin conexión: se muestra el login */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [applyPayload]);
+    if (admin.status === 'authenticated') void load();
+  }, [admin.status, load]);
 
   const summary = useMemo(() => summarizeInventory(items), [items]);
   const filtered = useMemo(() => filterInventoryItems(items, filters), [items, filters]);
@@ -132,72 +94,42 @@ export default function InventoryAdminPage() {
     [load],
   );
 
-  if (!authed) {
+  if (admin.status !== 'authenticated') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-8 text-white">
-        <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-neutral-900 p-8">
-          <h1 className="mb-2 text-2xl font-semibold">Inventario</h1>
-          <p className="mb-6 text-sm text-white/60">Ingresa el token de administración.</p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleLogin();
-            }}
-          >
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="ADMIN_API_SECRET"
-              aria-label="Token de administración"
-              className="mb-4 h-12 w-full rounded-2xl border border-white/20 bg-neutral-950 px-4"
-              autoFocus
-            />
-            {authError && <p className="mb-4 text-sm text-red-400">{authError}</p>}
-            <button
-              type="submit"
-              disabled={authChecking}
-              className="h-12 w-full rounded-2xl bg-white font-medium text-black hover:bg-white/90 disabled:bg-white/50"
-            >
-              {authChecking ? 'Verificando…' : 'Entrar'}
-            </button>
-          </form>
-          <Link href="/admin" className="mt-4 block text-center text-xs text-white/50 hover:text-white">
-            ← Volver al panel
-          </Link>
-        </div>
-      </div>
+      <AdminAccessScreen
+        title={t('inventory.title')}
+        status={admin.status}
+        onActivate={admin.activate}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 p-4 text-white sm:p-8">
+    <div className="min-h-screen bg-background p-4 text-primary sm:p-8">
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-xs uppercase tracking-[3px] text-white/50">OPERACIÓN</div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Inventario</h1>
-            <p className="mt-1 text-sm text-white/50">
-              Stock real, ledger y alertas. El inventario es la única autoridad.
-            </p>
+            <div className="text-xs uppercase tracking-[3px] text-tertiary">{t('inventory.kicker')}</div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('inventory.title')}</h1>
+            <p className="mt-1 text-sm text-tertiary">{t('inventory.subtitle')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <label className="text-xs text-white/50">
-              <span className="mr-2">Actor</span>
+            <label className="text-xs text-tertiary">
+              <span className="mr-2">{t('inventory.actor')}</span>
               <input
                 value={actor}
                 onChange={(event) => rememberActor(event.target.value)}
                 maxLength={80}
-                aria-label="Actor de los movimientos"
-                className="h-9 w-40 rounded-xl border border-white/20 bg-neutral-900 px-3 text-sm text-white"
+                aria-label={t('inventory.actorAria')}
+                className="h-9 w-40 rounded-xl border border-border-strong bg-surface px-3 text-sm text-primary"
               />
             </label>
             <button
               type="button"
               onClick={() => void load()}
-              className="rounded-full border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+              className="rounded-full border border-border-strong px-4 py-2 text-sm hover:bg-surface-raised"
             >
-              {loading ? 'Actualizando…' : 'Actualizar'}
+              {loading ? t('inventory.refreshing') : t('inventory.refresh')}
             </button>
           </div>
         </div>
@@ -206,7 +138,7 @@ export default function InventoryAdminPage() {
           <AdminNav />
         </div>
 
-        <div className="mt-6 flex gap-2 border-b border-white/10" role="tablist" aria-label="Secciones de inventario">
+        <div className="mt-6 flex gap-2 border-b border-border" role="tablist" aria-label={t('inventory.tabsAria')}>
           {(['inventario', 'movimientos'] as const).map((value) => (
             <button
               key={value}
@@ -216,47 +148,50 @@ export default function InventoryAdminPage() {
               onClick={() => setTab(value)}
               className={`-mb-px border-b-2 px-4 py-3 text-sm capitalize ${
                 tab === value
-                  ? 'border-white text-white'
-                  : 'border-transparent text-white/50 hover:text-white/80'
+                  ? 'border-brand text-primary'
+                  : 'border-transparent text-tertiary hover:text-secondary'
               }`}
             >
-              {value === 'inventario' ? 'Inventario y entradas' : 'Historial de movimientos'}
+              {value === 'inventario' ? t('inventory.tabStock') : t('inventory.tabMovements')}
             </button>
           ))}
         </div>
 
         {error && (
-          <div role="alert" className="mt-6 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">
+          <div role="alert" className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">
             {error}
           </div>
         )}
 
         {tab === 'inventario' ? (
           <div className="mt-6 space-y-6">
-            <section aria-label="Resumen de inventario" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              <SummaryCard label="SKUs" value={summary.skuCount} />
-              <SummaryCard label="Físico" value={summary.unitsOnHand} />
-              <SummaryCard label="Reservado" value={summary.unitsReserved} />
-              <SummaryCard label="Poco stock" value={summary.lowCount} tone="amber" />
-              <SummaryCard label="Agotados" value={summary.outCount} tone="red" />
+            <section aria-label={t('inventory.summaryAria')} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <SummaryCard label={t('inventory.skus')} value={summary.skuCount} />
+              <SummaryCard label={t('inventory.onHand')} value={summary.unitsOnHand} />
+              <SummaryCard label={t('inventory.reserved')} value={summary.unitsReserved} />
+              <SummaryCard label={t('inventory.low')} value={summary.lowCount} tone="amber" />
+              <SummaryCard label={t('inventory.out')} value={summary.outCount} tone="red" />
             </section>
 
             {lowStock.length > 0 && (
-              <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5">
-                <div className="text-xs uppercase tracking-widest text-amber-300">
-                  ⚠ {lowStock.length} SKU(s) requieren reposición
+              <div className="rounded-3xl border border-warning/40 bg-warning/10 p-5">
+                <div className="text-xs uppercase tracking-widest text-warning">
+                  {t('inventory.needsRestock', { count: lowStock.length })}
                 </div>
-                <ul className="mt-3 grid gap-1 text-sm text-amber-100 sm:grid-cols-2">
+                <ul className="mt-3 grid gap-1 text-sm text-secondary sm:grid-cols-2">
                   {lowStock.slice(0, 8).map((item) => (
                     <li key={`${item.productSlug}:${item.variantKey}`}>
                       {item.productName}
                       {item.variantKey ? ` (${item.variantKey})` : ''}:{' '}
-                      <span className="font-mono">{item.quantityAvailable}</span> disponibles
+                      <span className="font-mono">{item.quantityAvailable}</span>{' '}
+                      {t('inventory.available').toLowerCase()}
                     </li>
                   ))}
                 </ul>
                 {lowStock.length > 8 && (
-                  <p className="mt-2 text-xs text-amber-200/70">y {lowStock.length - 8} más…</p>
+                  <p className="mt-2 text-xs text-warning/80">
+                    {t('inventory.more', { count: lowStock.length - 8 })}
+                  </p>
                 )}
               </div>
             )}
@@ -266,17 +201,17 @@ export default function InventoryAdminPage() {
               <AdjustmentForm actor={actor} onSuccess={onChanged} />
             </div>
 
-            <section aria-label="Listado de inventario">
+            <section aria-label={t('inventory.listAria')}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-lg font-medium">Stock por SKU</h2>
+                <h2 className="text-lg font-medium">{t('inventory.stockBySku')}</h2>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     type="search"
                     value={filters.q}
                     onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-                    placeholder="Buscar producto, marca o SKU…"
-                    aria-label="Buscar inventario"
-                    className="h-10 w-full rounded-xl border border-white/20 bg-neutral-900 px-3 text-sm sm:w-72"
+                    placeholder={t('inventory.searchPlaceholder')}
+                    aria-label={t('inventory.searchAria')}
+                    className="h-10 w-full rounded-xl border border-border-strong bg-surface px-3 text-sm sm:w-72"
                   />
                   <select
                     value={filters.status}
@@ -286,20 +221,19 @@ export default function InventoryAdminPage() {
                         status: event.target.value as InventoryStatus | 'all',
                       }))
                     }
-                    aria-label="Filtrar por estado"
-                    className="h-10 rounded-xl border border-white/20 bg-neutral-900 px-3 text-sm"
+                    aria-label={t('inventory.filterStatus')}
+                    className="h-10 rounded-xl border border-border-strong bg-surface px-3 text-sm"
                   >
-                    <option value="all">Todos los estados</option>
-                    <option value="available">Disponible</option>
-                    <option value="low">Poco stock</option>
-                    <option value="out">Agotado</option>
+                    <option value="all">{t('inventory.allStatuses')}</option>
+                    <option value="available">{t('inventory.available')}</option>
+                    <option value="low">{t('inventory.low')}</option>
+                    <option value="out">{t('inventory.out')}</option>
                   </select>
                 </div>
               </div>
 
-              <p className="mt-2 text-xs text-white/40">
-                Mostrando {filtered.length} de {items.length} SKUs. Stock bajo = disponible ≤ umbral
-                del SKU.
+              <p className="mt-2 text-xs text-muted">
+                {t('inventory.showing', { shown: filtered.length, total: items.length })}
               </p>
 
               <div className="mt-4">
@@ -327,11 +261,11 @@ function SummaryCard({
   tone?: 'amber' | 'red';
 }) {
   const valueClass =
-    tone === 'amber' ? 'text-amber-300' : tone === 'red' ? 'text-red-300' : 'text-white';
+    tone === 'amber' ? 'text-warning' : tone === 'red' ? 'text-destructive' : 'text-primary';
 
   return (
-    <div className="rounded-2xl border border-white/15 bg-neutral-900 p-4">
-      <div className="text-xs uppercase tracking-widest text-white/45">{label}</div>
+    <div className="rounded-2xl border border-border bg-surface p-4">
+      <div className="text-xs uppercase tracking-widest text-muted">{label}</div>
       <div className={`mt-1 font-mono text-2xl ${valueClass}`}>{value}</div>
     </div>
   );

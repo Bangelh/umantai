@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { catalogProducts, variantChoicesFor } from './catalog-options';
 
@@ -24,6 +25,7 @@ function newKey(): string {
 }
 
 export function ReceiptForm({ actor, onSuccess }: Props) {
+  const { t } = useI18n();
   const [productSlug, setProductSlug] = useState(catalogProducts[0]?.slug ?? '');
   const [variantKey, setVariantKey] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -45,7 +47,7 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
 
     const parsedQuantity = Number(quantity);
     if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
-      setFeedback({ type: 'error', message: 'La cantidad debe ser un entero mayor que 0.' });
+      setFeedback({ type: 'error', message: t('inventory.quantityInvalid') });
       return;
     }
 
@@ -53,13 +55,13 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
     if (reorderPoint.trim() !== '') {
       parsedReorderPoint = Number(reorderPoint);
       if (!Number.isInteger(parsedReorderPoint) || parsedReorderPoint < 0) {
-        setFeedback({ type: 'error', message: 'El umbral debe ser un entero mayor o igual que 0.' });
+        setFeedback({ type: 'error', message: t('inventory.thresholdInvalid') });
         return;
       }
     }
 
     if (reason.trim().length > 200) {
-      setFeedback({ type: 'error', message: 'La referencia no puede superar 200 caracteres.' });
+      setFeedback({ type: 'error', message: t('inventory.referenceTooLong') });
       return;
     }
 
@@ -88,48 +90,54 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
       const payload = (await response.json().catch(() => null)) as ReceiptResponse | null;
 
       if (!response.ok || !payload?.ok) {
-        setFeedback({ type: 'error', message: payload?.error ?? 'No se pudo registrar el ingreso.' });
+        setFeedback({ type: 'error', message: payload?.error ?? t('inventory.receiptFailed') });
         return;
       }
 
       idempotencyKeyRef.current = null;
       const item = payload.item;
       const detail = item
-        ? ` Físico: ${item.quantityOnHand} · disponible: ${item.quantityAvailable}.`
+        ? ` ${t('inventory.receiptDetail', {
+            onHand: item.quantityOnHand,
+            available: item.quantityAvailable,
+          })}`
         : '';
       const warning = payload.thresholdWarning ? ` ${payload.thresholdWarning}` : '';
-      setFeedback({ type: 'success', message: `Ingreso registrado.${detail}${warning}` });
+      setFeedback({
+        type: 'success',
+        message: `${t('inventory.receiptRegistered')}.${detail}${warning}`,
+      });
       setQuantity('1');
       setReason('');
-      await onSuccess('Ingreso registrado');
+      await onSuccess(t('inventory.receiptRegistered'));
     } catch {
-      setFeedback({ type: 'error', message: 'Error de red al registrar el ingreso.' });
+      setFeedback({ type: 'error', message: t('inventory.receiptNetworkError') });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-3xl border border-white/15 bg-neutral-900 p-6">
+    <form onSubmit={handleSubmit} className="rounded-3xl border border-border bg-surface p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm uppercase tracking-widest text-white/60">Entrada de mercadería</div>
-          <p className="mt-1 text-xs text-white/45">
-            Genera un movimiento <span className="font-mono">receipt</span> en el ledger.
-          </p>
+          <div className="text-sm uppercase tracking-widest text-tertiary">
+            {t('inventory.receiptTitle')}
+          </div>
+          <p className="mt-1 text-xs text-muted">{t('inventory.receiptSubtitle')}</p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Producto</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.product')}</span>
           <select
             value={productSlug}
             onChange={(event) => {
               setProductSlug(event.target.value);
               setVariantKey('');
             }}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           >
             {catalogProducts.map((product) => (
               <option key={product.slug} value={product.slug}>
@@ -140,11 +148,11 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Variante</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.variant')}</span>
           <select
             value={effectiveVariantKey}
             onChange={(event) => setVariantKey(event.target.value)}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           >
             {choices.map((choice) => (
               <option key={choice.key || 'base'} value={choice.key}>
@@ -155,7 +163,7 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Cantidad</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.quantity')}</span>
           <input
             type="number"
             min={1}
@@ -163,39 +171,40 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
             required
             value={quantity}
             onChange={(event) => setQuantity(event.target.value)}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           />
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Umbral de stock bajo (opcional)</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.reorderOptional')}</span>
           <input
             type="number"
             min={0}
             step={1}
             value={reorderPoint}
             onChange={(event) => setReorderPoint(event.target.value)}
-            placeholder="ej. 5"
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            placeholder={t('inventory.reorderPlaceholder')}
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           />
         </label>
 
         <label className="text-sm sm:col-span-2">
-          <span className="mb-1 block text-white/60">Motivo / referencia (opcional)</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.reasonOptional')}</span>
           <input
             type="text"
             value={reason}
             maxLength={200}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Factura, proveedor, guía…"
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            placeholder={t('inventory.reasonPlaceholder')}
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           />
         </label>
 
         <div className="text-sm sm:col-span-2">
-          <span className="mb-1 block text-white/60">Actor</span>
-          <div className="flex h-11 items-center rounded-xl border border-white/10 bg-neutral-950/60 px-3 text-white/60">
-            {actor || 'admin'} <span className="ml-2 text-xs">(se guarda en el movimiento)</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.actor')}</span>
+          <div className="flex h-11 items-center rounded-xl border border-border bg-surface-raised px-3 text-tertiary">
+            {actor || 'admin'}{' '}
+            <span className="ml-2 text-xs">{t('inventory.actorNote')}</span>
           </div>
         </div>
       </div>
@@ -204,14 +213,14 @@ export function ReceiptForm({ actor, onSuccess }: Props) {
         <button
           type="submit"
           disabled={submitting}
-          className="h-11 rounded-2xl bg-white px-6 font-medium text-black hover:bg-white/90 disabled:bg-white/50"
+          className="h-11 rounded-2xl bg-brand px-6 font-medium text-background hover:opacity-90 disabled:opacity-50"
         >
-          {submitting ? 'Registrando…' : 'Registrar ingreso'}
+          {submitting ? t('inventory.registering') : t('inventory.registerReceipt')}
         </button>
         {feedback && (
           <p
             role={feedback.type === 'error' ? 'alert' : 'status'}
-            className={feedback.type === 'error' ? 'text-sm text-red-400' : 'text-sm text-emerald-300'}
+            className={feedback.type === 'error' ? 'text-sm text-destructive' : 'text-sm text-success'}
           >
             {feedback.message}
           </p>

@@ -1,6 +1,8 @@
 'use client';
 
-import { formatMoney, formatShortDate, type AnalyticsPoint } from '@/lib/analytics';
+import { useI18n } from '@/components/i18n/I18nProvider';
+import type { AnalyticsPoint } from '@/lib/analytics';
+import { formatDate, formatMoney } from '@/lib/format';
 
 interface SalesChartProps {
   points: AnalyticsPoint[];
@@ -23,6 +25,9 @@ const PADDING = { top: 16, right: 12, bottom: 34, left: 64 };
  * `sr-only` con los mismos datos, más un resumen textual del pico.
  */
 export function SalesChart({ points, title, granularity }: SalesChartProps) {
+  const { locale, t } = useI18n();
+  const money = (cents: number) => formatMoney(cents, 'PEN', locale);
+  const shortDate = (value: string) => formatDate(value, locale, { month: 'short', day: 'numeric' });
   const plotWidth = WIDTH - PADDING.left - PADDING.right;
   const plotHeight = HEIGHT - PADDING.top - PADDING.bottom;
 
@@ -50,7 +55,10 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
         <h2 className="text-lg font-medium">{title}</h2>
         <p className="text-sm text-tertiary">
           {hasSales && peak
-            ? `Mejor ${granularity === 'daily' ? 'día' : 'semana'}: ${formatShortDate(peak.date)} · ${formatMoney(peak.revenueCents)}`
+            ? t(granularity === 'daily' ? 'analytics.bestDay' : 'analytics.bestWeek', {
+                date: shortDate(peak.date),
+                value: money(peak.revenueCents),
+              })
             : 'Sin ventas en el período'}
         </p>
       </div>
@@ -58,7 +66,7 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
       <p className="sr-only">
         Gráfico de ventas {speakGranularity}. {points.length} barras.
         {peak && hasSales
-          ? ` El máximo es ${formatMoney(peak.revenueCents)} el ${peak.date}.`
+          ? t('analytics.peakSuffix', { value: money(peak.revenueCents), date: peak.date })
           : ' No hay ventas en el período.'}
       </p>
 
@@ -86,7 +94,7 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
               fontSize="11"
               fill="var(--um-tertiary)"
             >
-              {formatMoney(line.value)}
+              {money(line.value)}
             </text>
           </g>
         ))}
@@ -106,7 +114,13 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
                 fill={point.revenueCents > 0 ? 'var(--um-brand)' : 'var(--um-border)'}
                 opacity={point.revenueCents > 0 ? 0.9 : 0.35}
               >
-                <title>{`${point.date}: ${formatMoney(point.revenueCents)} · ${point.orders} pedido(s)`}</title>
+                <title>
+                  {t('analytics.pointTitle', {
+                    date: point.date,
+                    value: money(point.revenueCents),
+                    count: point.orders,
+                  })}
+                </title>
               </rect>
               {index % labelEvery === 0 && (
                 <text
@@ -116,7 +130,7 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
                   fontSize="11"
                   fill="var(--um-tertiary)"
                 >
-                  {formatShortDate(point.date)}
+                  {shortDate(point.date)}
                 </text>
               )}
             </g>
@@ -136,9 +150,9 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
         <caption>Ventas {speakGranularity}</caption>
         <thead>
           <tr>
-            <th scope="col">Fecha</th>
-            <th scope="col">Pedidos</th>
-            <th scope="col">Ingresos</th>
+            <th scope="col">{t('analytics.date')}</th>
+            <th scope="col">{t('analytics.orders')}</th>
+            <th scope="col">{t('analytics.revenueShort')}</th>
           </tr>
         </thead>
         <tbody>
@@ -146,7 +160,7 @@ export function SalesChart({ points, title, granularity }: SalesChartProps) {
             <tr key={point.date}>
               <th scope="row">{point.date}</th>
               <td>{point.orders}</td>
-              <td>{formatMoney(point.revenueCents)}</td>
+              <td>{money(point.revenueCents)}</td>
             </tr>
           ))}
         </tbody>

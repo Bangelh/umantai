@@ -15,6 +15,12 @@ test('home responde 200 con headers de seguridad y CSP', async ({ page }) => {
   expect(headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   expect(headers['content-security-policy']).toContain("default-src 'self'");
   expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
+  // CSP por request: script-src con nonce y sin unsafe-inline.
+  const scriptSrc = (headers['content-security-policy'] ?? '')
+    .split(';')
+    .find((part) => part.trim().startsWith('script-src'));
+  expect(scriptSrc).toContain('nonce-');
+  expect(scriptSrc).not.toContain('unsafe-inline');
   expect(headers['strict-transport-security']).toContain('max-age=');
 
   await expect(page.locator('html')).toHaveAttribute('lang', /^(es|en)$/);
@@ -67,8 +73,9 @@ test('una mutación con Origin ajeno se rechaza (CSRF)', async ({ request }) => 
 test('/admin/planes pide sesión de Platform Admin sin romper', async ({ page }) => {
   const response = await page.goto('/admin/planes');
   expect(response?.status()).toBe(200);
-  await expect(page.getByText(/Platform Admin de UMANTAI/)).toBeVisible();
+  await expect(page.getByText('Platform Admin').first()).toBeVisible();
   await expect(
     page.getByRole('button', { name: /Activar sesión de administrador/ }),
   ).toBeVisible();
+  await expect(page.getByPlaceholder(/ADMIN_API_SECRET|token/i)).toHaveCount(0);
 });

@@ -9,9 +9,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { StoreProductActions } from './StoreProductActions';
-import { formatPriceCents } from '@/lib/discovery';
 import { getStoreProductDetail } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
+import { getTranslator } from '@/lib/i18n/server';
+import { formatMoney } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,22 +22,25 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { store, slug } = await params;
+  const { t } = await getTranslator();
   const slugCheck = validateStoreSlug(store);
-  if (!slugCheck.ok) return { title: 'Producto no encontrado' };
+  if (!slugCheck.ok) return { title: t('product.notFound'), robots: { index: false, follow: false } };
 
   const detail = await getStoreProductDetail(slugCheck.slug, slug);
-  if (!detail) return { title: 'Producto no encontrado' };
+  if (!detail) return { title: t('product.notFound'), robots: { index: false, follow: false } };
 
   return {
     title: `${detail.product.name} · ${detail.store.name}`,
     description:
       detail.product.description ??
-      `${detail.product.name} en ${detail.store.name}, disponible en UMANTAI.`,
+      `${detail.product.name} · ${detail.store.name} · UMANTAI`,
     alternates: { canonical: `/${detail.store.slug}/p/${detail.product.slug}` },
+    openGraph: { type: 'website', title: detail.product.name },
   };
 }
 
 export default async function StoreProductPage({ params }: PageProps) {
+  const { locale, t } = await getTranslator();
   const { store, slug } = await params;
   const slugCheck = validateStoreSlug(store);
   if (!slugCheck.ok) notFound();
@@ -48,7 +52,7 @@ export default async function StoreProductPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-12 sm:px-6">
-      <nav aria-label="Migas de pan" className="pt-4 text-xs text-muted">
+      <nav aria-label={t('product.breadcrumb')} className="pt-4 text-xs text-muted">
         <Link href="/" className="hover:text-primary">UMANTAI</Link>
         <span aria-hidden="true"> / </span>
         <Link href={`/${shop.slug}`} className="hover:text-primary">{shop.name}</Link>
@@ -57,7 +61,9 @@ export default async function StoreProductPage({ params }: PageProps) {
       </nav>
 
       <header className="mt-5 border-b border-border pb-5">
-        <p className="text-xs uppercase tracking-[2px] text-muted">{product.category ?? shop.category ?? 'Producto'}</p>
+        <p className="text-xs uppercase tracking-[2px] text-muted">
+          {product.category ?? shop.category ?? t('product.fallbackCategory')}
+        </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">{product.name}</h1>
         <p className="mt-1 text-sm text-tertiary">
           <Link href={`/${shop.slug}`} className="underline-offset-2 hover:text-primary hover:underline">
@@ -69,10 +75,12 @@ export default async function StoreProductPage({ params }: PageProps) {
         <div className="mt-4 flex items-end justify-between gap-4">
           <div>
             <div className="font-mono text-3xl font-semibold tabular-nums">
-              {formatPriceCents(product.priceCents, product.currency)}
+              {formatMoney(product.priceCents, product.currency, locale)}
             </div>
             <div className={`mt-1 text-sm font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>
-              {product.inStock ? `${product.available} disponibles` : 'Agotado'}
+              {product.inStock
+                ? t('product.inStock', { count: product.available })
+                : t('product.outOfStock')}
             </div>
           </div>
           {product.imageUrl && (
@@ -88,7 +96,9 @@ export default async function StoreProductPage({ params }: PageProps) {
 
       {product.description && (
         <section className="mt-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Descripción</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('product.description')}
+          </h2>
           <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-secondary">{product.description}</p>
         </section>
       )}
@@ -114,13 +124,15 @@ export default async function StoreProductPage({ params }: PageProps) {
       />
 
       <section className="mt-8 rounded-2xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-semibold">Retiro</h2>
+        <h2 className="text-sm font-semibold">{t('product.pickup')}</h2>
         <p className="mt-1 text-sm text-secondary">
           {shop.address
-            ? `Retira en ${shop.address}${shop.district ? `, ${shop.district}` : ''}.`
-            : 'Coordina el retiro con el comercio al confirmar tu pedido.'}
+            ? t('product.pickupAt', {
+                address: `${shop.address}${shop.district ? `, ${shop.district}` : ''}`,
+              })
+            : t('product.pickupCoordinate')}
         </p>
-        <p className="mt-1 text-xs text-muted">El stock se reserva recién cuando confirmas la compra.</p>
+        <p className="mt-1 text-xs text-muted">{t('product.stockNote')}</p>
       </section>
     </main>
   );

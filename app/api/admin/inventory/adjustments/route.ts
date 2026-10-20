@@ -22,7 +22,7 @@ import { executeAdjustment, InventoryAdminError } from '@/lib/inventory-admin.se
  * 200 · 400 validación · 401/503 auth · 409 invariante · 429 · 500.
  */
 export async function POST(request: NextRequest) {
-  const guard = guardAdminMutation(request, 'inventory-adjustments');
+  const guard = await guardAdminMutation(request, 'inventory-adjustments');
   if (!guard.ok) return guard.response;
 
   let body: unknown;

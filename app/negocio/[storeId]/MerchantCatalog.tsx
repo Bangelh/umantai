@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useI18n } from '@/components/i18n/I18nProvider';
+import { formatMoney } from '@/lib/format';
 import {
   cartesianVariants,
   parseVariantAxesInput,
@@ -43,10 +45,6 @@ interface MasterHit {
   imageUrl: string | null;
 }
 
-function money(cents: number, currency = 'PEN') {
-  return new Intl.NumberFormat('es-PE', { style: 'currency', currency }).format(cents / 100);
-}
-
 function buildVariants(axes: string): VariantDraft[] {
   try {
     const schema = parseVariantAxesInput(axes);
@@ -69,6 +67,7 @@ export function MerchantCatalog({
   products: MerchantProduct[];
 }) {
   const router = useRouter();
+  const { locale, t } = useI18n();
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [mode, setMode] = useState<'own' | 'master' | null>(null);
@@ -94,7 +93,7 @@ export function MerchantCatalog({
   const [stockProductId, setStockProductId] = useState<string | null>(null);
   const [stockVariantKey, setStockVariantKey] = useState('');
   const [stockDelta, setStockDelta] = useState('');
-  const [stockReason, setStockReason] = useState('Ajuste de inventario');
+  const [stockReason, setStockReason] = useState('');
   const [variantProductId, setVariantProductId] = useState<string | null>(null);
   const [variantAxes, setVariantAxes] = useState('talla:M,L');
   const [variantSku, setVariantSku] = useState('');
@@ -162,10 +161,10 @@ export function MerchantCatalog({
         `/api/merchant/master-products?q=${encodeURIComponent(masterQuery)}&limit=20`,
       );
       const payload = (await response.json().catch(() => null)) as { products?: MasterHit[]; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo buscar.');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.searchFailed'));
       setMasterHits(payload?.products ?? []);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo buscar.');
+      toast.error(error instanceof Error ? error.message : t('merchant.searchFailed'));
     } finally {
       setBusy(false);
     }
@@ -183,7 +182,7 @@ export function MerchantCatalog({
   const generateVariants = () => {
     const drafts = buildVariants(axes);
     if (drafts.length === 0) {
-      toast.error('Escribe ejes como “talla: S, M, L” o “color: negro, rojo”.');
+      toast.error(t('merchant.axesExampleError'));
       return;
     }
     setVariantDrafts(drafts);
@@ -194,7 +193,7 @@ export function MerchantCatalog({
     if (busy) return;
     const priceValue = Number(price.replace(',', '.'));
     if (!name.trim() || !Number.isFinite(priceValue) || priceValue < 0) {
-      toast.error('Completa nombre y precio.');
+      toast.error(t('merchant.requiredNamePrice'));
       return;
     }
 
@@ -224,13 +223,13 @@ export function MerchantCatalog({
         }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo crear el producto.');
-      toast.success('Producto publicado');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.createFailed'));
+      toast.success(t('merchant.productPublished'));
       resetForm();
       setMode(null);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear el producto.');
+      toast.error(error instanceof Error ? error.message : t('merchant.createFailed'));
     } finally {
       setBusy(false);
     }
@@ -249,22 +248,22 @@ export function MerchantCatalog({
         body: JSON.stringify(body),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo guardar.');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.saveFailed'));
       toast.success(success);
       setEditingId(null);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar.');
+      toast.error(error instanceof Error ? error.message : t('merchant.saveFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   const archive = (product: MerchantProduct) => {
-    if (!window.confirm(`Archivar “${product.name}”? No se borra: los pedidos históricos conservan su snapshot.`)) {
+    if (!window.confirm(t('merchant.archiveConfirm', { name: product.name }))) {
       return;
     }
-    void patchProduct(product.id, { archived: true, visible: false }, 'Producto archivado');
+    void patchProduct(product.id, { archived: true, visible: false }, t('merchant.productArchived'));
   };
 
   const patchVariant = async (
@@ -283,19 +282,19 @@ export function MerchantCatalog({
         },
       );
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo guardar la variante.');
-      toast.success('Variante actualizada');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.saveVariantFailed'));
+      toast.success(t('merchant.variantUpdated'));
       setVariantEdit(null);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la variante.');
+      toast.error(error instanceof Error ? error.message : t('merchant.saveVariantFailed'));
     } finally {
       setBusy(false);
     }
   };
 
   const archiveVariant = (product: MerchantProduct, variant: CatalogVariant) => {
-    if (!window.confirm('Archivar esta variante? El historial de pedidos no se modifica.')) return;
+    if (!window.confirm(t('merchant.archiveVariantConfirm'))) return;
     void patchVariant(product, variant.id, { archived: true, active: false });
   };
 
@@ -310,11 +309,11 @@ export function MerchantCatalog({
         body: form,
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo subir el logo.');
-      toast.success('Logo actualizado');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.uploadLogoFailed'));
+      toast.success(t('merchant.logoUpdated'));
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo subir el logo.');
+      toast.error(error instanceof Error ? error.message : t('merchant.uploadLogoFailed'));
     } finally {
       setBusy(false);
     }
@@ -332,11 +331,11 @@ export function MerchantCatalog({
         body: form,
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo subir la imagen.');
-      toast.success('Imagen actualizada');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.uploadImageFailed'));
+      toast.success(t('merchant.imageUpdated'));
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo subir la imagen.');
+      toast.error(error instanceof Error ? error.message : t('merchant.uploadImageFailed'));
     } finally {
       setBusy(false);
     }
@@ -345,7 +344,7 @@ export function MerchantCatalog({
   const adjustStock = async (product: MerchantProduct) => {
     const delta = Number(stockDelta);
     if (!Number.isInteger(delta) || delta === 0) {
-      toast.error('El ajuste debe ser un entero distinto de 0.');
+      toast.error(t('merchant.invalidDelta'));
       return;
     }
     setBusy(true);
@@ -357,17 +356,17 @@ export function MerchantCatalog({
           productId: product.id,
           variantKey: stockVariantKey,
           delta,
-          reason: stockReason,
+          reason: stockReason.trim() || t('merchant.inventoryReason'),
         }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo ajustar el stock.');
-      toast.success('Stock actualizado');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.adjustStockFailed'));
+      toast.success(t('merchant.stockUpdated'));
       setStockProductId(null);
       setStockDelta('');
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo ajustar el stock.');
+      toast.error(error instanceof Error ? error.message : t('merchant.adjustStockFailed'));
     } finally {
       setBusy(false);
     }
@@ -376,7 +375,7 @@ export function MerchantCatalog({
   const addVariant = async (product: MerchantProduct) => {
     const axesParsed = parseVariantAxesInput(variantAxes);
     if (axesParsed.length === 0) {
-      toast.error('Escribe los ejes, ej. “talla: M, L”.');
+      toast.error(t('merchant.axesRequired'));
       return;
     }
     const optionValues: Record<string, string> = {};
@@ -399,15 +398,15 @@ export function MerchantCatalog({
         },
       );
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo agregar la variante.');
-      toast.success('Variante agregada');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.addVariantFailed'));
+      toast.success(t('merchant.variantAdded'));
       setVariantProductId(null);
       setVariantSku('');
       setVariantPrice('');
       setVariantStock('0');
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo agregar la variante.');
+      toast.error(error instanceof Error ? error.message : t('merchant.addVariantFailed'));
     } finally {
       setBusy(false);
     }
@@ -419,17 +418,17 @@ export function MerchantCatalog({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar en mi catálogo…"
+          placeholder={t('merchant.catalogSearch')}
           className="h-10 min-w-40 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
         />
         {categories.length > 0 && (
           <select
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
-            aria-label="Filtrar por categoría"
+            aria-label={t('merchant.filterCategory')}
             className="h-10 rounded-xl border border-border-strong bg-background px-2 text-sm"
           >
-            <option value="">Todas las categorías</option>
+            <option value="">{t('merchant.allCategories')}</option>
             {categories.map((category) => (
               <option key={category} value={category}>
                 {category}
@@ -442,21 +441,21 @@ export function MerchantCatalog({
           onClick={openMaster}
           className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background"
         >
-          + Del catálogo maestro
+          {t('merchant.addFromMaster')}
         </button>
         <button
           type="button"
           onClick={openOwn}
           className="h-10 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
         >
-          + Producto propio
+          {t('merchant.addOwn')}
         </button>
         <button
           type="button"
           onClick={() => logoInput.current?.click()}
           className="h-10 rounded-xl border border-border-strong px-3 text-sm text-secondary hover:bg-surface-raised"
         >
-          Logo
+          {t('merchant.logo')}
         </button>
         <input
           ref={logoInput}
@@ -475,10 +474,12 @@ export function MerchantCatalog({
         <form onSubmit={submit} className="mt-4 rounded-2xl border border-border bg-surface p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">
-              {master ? `Agregar “${master.name}”` : 'Crear producto propio'}
+              {master
+                ? t('merchant.addMasterTitle', { name: master.name })
+                : t('merchant.createOwnTitle')}
             </h3>
             <button type="button" onClick={() => { setMode(null); resetForm(); }} className="text-xs text-tertiary hover:text-primary">
-              Cerrar
+              {t('merchant.close')}
             </button>
           </div>
 
@@ -488,7 +489,7 @@ export function MerchantCatalog({
                 <input
                   value={masterQuery}
                   onChange={(event) => setMasterQuery(event.target.value)}
-                  placeholder="Buscar arroz, polo, tela, martillo…"
+                  placeholder={t('merchant.masterSearchPlaceholder')}
                   className="h-10 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
                 />
                 <button
@@ -497,7 +498,7 @@ export function MerchantCatalog({
                   disabled={busy}
                   className="h-10 rounded-xl border border-border-strong px-3 text-sm"
                 >
-                  Buscar
+                  {t('merchant.search')}
                 </button>
               </div>
               {masterHits.length > 0 && (
@@ -512,10 +513,10 @@ export function MerchantCatalog({
                         <span className="min-w-0">
                           <span className="block truncate font-medium">{hit.name}</span>
                           <span className="block truncate text-xs text-tertiary">
-                            {[hit.brand, hit.category].filter(Boolean).join(' · ') || 'Sin marca'}
+                            {[hit.brand, hit.category].filter(Boolean).join(' · ') || t('merchant.noBrand')}
                           </span>
                         </span>
-                        <span className="text-xs text-brand">Elegir</span>
+                        <span className="text-xs text-brand">{t('merchant.choose')}</span>
                       </button>
                     </li>
                   ))}
@@ -528,23 +529,23 @@ export function MerchantCatalog({
             <>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-tertiary sm:col-span-2">
-                  Nombre
+                  {t('merchant.name')}
                   <input value={name} onChange={(event) => setName(event.target.value)} maxLength={160} required className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
                 </label>
                 <label className="text-xs text-tertiary">
-                  Precio (S/)
+                  {t('merchant.pricePEN')}
                   <input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" required className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
                 </label>
                 <label className="text-xs text-tertiary">
-                  Categoría
+                  {t('merchant.category')}
                   <input value={category} onChange={(event) => setCategory(event.target.value)} maxLength={80} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
                 </label>
                 <label className="text-xs text-tertiary">
-                  Marca
+                  {t('merchant.brand')}
                   <input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
                 </label>
                 <label className="text-xs text-tertiary">
-                  Unidad
+                  {t('merchant.unit')}
                   <select value={unit} onChange={(event) => setUnit(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm">
                     <option value="unidad">unidad</option>
                     <option value="kg">kg</option>
@@ -554,7 +555,7 @@ export function MerchantCatalog({
                   </select>
                 </label>
                 <label className="text-xs text-tertiary sm:col-span-2">
-                  Descripción
+                  {t('merchant.description')}
                   <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} maxLength={4000} className="mt-1 w-full rounded-xl border border-border-strong bg-background px-3 py-2 text-sm" />
                 </label>
               </div>
@@ -562,16 +563,16 @@ export function MerchantCatalog({
               <div className="mt-3 rounded-xl border border-border p-3">
                 <div className="flex flex-wrap items-end gap-2">
                   <label className="flex-1 text-xs text-tertiary">
-                    Variantes (opcional)
+                    {t('merchant.variantsOptional')}
                     <input
                       value={axes}
                       onChange={(event) => setAxes(event.target.value)}
-                      placeholder="talla: S, M, L; color: negro, rojo"
+                      placeholder={t('merchant.variantsPlaceholder')}
                       className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm"
                     />
                   </label>
                   <button type="button" onClick={generateVariants} className="h-10 rounded-xl border border-border-strong px-3 text-sm">
-                    Generar combinaciones
+                    {t('merchant.generateCombinations')}
                   </button>
                 </div>
                 {variantDrafts.length > 0 ? (
@@ -586,7 +587,7 @@ export function MerchantCatalog({
                               current.map((item, i) => (i === index ? { ...item, sku: event.target.value } : item)),
                             )
                           }
-                          placeholder="SKU (auto)"
+                          placeholder={t('merchant.skuAuto')}
                           className="h-9 rounded-lg border border-border-strong bg-background px-2 text-xs"
                         />
                         <input
@@ -596,7 +597,7 @@ export function MerchantCatalog({
                               current.map((item, i) => (i === index ? { ...item, price: event.target.value } : item)),
                             )
                           }
-                          placeholder="Precio (opcional)"
+                          placeholder={t('merchant.priceOptional')}
                           inputMode="decimal"
                           className="h-9 rounded-lg border border-border-strong bg-background px-2 text-xs"
                         />
@@ -607,7 +608,7 @@ export function MerchantCatalog({
                               current.map((item, i) => (i === index ? { ...item, stock: event.target.value } : item)),
                             )
                           }
-                          placeholder="Stock"
+                          placeholder={t('merchant.stock')}
                           inputMode="numeric"
                           className="h-9 rounded-lg border border-border-strong bg-background px-2 text-xs"
                         />
@@ -616,14 +617,14 @@ export function MerchantCatalog({
                   </div>
                 ) : (
                   <label className="mt-3 block text-xs text-tertiary">
-                    Stock inicial (producto sin variantes)
+                    {t('merchant.initialStock')}
                     <input value={stock} onChange={(event) => setStock(event.target.value)} inputMode="numeric" className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
                   </label>
                 )}
               </div>
 
               <button type="submit" disabled={busy} className="mt-3 h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-50">
-                {busy ? 'Guardando…' : 'Guardar y publicar'}
+                {busy ? t('merchant.saving') : t('merchant.savePublish')}
               </button>
             </>
           )}
@@ -631,7 +632,7 @@ export function MerchantCatalog({
       )}
 
       {filtered.length === 0 ? (
-        <p className="py-4 text-sm text-tertiary">Sin productos que coincidan.</p>
+        <p className="py-4 text-sm text-tertiary">{t('merchant.noMatches')}</p>
       ) : (
         <ul className="mt-3 divide-y divide-border">
           {filtered.map((product) => {
@@ -651,15 +652,16 @@ export function MerchantCatalog({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-sm font-medium">{product.name}</span>
-                      {!product.visible && <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted">oculto</span>}
+                      {!product.visible                    && <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted">{t('merchant.hiddenBadge')}</span>}
                       {product.variants.length > 0 && (
                         <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted">
-                          {product.variants.length} variantes
+                          {t('merchant.variantsCount', { count: product.variants.length })}
                         </span>
                       )}
                     </div>
                     <div className="truncate text-xs text-tertiary">
-                      /{product.slug} · {money(product.priceCents, product.currency)} · {product.available} disp.
+                      /{product.slug} · {formatMoney(product.priceCents, product.currency, locale)} ·{' '}
+                      {t('merchant.availableShort', { count: product.available })}
                     </div>
                     {product.variants.length > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-tertiary">
@@ -677,14 +679,14 @@ export function MerchantCatalog({
                               }
                               className="text-[10px] text-secondary underline underline-offset-2"
                             >
-                              editar
+                              {t('merchant.edit')}
                             </button>
                             <button
                               type="button"
                               onClick={() => archiveVariant(product, variant)}
                               className="text-[10px] text-destructive/80"
                             >
-                              archivar
+                              {t('merchant.archive')}
                             </button>
                           </span>
                         ))}
@@ -702,17 +704,17 @@ export function MerchantCatalog({
                       }}
                       className="text-xs text-secondary hover:text-primary"
                     >
-                      Editar
+                      {t('merchant.edit')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => void patchProduct(product.id, { visible: !product.visible }, product.visible ? 'Producto oculto' : 'Producto publicado')}
+                      onClick={() => void patchProduct(product.id, { visible: !product.visible }, product.visible ? t('merchant.productHidden') : t('merchant.productPublished'))}
                       className="text-xs text-secondary hover:text-primary"
                     >
-                      {product.visible ? 'Despublicar' : 'Publicar'}
+                      {product.visible ? t('merchant.unpublish') : t('merchant.publish')}
                     </button>
                     <button type="button" onClick={() => archive(product)} className="text-xs text-destructive/80 hover:text-destructive">
-                      Archivar
+                      {t('merchant.archive')}
                     </button>
                   </div>
                 </div>
@@ -721,11 +723,11 @@ export function MerchantCatalog({
                   <div className="mt-3 rounded-xl border border-border bg-surface p-3">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="text-xs text-tertiary">
-                        Nombre
+                        {t('merchant.name')}
                         <input value={editName} onChange={(event) => setEditName(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border-strong bg-background px-2 text-sm" />
                       </label>
                       <label className="text-xs text-tertiary">
-                        Precio (S/)
+                        {t('merchant.pricePEN')}
                         <input value={editPrice} onChange={(event) => setEditPrice(event.target.value)} inputMode="decimal" className="mt-1 h-9 w-full rounded-lg border border-border-strong bg-background px-2 text-sm" />
                       </label>
                     </div>
@@ -739,33 +741,33 @@ export function MerchantCatalog({
                               name: editName.trim() || undefined,
                               priceCents: Math.round(Number(editPrice.replace(',', '.')) * 100),
                             },
-                            'Producto actualizado',
+                            t('merchant.productUpdated'),
                           )
                         }
                         className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background"
                       >
-                        Guardar cambios
+                        {t('merchant.saveChanges')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setStockProductId(stockProductId === product.id ? null : product.id)}
                         className="h-9 rounded-lg border border-border-strong px-3 text-xs"
                       >
-                        Ajustar stock
+                        {t('merchant.adjustStock')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setVariantProductId(variantProductId === product.id ? null : product.id)}
                         className="h-9 rounded-lg border border-border-strong px-3 text-xs"
                       >
-                        Agregar variante
+                        {t('merchant.addVariant')}
                       </button>
                       <button
                         type="button"
                         onClick={() => fileInputs.current[product.id]?.click()}
                         className="h-9 rounded-lg border border-border-strong px-3 text-xs"
                       >
-                        Subir imagen
+                        {t('merchant.uploadImage')}
                       </button>
                       <input
                         ref={(element) => { fileInputs.current[product.id] = element; }}
@@ -783,9 +785,9 @@ export function MerchantCatalog({
                     {stockProductId === product.id && (
                       <div className="mt-2 flex flex-wrap items-end gap-2">
                         <label className="text-xs text-tertiary">
-                          Variante
+                          {t('merchant.variant')}
                           <select value={stockVariantKey} onChange={(event) => setStockVariantKey(event.target.value)} className="mt-1 block h-9 rounded-lg border border-border-strong bg-background px-2 text-xs">
-                            {product.variants.length === 0 && <option value="">Sin variantes</option>}
+                            {product.variants.length === 0 && <option value="">{t('merchant.noVariants')}</option>}
                             {product.variants.map((variant) => (
                               <option key={variant.id} value={variant.variantKey}>
                                 {Object.values(variant.optionValues).join(' / ')} ({variant.sku})
@@ -794,15 +796,15 @@ export function MerchantCatalog({
                           </select>
                         </label>
                         <label className="text-xs text-tertiary">
-                          Delta (+/−)
+                          {t('merchant.delta')}
                           <input value={stockDelta} onChange={(event) => setStockDelta(event.target.value)} inputMode="numeric" className="mt-1 block h-9 w-20 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <label className="text-xs text-tertiary">
-                          Motivo
+                          {t('merchant.reason')}
                           <input value={stockReason} onChange={(event) => setStockReason(event.target.value)} className="mt-1 block h-9 w-40 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <button type="button" onClick={() => void adjustStock(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background">
-                          Aplicar
+                          {t('merchant.apply')}
                         </button>
                       </div>
                     )}
@@ -811,7 +813,7 @@ export function MerchantCatalog({
                       product.variants.some((variant) => variant.id === variantEdit.variantId) && (
                         <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
                           <label className="text-xs text-tertiary">
-                            SKU
+                            {t('merchant.sku')}
                             <input
                               value={variantEdit.sku}
                               onChange={(event) =>
@@ -821,7 +823,7 @@ export function MerchantCatalog({
                             />
                           </label>
                           <label className="text-xs text-tertiary">
-                            Precio (S/, vacío = precio base)
+                            {t('merchant.priceOptionalBase')}
                             <input
                               value={variantEdit.price}
                               onChange={(event) =>
@@ -843,14 +845,14 @@ export function MerchantCatalog({
                             }
                             className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background"
                           >
-                            Guardar variante
+                            {t('merchant.saveVariant')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setVariantEdit(null)}
                             className="h-9 rounded-lg border border-border-strong px-3 text-xs"
                           >
-                            Cancelar
+                            {t('merchant.cancel')}
                           </button>
                         </div>
                       )}
@@ -858,23 +860,23 @@ export function MerchantCatalog({
                     {variantProductId === product.id && (
                       <div className="mt-2 flex flex-wrap items-end gap-2">
                         <label className="text-xs text-tertiary">
-                          Ejes
-                          <input value={variantAxes} onChange={(event) => setVariantAxes(event.target.value)} placeholder="talla: M; color: negro" className="mt-1 block h-9 w-56 rounded-lg border border-border-strong bg-background px-2 text-xs" />
+                          {t('merchant.axes')}
+                          <input value={variantAxes} onChange={(event) => setVariantAxes(event.target.value)} placeholder={t('merchant.axesPlaceholder')} className="mt-1 block h-9 w-56 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <label className="text-xs text-tertiary">
-                          SKU
+                          {t('merchant.sku')}
                           <input value={variantSku} onChange={(event) => setVariantSku(event.target.value)} className="mt-1 block h-9 w-28 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <label className="text-xs text-tertiary">
-                          Precio
+                          {t('merchant.pricePEN')}
                           <input value={variantPrice} onChange={(event) => setVariantPrice(event.target.value)} inputMode="decimal" className="mt-1 block h-9 w-20 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <label className="text-xs text-tertiary">
-                          Stock
+                          {t('merchant.stock')}
                           <input value={variantStock} onChange={(event) => setVariantStock(event.target.value)} inputMode="numeric" className="mt-1 block h-9 w-20 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                         </label>
                         <button type="button" onClick={() => void addVariant(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background">
-                          Agregar
+                          {t('merchant.add')}
                         </button>
                       </div>
                     )}

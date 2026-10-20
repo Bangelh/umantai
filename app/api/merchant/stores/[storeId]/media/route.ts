@@ -16,6 +16,7 @@ import { platformErrorResponse } from '@/lib/platform-api.server';
 import { requirePlatformSql } from '@/lib/platform-db.server';
 import { putImage } from '@/lib/storage.server';
 import { requireStoreAccess } from '@/lib/stores.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
 import { consumeRateLimit } from '@/lib/rate-limit.server';
 
 export const runtime = 'nodejs';
@@ -32,6 +33,13 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   // 10 subidas por minuto y usuario: frena bucles sin molestar el uso normal.
+  const gate = await rateLimitGate(request, 'merchant-media', {
+    limit: 10,
+    windowMs: 60_000,
+    key: `media:${user.id}`,
+  });
+  if (gate) return gate;
+
   const limit = consumeRateLimit(`media:${user.id}`, 10, 60_000);
   if (!limit.allowed) {
     return NextResponse.json(

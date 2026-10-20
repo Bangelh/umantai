@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import type { AdminInventoryItem, InventoryStatus } from '@/lib/inventory-admin';
 
@@ -10,17 +11,21 @@ interface Props {
   onChanged: () => Promise<void> | void;
 }
 
-const STATUS_META: Record<InventoryStatus, { label: string; className: string }> = {
-  available: { label: 'Disponible', className: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' },
-  low: { label: 'Poco stock', className: 'border-amber-500/40 bg-amber-500/10 text-amber-300' },
-  out: { label: 'Agotado', className: 'border-red-500/40 bg-red-500/10 text-red-300' },
+const STATUS_META: Record<
+  InventoryStatus,
+  { labelKey: 'inventory.available' | 'inventory.low' | 'inventory.out'; className: string }
+> = {
+  available: { labelKey: 'inventory.available', className: 'border-success/40 bg-success/10 text-success' },
+  low: { labelKey: 'inventory.low', className: 'border-warning/40 bg-warning/10 text-warning' },
+  out: { labelKey: 'inventory.out', className: 'border-destructive/40 bg-destructive/10 text-destructive' },
 };
 
 function StatusBadge({ status }: { status: InventoryStatus }) {
+  const { t } = useI18n();
   const meta = STATUS_META[status];
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs ${meta.className}`}>
-      {meta.label}
+      {t(meta.labelKey)}
     </span>
   );
 }
@@ -34,6 +39,7 @@ function ThresholdEditor({
   onSaved: () => Promise<void> | void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState(String(item.reorderPoint));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +47,7 @@ function ThresholdEditor({
   const save = async () => {
     const reorderPoint = Number(value);
     if (!Number.isInteger(reorderPoint) || reorderPoint < 0) {
-      setError('El umbral debe ser un entero mayor o igual que 0.');
+      setError(t('inventory.thresholdInvalid'));
       return;
     }
 
@@ -62,12 +68,12 @@ function ThresholdEditor({
       );
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {
-        setError(payload?.error ?? 'No se pudo guardar el umbral.');
+        setError(payload?.error ?? t('inventory.thresholdSaveFailed'));
         return;
       }
       await onSaved();
     } catch {
-      setError('Error de red al guardar el umbral.');
+      setError(t('inventory.thresholdNetworkError'));
     } finally {
       setSaving(false);
     }
@@ -85,37 +91,38 @@ function ThresholdEditor({
             if (event.key === 'Enter') void save();
             if (event.key === 'Escape') onCancel();
           }}
-          aria-label={`Umbral de stock bajo para ${item.productName}`}
-          className="h-9 w-24 rounded-xl border border-white/20 bg-neutral-950 px-2 text-sm"
+          aria-label={t('inventory.thresholdAria', { product: item.productName })}
+          className="h-9 w-24 rounded-xl border border-border-strong bg-background px-2 text-sm"
           autoFocus
         />
         <button
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="h-9 rounded-xl bg-white px-3 text-xs font-medium text-black disabled:opacity-50"
+          className="h-9 rounded-xl bg-brand px-3 text-xs font-medium text-background disabled:opacity-50"
         >
-          {saving ? '…' : 'Guardar'}
+          {saving ? '…' : t('inventory.save')}
         </button>
-        <button type="button" onClick={onCancel} className="text-xs text-white/50 hover:text-white">
-          Cancelar
+        <button type="button" onClick={onCancel} className="text-xs text-tertiary hover:text-primary">
+          {t('inventory.cancel')}
         </button>
       </div>
-      {error && <span className="text-xs text-red-400">{error}</span>}
+      {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   );
 }
 
 export function InventoryTable({ items, loading, onChanged }: Props) {
+  const { t } = useI18n();
   const [editing, setEditing] = useState<string | null>(null);
 
   const rowKey = (item: AdminInventoryItem) => `${item.productSlug}:${item.variantKey}`;
 
   if (loading) {
     return (
-      <div className="space-y-2" aria-busy="true" aria-label="Cargando inventario">
+      <div className="space-y-2" aria-busy="true" aria-label={t('inventory.loading')}>
         {[0, 1, 2, 3].map((index) => (
-          <div key={index} className="h-16 animate-pulse rounded-2xl bg-white/5" />
+          <div key={index} className="h-16 animate-pulse rounded-2xl bg-surface-raised" />
         ))}
       </div>
     );
@@ -123,11 +130,9 @@ export function InventoryTable({ items, loading, onChanged }: Props) {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-3xl border border-dashed border-white/15 p-10 text-center">
-        <p className="text-lg font-medium">No hay SKUs que coincidan.</p>
-        <p className="mt-1 text-sm text-white/50">
-          Ajusta la búsqueda o registra una entrada de mercadería para crear stock.
-        </p>
+      <div className="rounded-3xl border border-dashed border-border p-10 text-center">
+        <p className="text-lg font-medium">{t('inventory.noMatches')}</p>
+        <p className="mt-1 text-sm text-tertiary">{t('inventory.noMatchesBody')}</p>
       </div>
     );
   }
@@ -135,30 +140,30 @@ export function InventoryTable({ items, loading, onChanged }: Props) {
   return (
     <>
       {/* Escritorio */}
-      <div className="hidden overflow-hidden rounded-3xl border border-white/15 md:block">
+      <div className="hidden overflow-hidden rounded-3xl border border-border md:block">
         <table className="w-full text-sm">
-          <thead className="bg-white/5 text-left text-white/60">
+          <thead className="bg-surface-raised text-left text-tertiary">
             <tr>
-              <th className="px-4 py-3 font-medium">Producto</th>
-              <th className="px-4 py-3 font-medium">Variante</th>
-              <th className="px-4 py-3 text-right font-medium">Físico</th>
-              <th className="px-4 py-3 text-right font-medium">Reservado</th>
-              <th className="px-4 py-3 text-right font-medium">Disponible</th>
-              <th className="px-4 py-3 font-medium">Estado</th>
-              <th className="px-4 py-3 font-medium">Umbral</th>
+              <th className="px-4 py-3 font-medium">{t('inventory.product')}</th>
+              <th className="px-4 py-3 font-medium">{t('inventory.variant')}</th>
+              <th className="px-4 py-3 text-right font-medium">{t('inventory.onHand')}</th>
+              <th className="px-4 py-3 text-right font-medium">{t('inventory.reserved')}</th>
+              <th className="px-4 py-3 text-right font-medium">{t('inventory.available')}</th>
+              <th className="px-4 py-3 font-medium">{t('inventory.status')}</th>
+              <th className="px-4 py-3 font-medium">{t('inventory.threshold')}</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={rowKey(item)} className="border-t border-white/10 align-top">
+              <tr key={rowKey(item)} className="border-t border-border align-top">
                 <td className="px-4 py-4">
                   <div className="font-medium">{item.productName}</div>
-                  <div className="text-xs text-white/45">
+                  <div className="text-xs text-muted">
                     {item.productBrand ? `${item.productBrand} · ` : ''}
                     {item.productSlug}
                   </div>
                 </td>
-                <td className="px-4 py-4 text-white/70">{item.variantKey || '—'}</td>
+                <td className="px-4 py-4 text-secondary">{item.variantKey || '—'}</td>
                 <td className="px-4 py-4 text-right font-mono">{item.quantityOnHand}</td>
                 <td className="px-4 py-4 text-right font-mono">{item.quantityReserved}</td>
                 <td className="px-4 py-4 text-right font-mono">{item.quantityAvailable}</td>
@@ -179,10 +184,10 @@ export function InventoryTable({ items, loading, onChanged }: Props) {
                     <button
                       type="button"
                       onClick={() => setEditing(rowKey(item))}
-                      className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
-                      aria-label={`Editar umbral de ${item.productName}`}
+                      className="rounded-full border border-border-strong px-3 py-1 text-xs text-secondary hover:bg-surface-raised"
+                      aria-label={t('inventory.editThreshold', { product: item.productName })}
                     >
-                      {item.reorderPoint > 0 ? item.reorderPoint : 'sin alerta'}
+                      {item.reorderPoint > 0 ? item.reorderPoint : t('inventory.noAlert')}
                     </button>
                   )}
                 </td>
@@ -195,28 +200,28 @@ export function InventoryTable({ items, loading, onChanged }: Props) {
       {/* Móvil */}
       <div className="space-y-3 md:hidden">
         {items.map((item) => (
-          <div key={rowKey(item)} className="rounded-2xl border border-white/15 bg-neutral-900 p-4">
+          <div key={rowKey(item)} className="rounded-2xl border border-border bg-surface p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-medium">{item.productName}</div>
-                <div className="text-xs text-white/45">
-                  {item.variantKey || 'sin variante'} · {item.productSlug}
+                <div className="text-xs text-muted">
+                  {item.variantKey || t('inventory.noVariant')} · {item.productSlug}
                 </div>
               </div>
               <StatusBadge status={item.status} />
             </div>
-            <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-white/60">
-              <div className="rounded-xl bg-neutral-950/60 p-2">
-                <dt>Físico</dt>
-                <dd className="font-mono text-base text-white">{item.quantityOnHand}</dd>
+            <dl className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-tertiary">
+              <div className="rounded-xl bg-background p-2">
+                <dt>{t('inventory.onHand')}</dt>
+                <dd className="font-mono text-base text-primary">{item.quantityOnHand}</dd>
               </div>
-              <div className="rounded-xl bg-neutral-950/60 p-2">
-                <dt>Reservado</dt>
-                <dd className="font-mono text-base text-white">{item.quantityReserved}</dd>
+              <div className="rounded-xl bg-background p-2">
+                <dt>{t('inventory.reserved')}</dt>
+                <dd className="font-mono text-base text-primary">{item.quantityReserved}</dd>
               </div>
-              <div className="rounded-xl bg-neutral-950/60 p-2">
-                <dt>Disponible</dt>
-                <dd className="font-mono text-base text-white">{item.quantityAvailable}</dd>
+              <div className="rounded-xl bg-background p-2">
+                <dt>{t('inventory.available')}</dt>
+                <dd className="font-mono text-base text-primary">{item.quantityAvailable}</dd>
               </div>
             </dl>
             <div className="mt-3">
@@ -233,9 +238,11 @@ export function InventoryTable({ items, loading, onChanged }: Props) {
                 <button
                   type="button"
                   onClick={() => setEditing(rowKey(item))}
-                  className="text-xs text-white/60 underline-offset-2 hover:text-white hover:underline"
+                  className="text-xs text-tertiary underline-offset-2 hover:text-primary hover:underline"
                 >
-                  Umbral de alerta: {item.reorderPoint > 0 ? item.reorderPoint : 'sin alerta'}
+                  {t('inventory.thresholdAlert', {
+                    value: item.reorderPoint > 0 ? item.reorderPoint : t('inventory.noAlert'),
+                  })}
                 </button>
               )}
             </div>

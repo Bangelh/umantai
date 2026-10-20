@@ -60,6 +60,8 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Datos de pago: el sitio no almacena números de tarjeta. El procesamiento lo realiza el proveedor de pagos y solo se conserva la referencia de la operación y su estado.',
           'Datos técnicos: registros de errores y de seguridad del servidor (por ejemplo, intentos fallidos de administración). No se usan para perfilado publicitario.',
           'Cuenta e inicio de sesión: nombre, correo y contraseña (almacenada con hash). Si eres comerciante, también la tienda, tu rol y el plan contratado. No guardamos números de tarjeta ni credenciales del proveedor de cobros.',
+          'Verificación de correo y recuperación de contraseña: enviamos un enlace de un solo uso con vencimiento (24 h para verificar, 1 h para restablecer). Guardamos el token de verificación/reset de forma temporal y la fecha de verificación del correo; no guardamos la contraseña en claro ni el contenido del correo enviado.',
+          'Sesiones: identificador de sesión, fecha de creación/expiración, dirección IP y agente del navegador, necesarios para mantener la sesión y permitirte cerrar las demás. Puedes revocar las otras sesiones desde tu cuenta.',
           'Suscripciones de comerciantes: plan, estado, fechas de período, eventos de renovación/cancelación y códigos promocionales canjeados. Este historial es necesario para facturar y atender reclamos.',
           'Imágenes que subes (logo o fotos de productos): el archivo, su tipo real, tamaño y la relación con tu tienda o producto. No se conserva el nombre original del archivo ni metadatos del dispositivo.',
           'Preferencias de interfaz: tema (claro/oscuro/sistema) e idioma (español/inglés) en cookies propias. No identifican a la persona ni se usan para publicidad.',
@@ -102,7 +104,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '7. Seguridad',
         paragraphs: [
-          'Las cuentas usan sesiones con cookie HttpOnly y contraseñas almacenadas con hash. El acceso de Platform Admin exige una sesión autenticada y una segunda cookie firmada de corta duración; el token compartido queda solo como respaldo operativo. Las rutas de pago validan la autenticidad de las notificaciones del proveedor y las mutaciones de API verifican el origen.',
+          'Las cuentas usan sesiones con cookie HttpOnly y contraseñas almacenadas con hash. El acceso de Platform Admin exige una sesión autenticada y una segunda cookie firmada, HttpOnly y SameSite=Strict, de 8 horas; el navegador del administrador ya no guarda ningún token compartido. Las rutas de pago validan la autenticidad de las notificaciones del proveedor y las mutaciones de API verifican el origen.',
           'Ningún sistema es infalible: si detectamos un incidente que afecte datos personales, actuaremos según el procedimiento que defina el negocio con su asesoría legal.',
         ],
       },
@@ -249,8 +251,10 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         paragraphs: [
           'El sitio NO usa cookies de publicidad, píxeles de redes sociales ni analítica de terceros.',
           'Almacenamiento necesario: carrito y lista de compras (localStorage), identificador de sesión de navegación y, si autorizas la ubicación, las coordenadas de esa pestaña (sessionStorage). Nada de eso se usa para publicidad.',
-          'Almacenamiento local del navegador (localStorage), estrictamente necesario: carrito de compras, lista de compras, identificador anónimo de sesión del catálogo, token de administración (solo si ingresas al panel) y nombre del actor de inventario.',
-          'Cookies de sesión: autentican tu cuenta de UMANTAI (Better Auth) con una cookie HttpOnly de duración limitada. Se crean al ingresar y se eliminan al cerrar sesión. El panel administrativo usa además un token guardado en el navegador, no una cookie.',
+          'Almacenamiento local del navegador (localStorage), estrictamente necesario: carrito de compras, lista de compras, preferencia de tema claro/oscuro/sistema, identificador anónimo de sesión del catálogo y nombre del actor de inventario (solo en el panel de operación).',
+          'Cookies de sesión: autentican tu cuenta de UMANTAI (Better Auth) con una cookie HttpOnly de duración limitada. Se crean al ingresar y se eliminan al cerrar sesión.',
+          'Cookies de preferencia: `umantai_theme` (claro/oscuro/sistema) y `umantai_locale` (es/en). Son legibles por el sitio para aplicar el tema y el idioma antes del primer pintado; no identifican a la persona ni se usan para publicidad.',
+          'Cookie de Platform Admin: `umantai_platform_admin`, HttpOnly, SameSite=Strict y Secure en https, válida 8 horas. Solo existe si un administrador autorizado activa su sesión. No se guarda ningún token de administración en localStorage.',
         ],
       },
       {
@@ -270,7 +274,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         heading: '4. Cómo borrarlas',
         paragraphs: [
           'Puedes borrar el almacenamiento local y las cookies desde la configuración de tu navegador. Al hacerlo se vaciará el carrito, la lista de compras y la ubicación de la pestaña, y se cerrará tu sesión.',
-          'Borrar las cookies de sesión del CMS cierra la sesión administrativa.',
+          'Borrar las cookies de sesión cierra tu cuenta; borrar la cookie de Platform Admin cierra el panel administrativo sin afectar tu cuenta.',
         ],
       },
       {

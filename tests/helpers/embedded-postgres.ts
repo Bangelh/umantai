@@ -42,6 +42,8 @@ const MIGRATIONS = [
   '018_subscription_created_events.sql',
   '019_platform_admins.sql',
   '020_tenant_guards.sql',
+  '021_email_outbox.sql',
+  '022_rls_tenant_isolation.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {

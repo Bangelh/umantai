@@ -9,6 +9,7 @@ import { CatalogError } from '@/lib/catalog';
 import { platformErrorResponse } from '@/lib/platform-api.server';
 import { requirePlatformSql } from '@/lib/platform-db.server';
 import { putImage } from '@/lib/storage.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
 import { consumeRateLimit, rateLimitKeyFor } from '@/lib/rate-limit.server';
 
 export const runtime = 'nodejs';
@@ -19,6 +20,9 @@ export async function POST(request: Request) {
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }
+
+  const gate = await rateLimitGate(request, 'admin-media', { limit: 20, windowMs: 60_000 });
+  if (gate) return gate;
 
   const limit = consumeRateLimit(rateLimitKeyFor(request, 'admin-media'), 20, 60_000);
   if (!limit.allowed) {

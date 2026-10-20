@@ -58,7 +58,24 @@
   --um-border: #e2e2df;
   --um-border-strong: #cfcfca;
   --um-brand: #16161a;
+
+  /* Estados con contraste AA sobre fondo claro (los del tema oscuro se leen
+     mal sobre blanco: verde/ámbar/rojo pastel). */
+  --um-success: #047857;
+  --um-warning: #a16207;
+  --um-destructive: #b91c1c;
+  --um-info: #1d4ed8;
+
   --um-shadow-card: 0 1px 0 rgb(0 0 0 / 0.03), 0 12px 32px -24px rgb(0 0 0 / 0.18);
+}
+
+/*
+ * Estados: se declaran como capas para que `bg-success/10` y `border-success/40`
+ * funcionen igual en ambos temas (Tailwind mezcla el color con transparencia).
+ * No se usan colores arbitrarios fuera de estos tokens.
+ */
+[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 /*
@@ -91,6 +108,49 @@
 [data-theme="light"] .bg-white\/5,
 [data-theme="light"] .bg-white\/10 {
   background-color: var(--um-surface);
+}
+[data-theme="light"] .bg-neutral-900,
+[data-theme="light"] .bg-neutral-800,
+[data-theme="light"] .bg-neutral-950\/70 {
+  background-color: var(--um-surface);
+}
+[data-theme="light"] .border-white\/15,
+[data-theme="light"] .border-white\/20,
+[data-theme="light"] .border-white\/30,
+[data-theme="light"] .border-white\/40 {
+  border-color: var(--um-border-strong);
+}
+[data-theme="light"] .divide-white\/10 > :not([hidden]) ~ :not([hidden]),
+[data-theme="light"] .border-white\/10 {
+  border-color: var(--um-border);
+}
+[data-theme="light"] .placeholder\:text-white\/40::placeholder,
+[data-theme="light"] .placeholder\:text-white\/50::placeholder {
+  color: var(--um-muted);
+}
+[data-theme="light"] .text-emerald-400,
+[data-theme="light"] .text-emerald-300 {
+  color: var(--um-success);
+}
+[data-theme="light"] .text-red-400,
+[data-theme="light"] .text-red-300,
+[data-theme="light"] .text-red-200 {
+  color: var(--um-destructive);
+}
+[data-theme="light"] .text-amber-300 {
+  color: var(--um-warning);
+}
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] .bg-emerald-600\/90 {
+  background-color: var(--um-success);
+}
+[data-theme="light"] .bg-red-950\/50,
+[data-theme="light"] .bg-red-500\/10 {
+  background-color: color-mix(in srgb, var(--um-destructive) 10%, transparent);
+}
+[data-theme="light"] .border-red-500\/30,
+[data-theme="light"] .border-red-500\/40 {
+  border-color: color-mix(in srgb, var(--um-destructive) 40%, transparent);
 }
 [data-theme="light"] .hover\:bg-white\/5:hover,
 [data-theme="light"] .hover\:bg-white\/10:hover {
@@ -237,6 +297,34 @@ body {
 .field-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Contraste reforzado cuando el sistema lo pide. */
+@media (prefers-contrast: more) {
+  :root {
+    --um-border: #4a4a52;
+    --um-border-strong: #6a6a73;
+    --um-muted: #9a9aa3;
+  }
+  [data-theme="light"] {
+    --um-border: #b7b7b3;
+    --um-border-strong: #8a8a86;
+    --um-muted: #5a5a63;
+  }
+}
+
+/* Tablas: encabezado y filas usan tokens, no grises fijos. */
+.table-tokens th {
+  background: var(--um-surface-raised);
+  color: var(--um-secondary);
+  font-weight: 600;
+}
+.table-tokens tbody tr:hover {
+  background: color-mix(in srgb, var(--um-surface-raised) 70%, transparent);
+}
+.table-tokens td,
+.table-tokens th {
+  border-color: var(--um-border);
 }
 
 /* Custom styles for Umantai */

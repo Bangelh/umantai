@@ -14,6 +14,8 @@ import {
   type CheckoutPhase,
   type ParsedOrderError,
 } from "@/lib/checkout";
+import { formatMoneyUnits } from "@/lib/format";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { toast } from "sonner";
 
 /**
@@ -28,17 +30,18 @@ function newIdempotencyKey(): string {
   return `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** El backend cobra en Soles (PEN). */
-function money(value: number): string {
-  return `S/ ${value.toFixed(2)}`;
-}
-
 export default function CartPage() {
+  const { locale, t } = useI18n();
   const { items, removeItem, updateQuantity, clearCart, getTotalPrice } = useCartStore();
   const router = useRouter();
   // Ver `lib/useHydrated.ts`: el carrito vive en localStorage, así que no se puede
   // pintar hasta después del montaje sin romper la hidratación.
   const hydrated = useHydrated();
+
+  const money = useCallback(
+    (value: number) => formatMoneyUnits(value, "PEN", locale),
+    [locale],
+  );
 
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
@@ -123,11 +126,11 @@ export default function CartPage() {
   const handleOpenConfirmation = () => {
     if (isSubmitting) return;
     if (isMixedStores) {
-      toast.error("Tu carrito tiene productos de varias tiendas. Compra una tienda a la vez.");
+      toast.error(t("cart.mixedToast"));
       return;
     }
     if (!isValidContactEmail(email)) {
-      toast.error("Enter your email so we can send you the order confirmation.");
+      toast.error(t("cart.emailRequired"));
       return;
     }
     setOrderError(null);
@@ -197,16 +200,16 @@ export default function CartPage() {
       if (publicToken) {
         router.push(`/pedido/${publicToken}`);
       } else {
-        toast.success("Order created.");
+        toast.success(t("cart.orderCreated"));
       }
     } catch {
       setOrderError({
-        message: "Network error. Your order was not placed.",
+        message: t("cart.networkError"),
         code: null,
         shortages: [],
       });
       advance("failure");
-      toast.error("Network error. Your order was not placed.");
+      toast.error(t("cart.networkError"));
     }
   };
 
@@ -218,11 +221,13 @@ export default function CartPage() {
   */
   if (!hydrated) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-6">🛍️</div>
-          <h1 className="text-4xl tracking-tight mb-4">Your cart</h1>
-          <p className="text-white/60">Loading your items…</p>
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="text-center" role="status" aria-live="polite">
+          <div className="mb-4 text-5xl" aria-hidden="true">
+            🛍️
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">{t("cart.title")}</h1>
+          <p className="mt-2 text-sm text-tertiary">{t("cart.loading")}</p>
         </div>
       </div>
     );
@@ -230,16 +235,18 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
-          <div className="text-6xl mb-6">🛍️</div>
-          <h1 className="text-4xl tracking-tight mb-4">Your cart is empty</h1>
-          <p className="text-white/60 mb-8">Browse our collection and discover exceptional pieces.</p>
+          <div className="mb-4 text-5xl" aria-hidden="true">
+            🛍️
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">{t("cart.emptyTitle")}</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-tertiary">{t("cart.emptyBody")}</p>
           <Link
             href="/"
-            className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
+            className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-brand px-6 text-sm font-semibold text-background hover:opacity-90"
           >
-            Buscar productos
+            {t("cart.browse")}
           </Link>
         </div>
       </div>
@@ -247,178 +254,179 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <div className="max-w-4xl mx-auto px-8 py-12">
-        <h1 className="text-5xl tracking-tighter font-semibold mb-2">Your Cart</h1>
-        <p className="mb-8 text-sm text-white/50">
-          Tienda: {items[0]?.storeName ?? items[0]?.storeSlug ?? 'UMANTAI'}
-        </p>
+    <div className="mx-auto max-w-4xl px-4 pb-16 pt-6 sm:px-6">
+      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("cart.title")}</h1>
+      <p className="mb-6 mt-1 text-sm text-tertiary">
+        {t("cart.store", {
+          store: items[0]?.storeName ?? items[0]?.storeSlug ?? "UMANTAI",
+        })}
+      </p>
 
-        {isMixedStores && (
-          <div role="alert" className="mb-6 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm">
-            Tu carrito contiene productos de tiendas distintas (formato antiguo). Un pedido pertenece
-            a una sola tienda. Vacía el carrito y agrega los productos de la tienda que quieras comprar.
-            <button
-              type="button"
-              onClick={() => {
-                clearCart();
-                toast.info('Carrito vacío. Elige una tienda.');
-              }}
-              className="ml-2 underline underline-offset-2 hover:text-white"
-            >
-              Vaciar carrito
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-6">
-          {items.map((item) => (
-            <div key={cartLineKey(item)} className="flex gap-6 border border-white/10 bg-neutral-900 p-6 rounded-3xl">
-              <div className="w-24 h-24 bg-neutral-800 rounded-2xl flex-shrink-0 flex items-center justify-center text-4xl">
-                {item.brand === "Apple" && "📱"}
-                {item.brand === "Dyson" && "🌀"}
-                {item.brand === "Oura" && "💍"}
-                {item.brand === "Peak Design" && "🎒"}
-                {item.brand === "Bose" && "🎧"}
-                {item.brand === "Samsung" && "📱"}
-                {item.brand === "Whoop" && "⌚"}
-                {item.brand === "Sonos" && "🔊"}
-                {item.brand === "Anker" && "🔋"}
-                {item.brand === "Blue Bottle" && "☕"}
-                {item.brand === "Patagonia" && "🐟"}
-                {item.brand === "Google" && "📱"}
-              </div>
-
-              <div className="flex-1">
-                <div className="flex justify-between">
-                  <div>
-                    <div className="text-sm text-white/60">{item.brand}</div>
-                    <div className="text-xl font-semibold tracking-tight">{item.name}</div>
-                    {Object.values(cartItemVariant(item)).filter(Boolean).length > 0 && (
-                      <div className="text-sm text-white/50 mt-1">
-                        {Object.values(cartItemVariant(item)).filter(Boolean).join(" · ")}
-                      </div>
-                    )}
-                  </div>
-                  <div className="font-mono text-xl tracking-tight text-right">
-                    {money(item.price * item.quantity)}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 mt-4">
-                  <div className="flex items-center border border-white/20 rounded-full">
-                    <button
-                      type="button"
-                      aria-label={`Decrease quantity of ${item.name}`}
-                      onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
-                      disabled={isSubmitting}
-                      className="px-3 py-1 hover:bg-white/10 rounded-l-full disabled:opacity-40"
-                    >
-                      −
-                    </button>
-                    <div className="px-4 font-mono">{item.quantity}</div>
-                    <button
-                      type="button"
-                      aria-label={`Increase quantity of ${item.name}`}
-                      onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
-                      disabled={isSubmitting}
-                      className="px-3 py-1 hover:bg-white/10 rounded-r-full disabled:opacity-40"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeItem(cartLineKey(item))}
-                    disabled={isSubmitting}
-                    className="text-sm text-white/50 hover:text-white/80 disabled:opacity-40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-12 border-t border-white/10 pt-8 flex justify-between items-center text-xl">
-          <div>Total</div>
-          <div className="font-mono tracking-tighter">{money(total)}</div>
-        </div>
-
-        {/*
-          Datos de contacto: `POST /api/orders` exige `contactEmail` (la columna
-          `orders.contact_email` es NOT NULL). El checkout completo —dirección de
-          entrega, delivery, cupones— llega en una fase posterior.
-        */}
-        <div className="mt-10 border-t border-white/10 pt-8">
-          <h2 className="text-sm tracking-widest text-white/60 mb-4">CONTACT DETAILS</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Email *"
-              autoComplete="email"
-              className="sm:col-span-2 h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
-            />
-            <input
-              type="text"
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              placeholder="Full name (optional)"
-              autoComplete="name"
-              className="h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              value={docNumber}
-              onChange={(event) => setDocNumber(event.target.value)}
-              placeholder="DNI (optional)"
-              className="h-12 rounded-2xl border border-white/20 bg-neutral-900 px-4 text-white placeholder:text-white/40 focus:border-white/50 focus:outline-none"
-            />
-          </div>
-          <p className="mt-3 text-xs text-white/40">
-            We hold your items for 30 minutes after you place the order.
-          </p>
-        </div>
-
-        <div className="mt-8 flex gap-4">
+      {isMixedStores && (
+        <div role="alert" className="mb-6 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
+          {t("cart.mixedWarning")}
           <button
             type="button"
-            onClick={handleOpenConfirmation}
-            disabled={isSubmitting}
-            className="flex-1 h-14 rounded-2xl bg-white text-black font-medium hover:bg-white/90 transition-colors disabled:cursor-not-allowed disabled:bg-white/60"
+            onClick={() => {
+              clearCart();
+              toast.info(t("cart.emptied"));
+            }}
+            className="ml-2 underline underline-offset-2 hover:text-primary"
           >
-            Review order
+            {t("cart.emptyAction")}
           </button>
-          <Link
-            href="/"
-            className="flex-1 h-14 rounded-2xl border border-white/40 font-medium hover:bg-white/5 transition-colors flex items-center justify-center"
-          >
-            Seguir comprando
-          </Link>
         </div>
+      )}
 
+      <ul className="space-y-3">
+        {items.map((item) => (
+          <li
+            key={cartLineKey(item)}
+            className="flex gap-4 rounded-2xl border border-border bg-surface p-4 sm:p-5"
+          >
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised text-2xl sm:h-20 sm:w-20 sm:text-3xl">
+              {item.brand === "Apple" && "📱"}
+              {item.brand === "Dyson" && "🌀"}
+              {item.brand === "Oura" && "💍"}
+              {item.brand === "Peak Design" && "🎒"}
+              {item.brand === "Bose" && "🎧"}
+              {item.brand === "Samsung" && "📱"}
+              {item.brand === "Whoop" && "⌚"}
+              {item.brand === "Sonos" && "🔊"}
+              {item.brand === "Anker" && "🔋"}
+              {item.brand === "Blue Bottle" && "☕"}
+              {item.brand === "Patagonia" && "🐟"}
+              {item.brand === "Google" && "📱"}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-tertiary">{item.brand}</div>
+                  <div className="truncate text-base font-semibold tracking-tight">{item.name}</div>
+                  {Object.values(cartItemVariant(item)).filter(Boolean).length > 0 && (
+                    <div className="mt-1 text-xs text-tertiary">
+                      {Object.values(cartItemVariant(item)).filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </div>
+                <div className="shrink-0 text-right font-mono text-base font-semibold tabular-nums">
+                  {money(item.price * item.quantity)}
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex items-center rounded-full border border-border-strong">
+                  <button
+                    type="button"
+                    aria-label={t("cart.decrease", { name: item.name })}
+                    onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
+                    disabled={isSubmitting}
+                    className="rounded-l-full px-3 py-1 hover:bg-surface-raised disabled:opacity-40"
+                  >
+                    −
+                  </button>
+                  <div className="px-3 font-mono tabular-nums">{item.quantity}</div>
+                  <button
+                    type="button"
+                    aria-label={t("cart.increase", { name: item.name })}
+                    onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
+                    disabled={isSubmitting}
+                    className="rounded-r-full px-3 py-1 hover:bg-surface-raised disabled:opacity-40"
+                  >
+                    +
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => removeItem(cartLineKey(item))}
+                  disabled={isSubmitting}
+                  className="text-sm text-tertiary hover:text-primary disabled:opacity-40"
+                >
+                  {t("cart.remove")}
+                </button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-8 flex items-center justify-between border-t border-border pt-5 text-lg">
+        <div>{t("cart.total")}</div>
+        <div className="font-mono font-semibold tabular-nums">{money(total)}</div>
+      </div>
+
+      {/* Datos de contacto: `POST /api/orders` exige `contactEmail`. */}
+      <div className="mt-8 border-t border-border pt-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[2px] text-secondary">
+          {t("cart.contact")}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <input
+            type="email"
+            required
+            aria-label={t("cart.email")}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder={t("cart.email")}
+            autoComplete="email"
+            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none sm:col-span-2"
+          />
+          <input
+            type="text"
+            aria-label={t("cart.fullName")}
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+            placeholder={t("cart.fullName")}
+            autoComplete="name"
+            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none"
+          />
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label={t("cart.doc")}
+            value={docNumber}
+            onChange={(event) => setDocNumber(event.target.value)}
+            placeholder={t("cart.doc")}
+            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none"
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted">{t("cart.holdNote")}</p>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
-          onClick={() => {
-            clearCart();
-            toast.info("Cart cleared");
-          }}
+          onClick={handleOpenConfirmation}
           disabled={isSubmitting}
-          className="mt-6 text-xs text-white/40 hover:text-white/70 disabled:opacity-40"
+          className="h-12 flex-1 rounded-xl bg-brand text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Clear cart
+          {t("cart.review")}
         </button>
+        <Link
+          href="/"
+          className="flex h-12 flex-1 items-center justify-center rounded-xl border border-border-strong text-sm font-medium hover:bg-surface-raised"
+        >
+          {t("cart.continue")}
+        </Link>
       </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          clearCart();
+          toast.info(t("cart.cleared"));
+        }}
+        disabled={isSubmitting}
+        className="mt-5 text-xs text-muted hover:text-secondary disabled:opacity-40"
+      >
+        {t("cart.clear")}
+      </button>
 
       {isConfirming && (
         <div
-          className="fixed inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6"
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) handleCancelConfirmation();
@@ -428,68 +436,66 @@ export default function CartPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="checkout-confirm-title"
-            className="w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border border-white/15 bg-neutral-900 p-6 sm:p-8"
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface p-5 sm:max-w-2xl sm:rounded-3xl sm:p-7"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="uppercase tracking-[3px] text-xs text-white/50">PASO FINAL</div>
-                <h2 id="checkout-confirm-title" className="text-3xl font-semibold tracking-tight mt-1">
-                  Confirm your purchase
+                <div className="text-[11px] uppercase tracking-[3px] text-muted">
+                  {t("cart.confirmKicker")}
+                </div>
+                <h2 id="checkout-confirm-title" className="mt-1 text-2xl font-semibold tracking-tight">
+                  {t("cart.confirmTitle")}
                 </h2>
-                <p className="text-sm text-white/60 mt-2">
-                  Review the items. Your stock is reserved only after you confirm.
-                </p>
+                <p className="mt-1.5 text-sm text-tertiary">{t("cart.confirmBody")}</p>
               </div>
               <button
                 type="button"
                 onClick={handleCancelConfirmation}
                 disabled={isSubmitting}
-                aria-label="Close confirmation"
-                className="text-2xl text-white/50 hover:text-white disabled:opacity-40"
+                aria-label={t("cart.closeConfirm")}
+                className="text-2xl text-muted hover:text-primary disabled:opacity-40"
               >
                 ×
               </button>
             </div>
 
-            <ul className="mt-6 divide-y divide-white/10 border-y border-white/10">
+            <ul className="mt-5 divide-y divide-border border-y border-border">
               {summary.lines.map((line, index) => (
-                <li key={`${line.name}-${index}`} className="py-4 flex justify-between gap-4">
+                <li key={`${line.name}-${index}`} className="flex justify-between gap-4 py-3">
                   <div>
                     <div className="font-medium">{line.name}</div>
-                    {line.brand && <div className="text-xs text-white/50">{line.brand}</div>}
+                    {line.brand && <div className="text-xs text-tertiary">{line.brand}</div>}
                     {line.variantLabel && (
-                      <div className="text-xs text-white/60 mt-1">{line.variantLabel}</div>
+                      <div className="mt-1 text-xs text-tertiary">{line.variantLabel}</div>
                     )}
-                    <div className="text-sm text-white/60 mt-1">
+                    <div className="mt-1 text-sm text-tertiary">
                       {line.quantity} × {money(line.unitPrice)}
                     </div>
                   </div>
-                  <div className="font-mono text-right">{money(line.lineTotal)}</div>
+                  <div className="text-right font-mono tabular-nums">{money(line.lineTotal)}</div>
                 </li>
               ))}
             </ul>
 
-            <div className="mt-4 flex justify-between text-sm text-white/70">
-              <span>Subtotal</span>
-              <span className="font-mono">{money(summary.subtotal)}</span>
+            <div className="mt-4 flex justify-between text-sm text-secondary">
+              <span>{t("cart.subtotal")}</span>
+              <span className="font-mono tabular-nums">{money(summary.subtotal)}</span>
             </div>
             <div className="mt-2 flex justify-between text-lg font-medium">
-              <span>Total</span>
-              <span className="font-mono tracking-tight">{money(summary.total)}</span>
+              <span>{t("cart.total")}</span>
+              <span className="font-mono tabular-nums tracking-tight">{money(summary.total)}</span>
             </div>
-            <p className="text-xs text-white/40 mt-1">
-              Prices are recalculated on the server before creating the order.
-            </p>
+            <p className="mt-1 text-xs text-muted">{t("cart.pricesServer")}</p>
 
             {orderError && (
               <div
                 role="alert"
-                className="mt-5 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100"
+                className="mt-5 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"
               >
                 <p className="font-medium">{orderError.message}</p>
                 {orderError.shortages.length > 0 && (
                   <>
-                    <p className="mt-2 text-red-200/90">These items no longer have enough stock:</p>
+                    <p className="mt-2 opacity-90">{t("cart.shortages")}</p>
                     <ul className="mt-2 space-y-1">
                       {orderError.shortages.map((shortage) => (
                         <li key={`${shortage.productSlug}:${shortage.variantKey}`}>
@@ -497,41 +503,45 @@ export default function CartPage() {
                             {shortage.productName ?? shortage.productSlug}
                           </span>
                           {shortage.variantKey && (
-                            <span className="text-red-200/80"> ({shortage.variantKey})</span>
+                            <span className="opacity-80"> ({shortage.variantKey})</span>
                           )}
-                          : you asked {shortage.requested}, available {shortage.available}
+                          {": "}
+                          {t("cart.askedAvailable", {
+                            requested: shortage.requested,
+                            available: shortage.available,
+                          })}
                         </li>
                       ))}
                     </ul>
                     <button
                       type="button"
                       onClick={handleCancelConfirmation}
-                      className="mt-3 rounded-full border border-red-300/40 px-4 py-1.5 text-xs hover:bg-red-500/10"
+                      className="mt-3 rounded-full border border-destructive/40 px-4 py-1.5 text-xs hover:bg-destructive/10"
                     >
-                      Back to cart and fix quantities
+                      {t("cart.backToFix")}
                     </button>
                   </>
                 )}
               </div>
             )}
 
-            <div className="mt-6 flex flex-col-reverse sm:flex-row gap-3">
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
               <button
                 type="button"
                 onClick={handleCancelConfirmation}
                 disabled={isSubmitting}
-                className="flex-1 h-12 rounded-2xl border border-white/30 font-medium hover:bg-white/5 disabled:opacity-40"
+                className="h-12 flex-1 rounded-xl border border-border-strong font-medium hover:bg-surface-raised disabled:opacity-40"
               >
-                Volver al carrito
+                {t("cart.backToCart")}
               </button>
               <button
                 ref={confirmButtonRef}
                 type="button"
                 onClick={() => void handleConfirmPurchase()}
                 disabled={isSubmitting}
-                className="flex-1 h-12 rounded-2xl bg-white text-black font-medium hover:bg-white/90 disabled:bg-white/60 disabled:cursor-not-allowed"
+                className="h-12 flex-1 rounded-xl bg-brand font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? "Creating order…" : "Confirmar compra"}
+                {isSubmitting ? t("cart.creating") : t("cart.confirm")}
               </button>
             </div>
           </div>

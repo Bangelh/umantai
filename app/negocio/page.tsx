@@ -8,16 +8,18 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/current-user.server';
+import { getTranslator } from '@/lib/i18n/server';
 import { listStoresForUser } from '@/lib/stores.server';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Mi negocio',
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getTranslator();
+  return { title: t('merchant.myStores'), robots: { index: false, follow: false } };
+}
 
 export default async function MerchantHomePage() {
+  const { t } = await getTranslator();
   const user = await getCurrentUser();
   if (!user) redirect('/ingresar?next=/negocio');
 
@@ -26,24 +28,20 @@ export default async function MerchantHomePage() {
   return (
     <main className="mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6">
       <div className="border-b border-border pb-4">
-        <p className="text-xs uppercase tracking-[2px] text-muted">Comerciante</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">Mis tiendas</h1>
-        <p className="mt-1 text-sm text-tertiary">
-          Una cuenta puede administrar varias tiendas. Cada panel ve SOLO los datos de su tienda.
-        </p>
+        <p className="text-xs uppercase tracking-[2px] text-muted">{t('merchant.homeKicker')}</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('merchant.myStores')}</h1>
+        <p className="mt-1 text-sm text-tertiary">{t('merchant.multiStoreHint')}</p>
       </div>
 
       {stores.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
-          <h2 className="text-lg font-semibold">Todavía no tienes una tienda</h2>
-          <p className="mt-1 text-sm text-secondary">
-            Publica tu catálogo, gestiona pedidos e inventario desde UMANTAI.
-          </p>
+          <h2 className="text-lg font-semibold">{t('merchant.noStoreTitle')}</h2>
+          <p className="mt-1 text-sm text-secondary">{t('merchant.noStoreBody')}</p>
           <Link
             href="/vender"
             className="mt-4 inline-flex h-11 items-center rounded-xl bg-brand px-5 text-sm font-semibold text-background"
           >
-            Crear mi tienda
+            {t('merchant.createStore')}
           </Link>
         </div>
       ) : (
@@ -62,11 +60,15 @@ export default async function MerchantHomePage() {
                     </span>
                   </span>
                   <span className="mt-0.5 block truncate text-xs text-tertiary">
-                    /{store.slug} · {store.productCount} productos · {store.orderCount} pedidos
+                    {t('merchant.storeMeta', {
+                      slug: store.slug,
+                      products: store.productCount,
+                      orders: store.orderCount,
+                    })}
                   </span>
                 </span>
                 <span className={`shrink-0 text-xs ${store.active ? 'text-success' : 'text-warning'}`}>
-                  {store.active ? 'Activa' : 'Pendiente'}
+                  {store.active ? t('merchant.active') : t('merchant.pending')}
                 </span>
               </Link>
             </li>
@@ -79,7 +81,7 @@ export default async function MerchantHomePage() {
           href="/vender"
           className="mt-5 inline-flex h-10 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
         >
-          + Agregar otra tienda
+          {t('merchant.addAnotherStore')}
         </Link>
       )}
     </main>

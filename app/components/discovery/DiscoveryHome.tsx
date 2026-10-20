@@ -25,8 +25,10 @@ import {
   formatDistanceKm,
   type GeoPoint,
 } from '@/lib/geo';
+import { formatCoordinates } from '@/lib/format';
 import { formatPriceCents, type DiscoveryResponse } from '@/lib/discovery';
 import { LOCATION_PRESETS, nearestLocationLabel } from '@/lib/locations';
+import { useI18n } from '@/components/i18n/I18nProvider';
 
 const GEO_STORAGE_KEY = 'umantai:geo';
 const DEBOUNCE_MS = 300;
@@ -69,6 +71,7 @@ function writeSessionGeo(point: GeoSession | null): void {
 }
 
 export function DiscoveryHome({ initial }: Props) {
+  const { locale, t } = useI18n();
   const [q, setQ] = useState('');
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
   const [location, setLocation] = useState<GeoPoint | null>(null);
@@ -87,7 +90,7 @@ export function DiscoveryHome({ initial }: Props) {
 
   const locationLabel = useMemo(() => {
     if (!location) return null;
-    return nearestLocationLabel(location) ?? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
+    return nearestLocationLabel(location) ?? formatCoordinates(location.latitude, location.longitude);
   }, [location]);
 
   // Restaura la ubicación de ESTA pestaña (si el usuario ya la eligió).
@@ -126,18 +129,18 @@ export function DiscoveryHome({ initial }: Props) {
         });
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(payload?.error ?? 'No se pudo buscar.');
+          throw new Error(payload?.error ?? t('search.failed'));
         }
         const payload = (await response.json()) as DiscoveryResponse;
         if (seq === requestSeq.current) setResults(payload);
       } catch (err) {
         if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : 'No se pudo buscar.');
+        setError(err instanceof Error ? err.message : t('search.failed'));
       } finally {
         if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [],
+    [t],
   );
 
   // Debounce: primera renderización ya trae datos del servidor; no se repite.
@@ -199,7 +202,7 @@ export function DiscoveryHome({ initial }: Props) {
     const lat = Number(manualLat);
     const lng = Number(manualLng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      setError('Coordenadas inválidas. Latitud -90..90, longitud -180..180.');
+      setError(t('geo.invalidCoords'));
       return;
     }
     const point = { latitude: lat, longitude: lng };
@@ -211,7 +214,7 @@ export function DiscoveryHome({ initial }: Props) {
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6">
       {/* Buscador */}
-      <section aria-label="Buscar productos" className="pt-6 sm:pt-8">
+      <section aria-label={t('search.section')} className="pt-6 sm:pt-8">
         <form
           role="search"
           onSubmit={(event) => {
@@ -221,7 +224,7 @@ export function DiscoveryHome({ initial }: Props) {
           className="flex items-center gap-2"
         >
           <label htmlFor="discovery-q" className="sr-only">
-            ¿Qué estás buscando?
+            {t('search.label')}
           </label>
           <div className="relative flex-1">
             <svg
@@ -241,7 +244,7 @@ export function DiscoveryHome({ initial }: Props) {
               onChange={(event) => setQ(event.target.value)}
               maxLength={80}
               autoComplete="off"
-              placeholder="¿Qué estás buscando? arroz, polo, tela…"
+              placeholder={t('search.placeholder')}
               className="h-14 w-full rounded-2xl border border-border-strong bg-surface pl-12 pr-4 text-base outline-none placeholder:text-muted focus:border-primary"
             />
           </div>
@@ -249,13 +252,13 @@ export function DiscoveryHome({ initial }: Props) {
             type="submit"
             className="h-14 shrink-0 rounded-2xl bg-brand px-5 text-sm font-semibold text-background hover:opacity-90"
           >
-            Buscar
+            {t('search.submit')}
           </button>
         </form>
       </section>
 
       {/* Ubicación + radio */}
-      <section aria-label="Ubicación y radio" className="mt-3">
+      <section aria-label={t('search.locationSection')} className="mt-3">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <button
             type="button"
@@ -267,16 +270,16 @@ export function DiscoveryHome({ initial }: Props) {
               <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
               <circle cx="12" cy="10" r="2.5" />
             </svg>
-            {geoStatus === 'asking' ? 'Ubicando…' : location ? 'Actualizar ubicación' : 'Usar mi ubicación'}
+            {geoStatus === 'asking' ? t('geo.locating') : location ? t('geo.update') : t('geo.use')}
           </button>
 
           {location && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-success">
-              Cerca de {locationLabel}
+              {t('geo.near', { place: locationLabel ?? '' })}
               <button
                 type="button"
                 onClick={clearLocation}
-                aria-label="Quitar ubicación"
+                aria-label={t('geo.remove')}
                 className="text-success/70 hover:text-success"
               >
                 ×
@@ -290,18 +293,16 @@ export function DiscoveryHome({ initial }: Props) {
             aria-expanded={showManual}
             className="rounded-full px-2 py-1.5 text-tertiary underline-offset-2 hover:text-primary hover:underline"
           >
-            Elegir zona manualmente
+            {t('geo.manual')}
           </button>
         </div>
 
         {geoStatus === 'denied' && (
-          <p className="mt-2 text-xs text-warning">
-            No se pudo usar el GPS (permiso rechazado o no disponible). Elige una zona abajo.
-          </p>
+          <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Radio de búsqueda">
-          <span className="mr-1 text-xs uppercase tracking-[1.5px] text-muted">Radio</span>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label={t('search.locationSection')}>
+          <span className="mr-1 text-xs uppercase tracking-[1.5px] text-muted">{t('geo.radius')}</span>
           {RADIUS_OPTIONS_KM.map((option) => (
             <button
               key={option}
@@ -323,13 +324,13 @@ export function DiscoveryHome({ initial }: Props) {
           <div className="mt-3 rounded-2xl border border-border bg-surface p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="flex-1 text-xs text-tertiary">
-                Zona
+                {t('geo.zone')}
                 <select
                   value={manualId}
                   onChange={(event) => setManualId(event.target.value)}
                   className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
                 >
-                  <option value="">Selecciona una zona</option>
+                  <option value="">{t('geo.selectZone')}</option>
                   {LOCATION_PRESETS.map((preset) => (
                     <option key={preset.id} value={preset.id}>
                       {preset.label} · {preset.region}
@@ -343,17 +344,17 @@ export function DiscoveryHome({ initial }: Props) {
                 disabled={!manualId}
                 className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-40"
               >
-                Usar zona
+                {t('geo.useZone')}
               </button>
             </div>
 
             <details className="mt-3">
               <summary className="cursor-pointer text-xs text-tertiary hover:text-primary">
-                O escribir coordenadas
+                {t('geo.coords')}
               </summary>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="flex-1 text-xs text-tertiary">
-                  Latitud
+                  {t('geo.latitude')}
                   <input
                     value={manualLat}
                     onChange={(event) => setManualLat(event.target.value)}
@@ -363,7 +364,7 @@ export function DiscoveryHome({ initial }: Props) {
                   />
                 </label>
                 <label className="flex-1 text-xs text-tertiary">
-                  Longitud
+                  {t('geo.longitude')}
                   <input
                     value={manualLng}
                     onChange={(event) => setManualLng(event.target.value)}
@@ -377,7 +378,7 @@ export function DiscoveryHome({ initial }: Props) {
                   onClick={applyManualCoords}
                   className="h-10 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
                 >
-                  Aplicar
+                  {t('geo.apply')}
                 </button>
               </div>
             </details>
@@ -386,13 +387,21 @@ export function DiscoveryHome({ initial }: Props) {
       </section>
 
       {/* Resultados */}
-      <section aria-label="Resultados" className="mt-6">
+      <section aria-label={t('search.resultsSection')} className="mt-6">
         <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
-            {q.trim() ? `Resultados para “${q.trim()}”` : location ? 'Productos cerca de ti' : 'Productos en UMANTAI'}
+            {q.trim()
+              ? t('search.resultsFor', { query: q.trim() })
+              : location
+                ? t('search.productsNearby')
+                : t('search.allProducts')}
           </h2>
           <span className="text-xs text-muted tabular-nums">
-            {loading ? 'Buscando…' : `${results.metadata.total} producto${results.metadata.total === 1 ? '' : 's'}`}
+            {loading
+              ? t('search.searching')
+              : t(results.metadata.total === 1 ? 'search.productCountOne' : 'search.productCountMany', {
+                  count: results.metadata.total,
+                })}
           </span>
         </div>
 
@@ -416,9 +425,7 @@ export function DiscoveryHome({ initial }: Props) {
           </ul>
         ) : results.products.length === 0 ? (
           <p className="py-6 text-sm text-tertiary">
-            {location
-              ? 'No hay productos en este radio. Prueba ampliar el radio o cambiar la zona.'
-              : 'No encontramos productos para esa búsqueda.'}
+            {location ? t('search.noResultsRadius') : t('search.noResults')}
           </p>
         ) : (
           <ul className="divide-y divide-border">
@@ -434,19 +441,19 @@ export function DiscoveryHome({ initial }: Props) {
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-tertiary">
                       {product.storeName}
-                      {product.distanceKm !== null && ` · ${formatDistanceKm(product.distanceKm)}`}
+                      {product.distanceKm !== null && ` · ${formatDistanceKm(product.distanceKm, locale)}`}
                       {product.brand && ` · ${product.brand}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block font-mono text-[15px] font-semibold tabular-nums text-primary">
                       {product.hasVariants && (
-                        <span className="mr-1 text-[10px] font-normal text-muted">desde</span>
+                        <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
                       )}
-                      {formatPriceCents(product.priceCents, product.currency)}
+                      {formatPriceCents(product.priceCents, product.currency, locale)}
                     </span>
                     <span className={`mt-0.5 block text-[11px] font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>
-                      {product.inStock ? 'Disponible' : 'Agotado'}
+                      {product.inStock ? t('search.available') : t('search.outOfStock')}
                     </span>
                   </span>
                 </Link>
@@ -457,22 +464,22 @@ export function DiscoveryHome({ initial }: Props) {
 
         {results.metadata.total > results.products.length && (
           <p className="pt-3 text-xs text-muted">
-            Mostrando {results.products.length} de {results.metadata.total}. Acota la búsqueda o el radio para ver más.
+            {t('search.showing', { shown: results.products.length, total: results.metadata.total })}
           </p>
         )}
       </section>
 
       {/* Tiendas cercanas */}
-      <section aria-label="Tiendas cercanas" className="mt-8">
+      <section aria-label={t('search.storesSection')} className="mt-8">
         <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
-            {location ? 'Tiendas cerca de ti' : 'Tiendas en UMANTAI'}
+            {location ? t('search.storesNearby') : t('search.storesAll')}
           </h2>
           <span className="text-xs text-muted tabular-nums">{results.stores.length}</span>
         </div>
 
         {results.stores.length === 0 ? (
-          <p className="py-5 text-sm text-tertiary">Todavía no hay tiendas en esta zona.</p>
+          <p className="py-5 text-sm text-tertiary">{t('search.noStores')}</p>
         ) : (
           <ul className="divide-y divide-border">
             {results.stores.map((store) => (
@@ -492,14 +499,18 @@ export function DiscoveryHome({ initial }: Props) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-medium leading-tight">{store.name}</span>
                     <span className="mt-0.5 block truncate text-xs text-tertiary">
-                      {store.category ?? 'Comercio'}
-                      {store.distanceKm !== null && ` · ${formatDistanceKm(store.distanceKm)}`}
+                      {store.category ?? t('search.merchantFallback')}
+                      {store.distanceKm !== null && ` · ${formatDistanceKm(store.distanceKm, locale)}`}
                       {store.district && ` · ${store.district}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right text-xs text-tertiary">
-                    <span className="block tabular-nums">{store.inStockCount} disponibles</span>
-                    <span className="block text-muted">{store.productCount} productos</span>
+                    <span className="block tabular-nums">
+                      {t('search.storeAvailable', { count: store.inStockCount })}
+                    </span>
+                    <span className="block text-muted">
+                      {t('search.storeProducts', { count: store.productCount })}
+                    </span>
                   </span>
                 </Link>
               </li>
@@ -510,24 +521,21 @@ export function DiscoveryHome({ initial }: Props) {
 
       {/* CTA comercios */}
       <section className="my-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <p className="text-xs uppercase tracking-[2px] text-muted">Para negocios</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight">¿Tienes un negocio?</h2>
-        <p className="mt-1 max-w-2xl text-sm text-secondary">
-          Vende tus productos en UMANTAI. Publica tu catálogo, gestiona pedidos e inventario y
-          analiza tus ventas desde un solo panel.
-        </p>
+        <p className="text-xs uppercase tracking-[2px] text-muted">{t('home.businessKicker')}</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight">{t('home.businessTitle')}</h2>
+        <p className="mt-1 max-w-2xl text-sm text-secondary">{t('home.businessBody')}</p>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Link
             href="/vender"
             className="inline-flex h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-background hover:opacity-90"
           >
-            Crear mi tienda
+            {t('home.createStore')}
           </Link>
           <Link
             href="/vender#planes"
             className="inline-flex h-11 items-center justify-center rounded-xl border border-border-strong px-5 text-sm font-medium hover:bg-surface-raised"
           >
-            Conocer planes
+            {t('home.seePlans')}
           </Link>
         </div>
       </section>

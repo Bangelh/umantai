@@ -19,6 +19,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { formatDistance } from './format';
+
 export const EARTH_RADIUS_KM = 6371.0088;
 
 /** Opciones que ofrece la UI (la API acepta cualquier valor 1–50). */
@@ -129,10 +131,13 @@ export function parseRadius(raw: unknown): number | null {
   return Math.round(value * 10) / 10;
 }
 
-/** Texto compacto para listas: "400 m", "3,2 km", "12 km". */
-export function formatDistanceKm(distanceKm: number | null | undefined): string {
-  if (distanceKm === null || distanceKm === undefined || !Number.isFinite(distanceKm)) return '';
-  if (distanceKm < 1) return `${Math.max(10, Math.round((distanceKm * 1000) / 10) * 10)} m`;
-  if (distanceKm < 10) return `${distanceKm.toFixed(1).replace('.', ',')} km`;
-  return `${Math.round(distanceKm)} km`;
+/**
+ * Texto compacto para listas: "400 m", "3,2 km", "12 km".
+ * Delega en `lib/format.ts` para que el separador decimal siga el locale.
+ */
+export function formatDistanceKm(
+  distanceKm: number | null | undefined,
+  locale: 'es' | 'en' = 'es',
+): string {
+  return formatDistance(distanceKm, locale);
 }

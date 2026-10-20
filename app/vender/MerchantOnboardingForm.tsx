@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import { LOCATION_PRESETS } from '@/lib/locations';
 import { normalizeStoreSlug, validateStoreSlug } from '@/lib/tenancy';
 
@@ -13,6 +14,7 @@ interface CreatedStore {
 }
 
 export function MerchantOnboardingForm() {
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
@@ -34,7 +36,7 @@ export function MerchantOnboardingForm() {
     if (submitting) return;
 
     if (name.trim().length < 2) {
-      toast.error('Ingresa el nombre del negocio.');
+      toast.error(t('onboarding.nameRequired'));
       return;
     }
     if (!slugValidation.ok) {
@@ -68,13 +70,13 @@ export function MerchantOnboardingForm() {
         | null;
 
       if (!response.ok || !payload?.store) {
-        throw new Error(payload?.error ?? 'No se pudo crear la tienda.');
+        throw new Error(payload?.error ?? t('onboarding.createFailed'));
       }
 
       setCreated(payload.store);
-      toast.success('Tienda creada');
+      toast.success(t('onboarding.created'));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear la tienda.');
+      toast.error(error instanceof Error ? error.message : t('onboarding.createFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -83,20 +85,19 @@ export function MerchantOnboardingForm() {
   if (created) {
     return (
       <div className="mt-4 rounded-2xl border border-success/40 bg-success/10 p-5">
-        <h3 className="text-lg font-semibold text-success">Tienda creada</h3>
+        <h3 className="text-lg font-semibold text-success">{t('onboarding.created')}</h3>
         <p className="mt-1 text-sm text-secondary">
-          <strong>{created.name}</strong> quedó <strong>pendiente de aprobación</strong>. Ya puedes
-          preparar el catálogo; aparecerá en el buscador cuando UMANTAI la active.
+          <strong>{created.name}</strong> {t('onboarding.createdBody')}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
             href={`/negocio/${created.id}`}
             className="inline-flex h-10 items-center rounded-xl bg-brand px-4 text-sm font-semibold text-background"
           >
-            Ir al panel
+            {t('onboarding.goPanel')}
           </Link>
           <span className="inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm text-tertiary">
-            La vitrina /{created.slug} se publica al aprobarse
+            {t('onboarding.storefrontPending', { slug: created.slug })}
           </span>
         </div>
       </div>
@@ -106,7 +107,7 @@ export function MerchantOnboardingForm() {
   return (
     <form onSubmit={submit} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label className="text-xs text-tertiary sm:col-span-2">
-        Nombre del negocio *
+        {t('onboarding.businessName')} *
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -117,7 +118,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary sm:col-span-2">
-        Dirección pública de tu tienda *
+        {t('onboarding.publicAddress')} *
         <span className="mt-1 flex items-center rounded-xl border border-border-strong bg-background">
           <span className="pl-3 text-sm text-muted">umantai.com/</span>
           <input
@@ -137,13 +138,13 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary">
-        Rubro / categoría
+        {t('onboarding.category')}
         <input
           value={category}
           onChange={(event) => setCategory(event.target.value)}
           list="merchant-categories"
           maxLength={60}
-          placeholder="abarrotes, ropa, telas, ferretería…"
+          placeholder={t('onboarding.categoryPlaceholder')}
           className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
         />
         <datalist id="merchant-categories">
@@ -159,7 +160,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary">
-        Teléfono de contacto
+        {t('onboarding.phone')}
         <input
           value={contactPhone}
           onChange={(event) => setContactPhone(event.target.value)}
@@ -170,7 +171,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary sm:col-span-2">
-        Descripción breve
+        {t('onboarding.description')}
         <textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
@@ -181,7 +182,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary sm:col-span-2">
-        Dirección del local
+        {t('onboarding.address')}
         <input
           value={address}
           onChange={(event) => setAddress(event.target.value)}
@@ -191,7 +192,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary">
-        Zona (para aparecer cerca)
+        {t('onboarding.zone')}
         <select
           value={zoneId}
           onChange={(event) => {
@@ -201,7 +202,7 @@ export function MerchantOnboardingForm() {
           }}
           className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
         >
-          <option value="">Selecciona una zona</option>
+          <option value="">{t('onboarding.selectZone')}</option>
           {LOCATION_PRESETS.map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.label} · {preset.region}
@@ -211,7 +212,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary">
-        Distrito
+        {t('onboarding.district')}
         <input
           value={district}
           onChange={(event) => setDistrict(event.target.value)}
@@ -221,7 +222,7 @@ export function MerchantOnboardingForm() {
       </label>
 
       <label className="text-xs text-tertiary">
-        Ciudad
+        {t('onboarding.city')}
         <input
           value={city}
           onChange={(event) => setCity(event.target.value)}
@@ -236,10 +237,10 @@ export function MerchantOnboardingForm() {
           disabled={submitting || !slugValidation.ok}
           className="h-11 rounded-xl bg-brand px-6 text-sm font-semibold text-background disabled:opacity-40"
         >
-          {submitting ? 'Creando tienda…' : 'Crear mi tienda'}
+          {submitting ? t('onboarding.creating') : t('onboarding.create')}
         </button>
         <p className="mt-2 text-[11px] text-muted">
-          La tienda se crea oculta. UMANTAI la revisa y activa antes de mostrarla en el buscador.
+          {t('onboarding.hiddenNote')}
         </p>
       </div>
     </form>

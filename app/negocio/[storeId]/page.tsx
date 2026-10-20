@@ -11,9 +11,11 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { MerchantCatalog } from './MerchantCatalog';
 import { StoreBilling } from './StoreBilling';
-import { ORDER_STATUS_LABELS, resolveAnalyticsRange } from '@/lib/analytics';
+import { resolveAnalyticsRange } from '@/lib/analytics';
+import { orderStatusLabel } from '@/lib/i18n/status';
 import { getCurrentUser } from '@/lib/current-user.server';
-import { formatPriceCents } from '@/lib/discovery';
+import { formatDate as formatDateLocale, formatMoney } from '@/lib/format';
+import { getTranslator } from '@/lib/i18n/server';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
 import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
 import {
@@ -24,27 +26,17 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Panel de tienda',
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getTranslator();
+  return { title: t('merchant.dashboard'), robots: { index: false, follow: false } };
+}
 
 interface PageProps {
   params: Promise<{ storeId: string }>;
 }
 
-function formatDate(value: string): string {
-  if (!value) return '';
-  try {
-    return new Intl.DateTimeFormat('es-PE', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Lima' }).format(
-      new Date(value),
-    );
-  } catch {
-    return value.slice(0, 10);
-  }
-}
-
 export default async function MerchantStorePage({ params }: PageProps) {
+  const { locale, t } = await getTranslator();
   const user = await getCurrentUser();
   const { storeId } = await params;
   if (!user) redirect(`/ingresar?next=/negocio/${storeId}`);
@@ -76,7 +68,9 @@ export default async function MerchantStorePage({ params }: PageProps) {
   return (
     <main className="mx-auto max-w-5xl px-4 pb-12 pt-6 sm:px-6">
       <nav className="text-xs text-muted">
-        <Link href="/negocio" className="hover:text-primary">Mis tiendas</Link>
+        <Link href="/negocio" className="hover:text-primary">
+          {t('merchant.breadcrumb')}
+        </Link>
         <span aria-hidden="true"> / </span>
         <span className="text-secondary">{store.name}</span>
       </nav>
@@ -85,9 +79,9 @@ export default async function MerchantStorePage({ params }: PageProps) {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">{store.name}</h1>
           <p className="mt-1 text-sm text-tertiary">
-            /{store.slug} · {store.category ?? 'Sin rubro'} ·{' '}
+            /{store.slug} · {store.category ?? t('merchant.categoryNone')} ·{' '}
             <span className={store.active ? 'text-success' : 'text-warning'}>
-              {store.active ? 'Activa' : 'Pendiente de aprobación'}
+              {store.active ? t('merchant.active') : t('merchant.pending')}
             </span>
           </p>
         </div>
@@ -97,11 +91,11 @@ export default async function MerchantStorePage({ params }: PageProps) {
               href={`/${store.slug}`}
               className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised"
             >
-              Ver vitrina
+              {t('merchant.viewStore')}
             </Link>
           ) : (
             <span className="inline-flex h-9 items-center rounded-xl border border-border px-3 text-xs text-tertiary">
-              Vitrina oculta hasta la aprobación
+              {t('merchant.hidden')}
             </span>
           )}
         </div>
@@ -109,33 +103,32 @@ export default async function MerchantStorePage({ params }: PageProps) {
 
       {!store.active && (
         <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-          La tienda todavía no es visible en el buscador. Un administrador de UMANTAI debe activarla.
-          Puedes preparar el catálogo mientras tanto.
+          {t('merchant.pendingNotice')}
         </div>
       )}
 
       {billing && <StoreBilling storeId={storeId} initialBilling={billing} />}
 
       {/* KPIs */}
-      <section aria-label="Resumen" className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <section aria-label={t('merchant.summary')} className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Ventas 30d</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">{t('merchant.sales30')}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
-            {formatPriceCents(sales?.revenueCents ?? 0, 'PEN')}
+            {formatMoney(sales?.revenueCents ?? 0, 'PEN', locale)}
           </div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Pedidos</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">{t('merchant.orders')}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">{sales?.orders ?? 0}</div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Ticket medio</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">{t('merchant.averageTicket')}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
-            {formatPriceCents(sales?.averageTicketCents ?? 0, 'PEN')}
+            {formatMoney(sales?.averageTicketCents ?? 0, 'PEN', locale)}
           </div>
         </div>
         <div className="rounded-xl border border-border bg-surface p-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted">Stock bajo</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">{t('merchant.lowStock')}</div>
           <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
             {summary ? summary.lowStock.length + summary.outOfStock.length : 0}
           </div>
@@ -145,7 +138,9 @@ export default async function MerchantStorePage({ params }: PageProps) {
       {/* Productos */}
       <section className="mt-8">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Productos</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('merchant.products')}
+          </h2>
           <span className="text-xs text-muted tabular-nums">{products.length}</span>
         </div>
 
@@ -155,12 +150,14 @@ export default async function MerchantStorePage({ params }: PageProps) {
       {/* Pedidos */}
       <section className="mt-8">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">Pedidos</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+            {t('merchant.orders')}
+          </h2>
           <span className="text-xs text-muted tabular-nums">{orders.length}</span>
         </div>
 
         {orders.length === 0 ? (
-          <p className="py-4 text-sm text-tertiary">Todavía no hay pedidos en esta tienda.</p>
+          <p className="py-4 text-sm text-tertiary">{t('merchant.noOrders')}</p>
         ) : (
           <ul className="divide-y divide-border">
             {orders.map((order) => (
@@ -170,17 +167,22 @@ export default async function MerchantStorePage({ params }: PageProps) {
                     <div className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-mono text-sm">{order.orderNumber}</span>
                       <span className="text-xs text-secondary">
-                        {(ORDER_STATUS_LABELS as Record<string, string>)[order.status] ?? order.status}
+                        {orderStatusLabel(t, order.status)}
                       </span>
-                      <span className="text-xs text-muted">{formatDate(order.createdAt)}</span>
+                      <span className="text-xs text-muted">
+                        {formatDateLocale(order.createdAt, locale, {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </span>
                     </div>
                     <p className="truncate text-xs text-tertiary">
-                      {order.contactEmail} · {order.itemCount} art. ·{' '}
+                      {order.contactEmail} · {t('merchant.itemsShort', { count: order.itemCount })} ·{' '}
                       {order.items.map((item) => `${item.quantity}× ${item.name}`).join(', ')}
                     </p>
                   </div>
                   <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                    {formatPriceCents(Math.round(order.total * 100), order.currency)}
+                    {formatMoney(Math.round(order.total * 100), order.currency, locale)}
                   </div>
                 </div>
               </li>
@@ -192,14 +194,14 @@ export default async function MerchantStorePage({ params }: PageProps) {
       {summary && summary.topProducts.length > 0 && (
         <section className="mt-8">
           <h2 className="border-b border-border pb-2 text-sm font-semibold uppercase tracking-[2px] text-secondary">
-            Más vendidos (30 días)
+            {t('merchant.topProducts')}
           </h2>
           <ul className="mt-2 space-y-1 text-sm">
             {summary.topProducts.slice(0, 5).map((product) => (
               <li key={product.productSlug} className="flex justify-between gap-3">
                 <span className="truncate text-secondary">{product.productName}</span>
                 <span className="shrink-0 font-mono text-xs tabular-nums text-tertiary">
-                  {product.quantity} · {formatPriceCents(product.revenueCents, 'PEN')}
+                  {product.quantity} · {formatMoney(product.revenueCents, 'PEN', locale)}
                 </span>
               </li>
             ))}

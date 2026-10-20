@@ -23,7 +23,7 @@ import { executeReceipt, InventoryAdminError } from '@/lib/inventory-admin.serve
  * 201 · 400 validación · 401/503 auth · 409 invariante · 429 rate limit · 500.
  */
 export async function POST(request: NextRequest) {
-  const guard = guardAdminMutation(request, 'inventory-receipts');
+  const guard = await guardAdminMutation(request, 'inventory-receipts');
   if (!guard.ok) return guard.response;
 
   let body: unknown;

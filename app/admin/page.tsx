@@ -6,7 +6,9 @@ import { baseProducts } from "@/lib/products";
 import { useAdminProductStore, ProductOverride } from "@/lib/adminProductStore";
 import { wholeFoodsCategories } from "@/lib/categories";
 import { EnvironmentStatus } from "./components/EnvironmentStatus";
-import { getAdminToken, setAdminToken, withAdminAuth } from "@/lib/adminAuth";
+import { withAdminAuth } from "@/lib/adminAuth";
+import { AdminAccessScreen } from "@/components/admin/AdminAccessScreen";
+import { usePlatformAdminSession } from "@/lib/usePlatformAdminSession";
 
 // Types
 type Section = "products" | "brands" | "categories" | "stock";
@@ -759,11 +761,8 @@ export default function AdminPage() {
     migrateLocalChangesToDatabase 
   } = useAdminProductStore();
 
-  // Auth — token de administración (la validación real ocurre en el servidor)
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [tokenInput, setTokenInput] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [authChecking, setAuthChecking] = useState(false);
+  // Auth — sesión de Platform Admin (sin token manual en la UI).
+  const admin = usePlatformAdminSession();
 
   // Sections
   const [activeSection, setActiveSection] = useState<Section>("products");
@@ -792,56 +791,10 @@ export default function AdminPage() {
     else if (lower.includes("stock") || lower.includes("unit")) setActiveSection("stock");
   };
 
-  /**
-   * Valida el token contra el SERVIDOR antes de guardarlo: si
-   * `/api/admin/overrides` responde 200, el token sirve; si no, no se guarda nada.
-   * Así el navegador nunca necesita conocer el secreto.
-   */
-  const verifyAdminToken = async (candidate: string): Promise<boolean> => {
-    try {
-      const res = await fetch('/api/admin/overrides', withAdminAuth({}, candidate));
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const candidate = tokenInput.trim();
-    if (!candidate) {
-      setAuthError('Ingresa el token de administración.');
-      return;
-    }
-    setAuthChecking(true);
-    setAuthError('');
-    const ok = await verifyAdminToken(candidate);
-    setAuthChecking(false);
-    if (ok) {
-      setAdminToken(candidate);
-      setIsAuthenticated(true);
-      loadFromDatabase();
-    } else {
-      setAuthError('Token inválido. Revisa ADMIN_API_SECRET en el servidor.');
-    }
-  };
-
-  // Reutiliza el token guardado (si sigue siendo válido) al recargar la página.
+  // Cuando la sesión de admin queda activa, se carga la base una sola vez.
   useEffect(() => {
-    const stored = getAdminToken();
-    if (!stored) return;
-    let cancelled = false;
-    void (async () => {
-      const ok = await verifyAdminToken(stored);
-      if (!cancelled && ok) {
-        setIsAuthenticated(true);
-        loadFromDatabase();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (admin.status === 'authenticated') void loadFromDatabase();
+  }, [admin.status, loadFromDatabase]);
 
   const handlePublish = async () => {
     setPublishStatus("publishing");
@@ -916,26 +869,13 @@ export default function AdminPage() {
   // Simple brands list (from current data + overrides)
   const currentBrands = Array.from(new Set(baseProducts.map(p => p.brand)));
 
-  if (!isAuthenticated) {
+  if (admin.status !== 'authenticated') {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
-        <div className="max-w-md w-full px-8">
-          <div className="text-center mb-8">
-            <div className="text-4xl font-semibold tracking-tighter mb-2">umantai</div>
-            <div className="text-white/60">Admin Panel</div>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder="Enter admin token" className="w-full bg-neutral-900 border border-white/20 rounded-xl px-4 py-3 text-lg" autoFocus />
-            <button type="submit" disabled={authChecking} className="w-full py-3 bg-white text-black rounded-xl font-medium disabled:opacity-60">
-              {authChecking ? "Verificando…" : "Enter Admin"}
-            </button>
-          </form>
-          {authError && <p className="text-center text-red-400 text-sm mt-3">{authError}</p>}
-          <p className="text-center text-white/40 text-sm mt-6">
-            Se valida en el servidor contra <span className="font-mono">ADMIN_API_SECRET</span>
-          </p>
-        </div>
-      </div>
+      <AdminAccessScreen
+        title="Backend"
+        status={admin.status}
+        onActivate={admin.activate}
+      />
     );
   }
 

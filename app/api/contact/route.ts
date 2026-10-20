@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { validateContactPayload } from '@/lib/contact';
 import { submitContactMessage } from '@/lib/contact.server';
+import { rateLimitGate } from '@/lib/rate-limit-http.server';
 import { consumeRateLimit, rateLimitKeyFor } from '@/lib/rate-limit.server';
 
 /**
@@ -35,6 +36,9 @@ const DELIVERY_MESSAGE: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  const gate = await rateLimitGate(request, 'contact', { limit: 5, windowMs: 10 * 60_000 });
+  if (gate) return gate;
+
   const limit = consumeRateLimit(rateLimitKeyFor(request, 'contact'), 5, 10 * 60_000);
   if (!limit.allowed) {
     return NextResponse.json(

@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { normalizeSearchText } from '@/lib/catalog';
-import { formatPriceCents } from '@/lib/discovery';
+import { formatMoney } from '@/lib/format';
 import { getStorefront } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
 import { getTranslator } from '@/lib/i18n/server';
@@ -38,16 +38,19 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       store.description ??
       `Catálogo de ${store.name}${store.category ? ` (${store.category})` : ''} en UMANTAI.`,
     alternates: { canonical: `/${store.slug}` },
+    // Una tienda inactiva no debe indexarse aunque alguien conozca la URL.
+    robots: store.active ? { index: true, follow: true } : { index: false, follow: false },
     openGraph: {
       title: `${store.name} | UMANTAI`,
       description: store.description ?? undefined,
       type: 'website',
+      url: `/${store.slug}`,
     },
   };
 }
 
 export default async function StorePage({ params, searchParams }: PageProps) {
-  const { t } = await getTranslator();
+  const { locale, t } = await getTranslator();
   const { store: storeSlug } = await params;
   const slugCheck = validateStoreSlug(storeSlug);
   if (!slugCheck.ok) notFound();
@@ -182,11 +185,12 @@ export default async function StorePage({ params, searchParams }: PageProps) {
                       {product.variants.length > 0 && (
                         <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
                       )}
-                      {formatPriceCents(
+                      {formatMoney(
                         product.variants.length > 0
                           ? Math.min(...product.variants.map((variant) => variant.priceCents ?? product.priceCents))
                           : product.priceCents,
                         product.currency,
+                        locale,
                       )}
                     </span>
                     <span

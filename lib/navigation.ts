@@ -34,6 +34,7 @@ export const ADMIN_NAV_LINKS: readonly NavLink[] = [
   { href: '/admin', label: 'Catálogo' },
   { href: '/admin/analytics', label: 'Analytics' },
   { href: '/admin/inventario', label: 'Inventario' },
+  { href: '/admin/planes', label: 'Planes' },
   { href: '/admin/kiosco', label: 'Kiosco' },
   { href: '/admin/notes', label: 'Notas' },
 ];

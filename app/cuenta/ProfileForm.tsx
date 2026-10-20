@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useI18n } from '@/components/i18n/I18nProvider';
 
 interface Props {
   initial: {
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export function ProfileForm({ initial }: Props) {
+  const { t } = useI18n();
   const [fullName, setFullName] = useState(initial.fullName);
   const [phone, setPhone] = useState(initial.phone);
   const [docType, setDocType] = useState(initial.docType);
@@ -38,11 +40,11 @@ export function ProfileForm({ initial }: Props) {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? 'No se pudo guardar.');
+        throw new Error(payload?.error ?? t('account.saveFailed'));
       }
-      toast.success('Datos actualizados');
+      toast.success(t('account.saved'));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo guardar.');
+      toast.error(error instanceof Error ? error.message : t('account.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -51,7 +53,7 @@ export function ProfileForm({ initial }: Props) {
   return (
     <form onSubmit={save} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <label className="text-xs text-tertiary sm:col-span-2">
-        Nombre completo
+        {t('account.fullName')}
         <input
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
@@ -62,7 +64,7 @@ export function ProfileForm({ initial }: Props) {
       </label>
 
       <label className="text-xs text-tertiary">
-        Teléfono
+        {t('account.phone')}
         <input
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
@@ -74,14 +76,14 @@ export function ProfileForm({ initial }: Props) {
       </label>
 
       <label className="text-xs text-tertiary">
-        Documento
+        {t('account.document')}
         <span className="mt-1 flex gap-2">
           <input
             value={docType}
             onChange={(event) => setDocType(event.target.value.toUpperCase())}
             maxLength={4}
             placeholder="DNI"
-            aria-label="Tipo de documento"
+            aria-label={t('account.docType')}
             className="h-11 w-16 rounded-xl border border-border-strong bg-background px-3 text-sm uppercase"
           />
           <input
@@ -89,8 +91,8 @@ export function ProfileForm({ initial }: Props) {
             onChange={(event) => setDocNumber(event.target.value)}
             maxLength={20}
             inputMode="numeric"
-            placeholder="Número"
-            aria-label="Número de documento"
+            placeholder="12345678"
+            aria-label={t('account.docNumber')}
             className="h-11 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
           />
         </span>
@@ -102,7 +104,7 @@ export function ProfileForm({ initial }: Props) {
           disabled={saving}
           className="h-10 rounded-xl bg-brand px-5 text-sm font-semibold text-background disabled:opacity-50"
         >
-          {saving ? 'Guardando…' : 'Guardar datos'}
+          {saving ? t('account.saving') : t('account.save')}
         </button>
       </div>
     </form>

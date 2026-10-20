@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { catalogProducts, variantChoicesFor } from './catalog-options';
 
@@ -24,6 +25,7 @@ function newKey(): string {
 }
 
 export function AdjustmentForm({ actor, onSuccess }: Props) {
+  const { t } = useI18n();
   const [productSlug, setProductSlug] = useState(catalogProducts[0]?.slug ?? '');
   const [variantKey, setVariantKey] = useState('');
   const [direction, setDirection] = useState<'increase' | 'decrease'>('increase');
@@ -44,13 +46,13 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
 
   const validate = (): string | null => {
     if (!Number.isInteger(parsedAmount) || parsedAmount < 1) {
-      return 'La cantidad debe ser un entero mayor que 0.';
+      return t('inventory.quantityInvalid');
     }
     if (reason.trim().length < 3) {
-      return 'El motivo es obligatorio (mínimo 3 caracteres).';
+      return t('inventory.reasonMin');
     }
     if (reason.trim().length > 200) {
-      return 'El motivo no puede superar 200 caracteres.';
+      return t('inventory.reasonTooLong');
     }
     return null;
   };
@@ -91,7 +93,7 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
       const payload = (await response.json().catch(() => null)) as AdjustmentResponse | null;
 
       if (!response.ok || !payload?.ok) {
-        setFeedback({ type: 'error', message: payload?.error ?? 'No se pudo aplicar el ajuste.' });
+        setFeedback({ type: 'error', message: payload?.error ?? t('inventory.adjustmentFailed') });
         return;
       }
 
@@ -105,27 +107,32 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
         type: 'success',
         message:
           before && after
-            ? `Ajuste aplicado: físico ${before.onHand} → ${after.onHand}, reservado ${after.reserved}, disponible ${after.available}.`
-            : 'Ajuste aplicado.',
+            ? t('inventory.adjustmentSummary', {
+                before: before.onHand,
+                after: after.onHand,
+                reserved: after.reserved,
+                available: after.available,
+              })
+            : t('inventory.adjustmentApplied'),
       });
-      await onSuccess('Ajuste aplicado');
+      await onSuccess(t('inventory.adjustmentApplied'));
     } catch {
-      setFeedback({ type: 'error', message: 'Error de red al aplicar el ajuste.' });
+      setFeedback({ type: 'error', message: t('inventory.adjustmentNetworkError') });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={requestConfirmation} className="rounded-3xl border border-white/15 bg-neutral-900 p-6">
-      <div className="text-sm uppercase tracking-widest text-white/60">Ajuste de stock</div>
-      <p className="mt-1 text-xs text-white/45">
-        Motivo obligatorio. El ajuste es atómico y no puede dejar el físico por debajo de lo reservado.
-      </p>
+    <form onSubmit={requestConfirmation} className="rounded-3xl border border-border bg-surface p-6">
+      <div className="text-sm uppercase tracking-widest text-tertiary">
+        {t('inventory.adjustmentTitle')}
+      </div>
+      <p className="mt-1 text-xs text-muted">{t('inventory.adjustmentSubtitle')}</p>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Producto</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.product')}</span>
           <select
             value={productSlug}
             onChange={(event) => {
@@ -133,7 +140,7 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
               setVariantKey('');
               setConfirming(false);
             }}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           >
             {catalogProducts.map((product) => (
               <option key={product.slug} value={product.slug}>
@@ -144,14 +151,14 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Variante</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.variant')}</span>
           <select
             value={effectiveVariantKey}
             onChange={(event) => {
               setVariantKey(event.target.value);
               setConfirming(false);
             }}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           >
             {choices.map((choice) => (
               <option key={choice.key || 'base'} value={choice.key}>
@@ -162,22 +169,22 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Dirección</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.direction')}</span>
           <select
             value={direction}
             onChange={(event) => {
               setDirection(event.target.value as 'increase' | 'decrease');
               setConfirming(false);
             }}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           >
-            <option value="increase">Aumentar (+)</option>
-            <option value="decrease">Disminuir (−)</option>
+            <option value="increase">{t('inventory.increase')}</option>
+            <option value="decrease">{t('inventory.decrease')}</option>
           </select>
         </label>
 
         <label className="text-sm">
-          <span className="mb-1 block text-white/60">Cantidad</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.quantity')}</span>
           <input
             type="number"
             min={1}
@@ -188,12 +195,12 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
               setAmount(event.target.value);
               setConfirming(false);
             }}
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           />
         </label>
 
         <label className="text-sm sm:col-span-2">
-          <span className="mb-1 block text-white/60">Motivo (obligatorio)</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.reasonRequired')}</span>
           <input
             type="text"
             required
@@ -204,44 +211,53 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
               setReason(event.target.value);
               setConfirming(false);
             }}
-            placeholder="Merma, recuento, corrección de carga…"
-            className="h-11 w-full rounded-xl border border-white/20 bg-neutral-950 px-3"
+            placeholder={t('inventory.reasonPlaceholder')}
+            className="h-11 w-full rounded-xl border border-border-strong bg-background px-3"
           />
         </label>
 
         <div className="text-sm sm:col-span-2">
-          <span className="mb-1 block text-white/60">Actor</span>
-          <div className="flex h-11 items-center rounded-xl border border-white/10 bg-neutral-950/60 px-3 text-white/60">
-            {actor || 'admin'} <span className="ml-2 text-xs">(se guarda en el movimiento)</span>
+          <span className="mb-1 block text-tertiary">{t('inventory.actor')}</span>
+          <div className="flex h-11 items-center rounded-xl border border-border bg-surface-raised px-3 text-tertiary">
+            {actor || 'admin'}{' '}
+            <span className="ml-2 text-xs">{t('inventory.actorNote')}</span>
           </div>
         </div>
       </div>
 
       {confirming && (
-        <div className="mt-5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+        <div className="mt-5 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
           <p>
-            Vas a <strong>{direction === 'increase' ? 'aumentar' : 'disminuir'}</strong>{' '}
-            <strong>{parsedAmount}</strong> unidad(es) de{' '}
-            <strong>{catalogProducts.find((product) => product.slug === productSlug)?.name}</strong>
-            {effectiveVariantKey ? ` (${effectiveVariantKey})` : ''}.
+            {t('inventory.adjustmentWill', {
+              direction:
+                direction === 'increase'
+                  ? t('inventory.increaseVerb')
+                  : t('inventory.decreaseVerb'),
+              amount: parsedAmount,
+              product: `${
+                catalogProducts.find((product) => product.slug === productSlug)?.name ?? ''
+              }${effectiveVariantKey ? ` (${effectiveVariantKey})` : ''}`,
+            })}
           </p>
-          <p className="mt-1 text-xs text-amber-200/80">Motivo: {reason.trim()}</p>
+          <p className="mt-1 text-xs text-warning/80">
+            {t('inventory.adjustmentReason', { reason: reason.trim() })}
+          </p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
               onClick={() => void applyAdjustment()}
               disabled={submitting}
-              className="h-10 rounded-xl bg-white px-4 text-sm font-medium text-black disabled:opacity-50"
+              className="h-10 rounded-xl bg-brand px-4 text-sm font-medium text-background disabled:opacity-50"
             >
-              {submitting ? 'Aplicando…' : 'Confirmar ajuste'}
+              {submitting ? t('inventory.adjustmentApplying') : t('inventory.adjustmentConfirm')}
             </button>
             <button
               type="button"
               onClick={() => setConfirming(false)}
               disabled={submitting}
-              className="h-10 rounded-xl border border-white/25 px-4 text-sm disabled:opacity-40"
+              className="h-10 rounded-xl border border-border-strong px-4 text-sm disabled:opacity-40"
             >
-              Cancelar
+              {t('inventory.cancel')}
             </button>
           </div>
         </div>
@@ -251,15 +267,15 @@ export function AdjustmentForm({ actor, onSuccess }: Props) {
         {!confirming && (
           <button
             type="submit"
-            className="h-11 rounded-2xl bg-white px-6 font-medium text-black hover:bg-white/90"
+            className="h-11 rounded-2xl bg-brand px-6 font-medium text-background hover:opacity-90"
           >
-            Revisar ajuste
+            {t('inventory.adjustmentReview')}
           </button>
         )}
         {feedback && (
           <p
             role={feedback.type === 'error' ? 'alert' : 'status'}
-            className={feedback.type === 'error' ? 'text-sm text-red-400' : 'text-sm text-emerald-300'}
+            className={feedback.type === 'error' ? 'text-sm text-destructive' : 'text-sm text-success'}
           >
             {feedback.message}
           </p>

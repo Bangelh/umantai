@@ -17,6 +17,8 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { buildContentSecurityPolicy, createNonce } from './lib/security-headers';
+
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 const EXEMPT_PREFIXES = [
@@ -67,6 +69,11 @@ function isExempt(pathname: string): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const requestId = crypto.randomUUID();
+  const nonce = createNonce();
+  const csp = buildContentSecurityPolicy({
+    nonce,
+    isDev: process.env.NODE_ENV !== 'production',
+  });
 
   if (MUTATING.has(request.method) && !isExempt(pathname)) {
     const origin = request.headers.get('origin');
@@ -97,11 +104,30 @@ export function proxy(request: NextRequest) {
 
   const headers = new Headers(request.headers);
   headers.set('x-request-id', requestId);
+  headers.set('x-nonce', nonce);
+  // Next lee esta cabecera de la REQUEST y adjunta el nonce a sus scripts.
+  headers.set('Content-Security-Policy', csp);
+
   const response = NextResponse.next({ request: { headers } });
   response.headers.set('x-request-id', requestId);
+  response.headers.set('x-nonce', nonce);
+  response.headers.set('Content-Security-Policy', csp);
   return response;
 }
 
+/**
+ * Se ejecuta en páginas y APIs, pero no en assets estáticos ni prefetches: esos
+ * no renderizan HTML y no necesitan un nonce nuevo. Las páginas son dinámicas
+ * porque el layout raíz ya lee cookies (`getLocale`).
+ */
 export const config = {
-  matcher: ['/api/:path*'],
+  matcher: [
+    {
+      source: '/((?!_next/static|_next/image|favicon.ico).*)',
+      missing: [
+        { type: 'header', key: 'next-router-prefetch' },
+        { type: 'header', key: 'purpose', value: 'prefetch' },
+      ],
+    },
+  ],
 };

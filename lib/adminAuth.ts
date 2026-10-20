@@ -1,17 +1,15 @@
 /**
  * lib/adminAuth.ts — token de administración en el navegador (cliente).
  *
- * El panel `/admin` ya no lleva una contraseña hardcodeada: eso era security
- * theater, porque viajaba en el bundle que descarga cualquier visitante. Ahora la
- * UI pide el `ADMIN_API_SECRET` del servidor como "token de administración", lo
- * guarda en `localStorage` y lo manda en el header `x-admin-token` en cada llamada
- * a una API de administración.
+ * HISTORIA: antes la UI pedía `ADMIN_API_SECRET` y lo guardaba en localStorage.
+ * Eso ya NO es el camino humano: los paneles usan la sesión de Platform Admin
+ * (cookie firmada, HttpOnly). Este archivo queda para dos cosas puntuales:
  *
- * La validación REAL ocurre en el servidor (`lib/admin.server.ts`, comparación en
- * tiempo constante). Este archivo solo transporta el token.
+ *   1. `withAdminAuth()` sin token: deja que la cookie viaje sola (`same-origin`).
+ *   2. Automatización/CI: pasar un token explícito manda `x-admin-token`. El
+ *      token NUNCA se pide en pantalla ni se persiste por defecto.
  *
- * Nota: si `localStorage` no está disponible (modo privado), el token se conserva
- * en memoria durante la sesión en vez de perderse.
+ * La validación REAL ocurre en el servidor (`lib/admin.server.ts`).
  */
 
 export const ADMIN_TOKEN_HEADER = 'x-admin-token';
@@ -59,10 +57,12 @@ export function clearAdminToken(): void {
  * El segundo parámetro permite verificar un token candidato antes de guardarlo
  * (p. ej. en el login), sin escribirlo aún en el almacenamiento.
  */
-export function withAdminAuth(init: RequestInit = {}, token: string = getAdminToken()): RequestInit {
+export function withAdminAuth(init: RequestInit = {}, token = ''): RequestInit {
   const headers: Record<string, string> = {
     ...((init.headers as Record<string, string> | undefined) ?? {}),
   };
+  // Solo automatización explícita manda el header. Sin token, la cookie de
+  // Platform Admin (`HttpOnly`) es la que autentica.
   if (token) headers[ADMIN_TOKEN_HEADER] = token;
-  return { ...init, headers };
+  return { ...init, headers, credentials: init.credentials ?? 'same-origin' };
 }

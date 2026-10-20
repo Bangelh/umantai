@@ -1,0 +1,82 @@
+import { expect, test } from '@playwright/test';
+
+import { E2E_PASSWORD, latestOutbox, loginUi, logoutUi, signUpUi, uniqueEmail } from './helpers';
+
+/**
+ * Ciclo de vida de la cuenta en staging:
+ * registro → verificación de correo (test-mode) → logout/login →
+ * recuperación de contraseña → cambio de contraseña y revocación de sesiones.
+ *
+ * No depende de Mercado Pago. El correo real no se envía: `AUTH_TEST_MODE=1`
+ * guarda el enlace en `email_outbox` y el endpoint de test lo devuelve.
+ */
+
+test.describe.serial('auth lifecycle', () => {
+  const email = uniqueEmail('e2e-auth');
+  const newPassword = `${E2E_PASSWORD}-n3w`;
+
+  test('signup crea la cuenta y entra', async ({ page }) => {
+    await signUpUi(page, email, 'E2E Auth');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(/E2E|Hola/i);
+    await expect(page.getByText(email)).toBeVisible();
+  });
+
+  test('verificación de correo test-mode marca la cuenta como verificada', async ({ page, request }) => {
+    const message = await latestOutbox(request, email, 'verify_email');
+    await page.goto(message.actionUrl as string);
+    await page.goto('/cuenta');
+    await expect(page.getByText('Correo verificado')).toBeVisible();
+  });
+
+  test('logout y login con la misma contraseña', async ({ page }) => {
+    await logoutUi(page);
+    await loginUi(page, email);
+    await expect(page.getByText(email)).toBeVisible();
+  });
+
+  test('recuperación de contraseña test-mode', async ({ page, request }) => {
+    await page.goto('/recuperar');
+    await page.getByLabel(/Correo/).fill(email);
+    await page.getByRole('button', { name: /Enviar enlace/ }).click();
+    await expect(page.getByRole('status')).toContainText(/Si existe una cuenta/i);
+
+    const message = await latestOutbox(request, email, 'reset_password');
+    await page.goto(message.actionUrl as string);
+    await page.getByLabel(/Nueva contraseña/).fill(newPassword);
+    await page.getByLabel(/Repite la nueva contraseña/).fill(newPassword);
+    await page.getByRole('button', { name: /Guardar contraseña/ }).click();
+    await expect(page.getByText(/Contraseña actualizada/)).toBeVisible();
+
+    await loginUi(page, email, newPassword);
+    await expect(page.getByText(email)).toBeVisible();
+  });
+
+  test('cambio de contraseña desde la cuenta y revocación de otras sesiones', async ({ page }) => {
+    await page.goto('/cuenta');
+    await page.getByLabel('Contraseña actual').fill(newPassword);
+    await page.getByLabel('Nueva contraseña', { exact: true }).fill(E2E_PASSWORD);
+    await page.getByLabel('Repite la nueva contraseña').fill(E2E_PASSWORD);
+    await page.getByRole('button', { name: /Cambiar contraseña/ }).click();
+    await expect(page.getByText('Contraseña actualizada.')).toBeVisible();
+
+    const revoke = page.getByRole('button', { name: /Cerrar las demás sesiones/ });
+    if (await revoke.isEnabled()) {
+      await revoke.click();
+      await expect(page.getByText(/Cerramos las otras sesiones/)).toBeVisible();
+    }
+  });
+
+  test('login con contraseña incorrecta no revela si el correo existe', async ({ request }) => {
+    const wrong = await request.post('/api/auth/sign-in/email', {
+      data: { email, password: 'definitely-wrong-password' },
+    });
+    const missing = await request.post('/api/auth/sign-in/email', {
+      data: { email: uniqueEmail('e2e-missing'), password: 'definitely-wrong-password' },
+    });
+    expect(wrong.status()).toBe(missing.status());
+    const wrongBody = (await wrong.text()).replace(email, '<email>');
+    const missingBody = (await missing.text()).replace('e2e-missing', '<email>');
+    expect(wrongBody).not.toContain('not found');
+    expect(missingBody.length).toBeGreaterThan(0);
+  });
+});

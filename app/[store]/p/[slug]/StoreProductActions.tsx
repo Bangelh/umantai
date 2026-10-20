@@ -10,6 +10,8 @@ import {
   type CatalogVariant,
   type ProductOptionSchema,
 } from '@/lib/catalog';
+import { formatMoney } from '@/lib/format';
+import { useI18n } from '@/components/i18n/I18nProvider';
 
 interface Props {
   product: {
@@ -32,6 +34,7 @@ interface Props {
 }
 
 export function StoreProductActions({ product }: Props) {
+  const { locale, t } = useI18n();
   const addItem = useCartStore((state) => state.addItem);
   const switchStore = useCartStore((state) => state.switchStore);
   const hasVariants = product.variants.length > 0;
@@ -58,7 +61,7 @@ export function StoreProductActions({ product }: Props) {
   const handleAdd = () => {
     if (disabled) return;
     if (hasVariants && !selectedVariant) {
-      toast.error('Elige una combinación disponible.');
+      toast.error(t('product.chooseCombination'));
       return;
     }
 
@@ -86,7 +89,7 @@ export function StoreProductActions({ product }: Props) {
       setConflict(result);
       return;
     }
-    toast.success(`Agregado: ${quantity} × ${product.name}`);
+    toast.success(t('product.added', { quantity, name: product.name }));
   };
 
   const confirmSwitch = () => {
@@ -109,7 +112,7 @@ export function StoreProductActions({ product }: Props) {
     };
     switchStore(cartProduct, quantity, selectedVariant ? selected : undefined);
     setConflict(null);
-    toast.success(`Carrito cambiado a ${product.storeName}`);
+    toast.success(t('product.switched', { store: product.storeName }));
   };
 
   return (
@@ -128,7 +131,7 @@ export function StoreProductActions({ product }: Props) {
                   }}
                   className="mt-1 block h-10 rounded-xl border border-border-strong bg-background px-3 text-sm normal-case tracking-normal text-primary"
                 >
-                  <option value="">Elige {axis.name}</option>
+                  <option value="">{t('product.chooseAxis', { axis: axis.name })}</option>
                   {axis.values.map((value) => (
                     <option key={value} value={value}>
                       {value}
@@ -143,32 +146,31 @@ export function StoreProductActions({ product }: Props) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <div className="font-mono text-2xl font-semibold tabular-nums">
-              {new Intl.NumberFormat('es-PE', {
-                style: 'currency',
-                currency: product.currency,
-              }).format(price / 100)}
+              {formatMoney(price, product.currency, locale)}
             </div>
             <div className={`mt-0.5 text-xs font-medium ${disabled ? 'text-destructive' : 'text-success'}`}>
               {disabled
                 ? selectedVariant
-                  ? 'Combinación agotada'
+                  ? t('product.combinationOut')
                   : hasVariants
-                    ? 'Elige una combinación'
-                    : 'Agotado'
-                : `${available} disponibles${selectedVariant ? ` · SKU ${selectedVariant.sku}` : ''}`}
+                    ? t('product.chooseOption')
+                    : t('product.outOfStock')
+                : selectedVariant
+                  ? t('product.availableSku', { count: available, sku: selectedVariant.sku })
+                  : t('product.inStock', { count: available })}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <label htmlFor="store-product-qty" className="text-xs uppercase tracking-[1.5px] text-muted">
-              Cantidad
+              {t('product.quantity')}
             </label>
             <div className="flex items-center rounded-xl border border-border-strong">
               <button
                 type="button"
                 onClick={() => setQuantity((value) => Math.max(1, value - 1))}
                 disabled={quantity <= 1 || disabled}
-                aria-label="Quitar una unidad"
+                aria-label={t('product.decrease')}
                 className="h-11 w-11 text-lg disabled:opacity-40"
               >
                 −
@@ -183,14 +185,14 @@ export function StoreProductActions({ product }: Props) {
                   }
                 }}
                 inputMode="numeric"
-                aria-label="Cantidad"
+                aria-label={t('product.quantity')}
                 className="h-11 w-12 border-x border-border bg-transparent text-center font-mono tabular-nums"
               />
               <button
                 type="button"
                 onClick={() => setQuantity((value) => Math.min(max, value + 1))}
                 disabled={quantity >= max || disabled}
-                aria-label="Agregar una unidad"
+                aria-label={t('product.increase')}
                 className="h-11 w-11 text-lg disabled:opacity-40"
               >
                 +
@@ -206,13 +208,13 @@ export function StoreProductActions({ product }: Props) {
             disabled={disabled}
             className="h-12 flex-1 rounded-xl bg-brand px-6 text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {disabled ? 'No disponible' : 'Agregar al carrito'}
+            {disabled ? t('product.unavailable') : t('product.addToCart')}
           </button>
           <Link
             href="/cart"
             className="inline-flex h-12 items-center justify-center rounded-xl border border-border-strong px-5 text-sm font-medium hover:bg-surface-raised"
           >
-            Ver carrito
+            {t('product.viewCart')}
           </Link>
         </div>
       </section>
@@ -232,30 +234,29 @@ export function StoreProductActions({ product }: Props) {
             className="w-full max-w-md rounded-t-3xl border border-border bg-surface p-6 sm:rounded-3xl"
           >
             <h2 id="cart-store-conflict-title" className="text-lg font-semibold">
-              Tu carrito es de otra tienda
+              {t('product.conflictTitle')}
             </h2>
             <p className="mt-2 text-sm text-secondary">
-              Tu carrito contiene productos de{' '}
-              <strong>{conflict.current.storeName ?? 'otra tienda'}</strong>. Para comprar en{' '}
-              <strong>{conflict.next.storeName ?? 'esta tienda'}</strong> debes iniciar un carrito nuevo.
+              {t('product.conflictBody', {
+                current: conflict.current.storeName ?? t('product.otherStore'),
+                next: conflict.next.storeName ?? t('product.thisStore'),
+              })}
             </p>
-            <p className="mt-2 text-xs text-muted">
-              Al cambiar de tienda se vaciará el carrito anterior. Un pedido siempre pertenece a un solo comercio.
-            </p>
+            <p className="mt-2 text-xs text-muted">{t('product.conflictNote')}</p>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
               <button
                 type="button"
                 onClick={confirmSwitch}
                 className="h-11 rounded-xl bg-brand px-4 text-sm font-semibold text-background hover:opacity-90"
               >
-                Cambiar de tienda
+                {t('product.switchStore')}
               </button>
               <button
                 type="button"
                 onClick={() => setConflict(null)}
                 className="h-11 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
               >
-                Mantener carrito actual
+                {t('product.keepCart')}
               </button>
             </div>
           </div>

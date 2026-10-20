@@ -16,15 +16,23 @@ import type { DiscoveryResponse } from '@/lib/discovery';
 import { DEFAULT_RADIUS_KM } from '@/lib/geo';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { searchDiscovery } from '@/lib/stores.server';
+import { getTranslator } from '@/lib/i18n/server';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'UMANTAI | Encuentra productos y comercios cerca de ti',
-  description:
-    'Busca arroz, polo, tela, martillo, zapatos y más en las tiendas de UMANTAI. Resultados por cercanía, precio y disponibilidad.',
-  alternates: { canonical: '/' },
-};
+/**
+ * Metadata por locale. El canonical es único (`/`) y las variantes no generan
+ * URLs duplicadas: el idioma vive en cookie, no en la ruta.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const { locale, t } = await getTranslator();
+  return {
+    title: { absolute: t('home.metaTitle') },
+    description: t('home.metaDescription'),
+    alternates: { canonical: '/', languages: { es: '/', en: '/' } },
+    openGraph: { locale: locale === 'en' ? 'en_US' : 'es_PE', url: '/' },
+  };
+}
 
 const EMPTY: DiscoveryResponse = {
   products: [],
@@ -74,19 +82,16 @@ async function loadInitial(): Promise<DiscoveryResponse> {
 }
 
 export default async function HomePage() {
-  const initial = await loadInitial();
+  const [{ t }, initial] = await Promise.all([getTranslator(), loadInitial()]);
 
   return (
     <main className="min-h-screen">
       <section className="mx-auto max-w-5xl px-5 pt-8 sm:pt-12">
         <BrandLogo size="lg" className="mb-5 block" />
         <h1 className="max-w-2xl text-3xl font-semibold leading-[1.1] tracking-[-1px] sm:text-5xl">
-          ¿Qué estás buscando?
+          {t('home.title')}
         </h1>
-        <p className="mt-2 max-w-xl text-sm text-secondary sm:text-base">
-          Encuentra productos en las tiendas de UMANTAI. Compara precio y distancia, y compra en
-          comercios cerca de ti.
-        </p>
+        <p className="mt-2 max-w-xl text-sm text-secondary sm:text-base">{t('home.subtitle')}</p>
       </section>
 
       <DiscoveryHome initial={initial} />

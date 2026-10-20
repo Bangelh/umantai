@@ -2,28 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { getAdminToken, setAdminToken, withAdminAuth } from '@/lib/adminAuth';
+import { useI18n } from '@/components/i18n/I18nProvider';
+import { withAdminAuth } from '@/lib/adminAuth';
+import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
+import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_TONE,
   addDays,
-  formatMoney,
-  formatShortDate,
   todayInTimeZone,
   type AnalyticsRangePreset,
   type AnalyticsSummary,
 } from '@/lib/analytics';
+import { formatDate, formatMoney } from '@/lib/format';
 import { AdminNav } from '../components/AdminNav';
 import { SalesChart } from './components/SalesChart';
 
 type SummaryPayload = ({ ok: true } & AnalyticsSummary) | { ok: false; error?: string; code?: string };
-
-const PRESETS: Array<{ value: AnalyticsRangePreset; label: string }> = [
-  { value: 'today', label: 'Hoy' },
-  { value: '7d', label: 'Últimos 7 días' },
-  { value: '30d', label: 'Últimos 30 días' },
-  { value: 'custom', label: 'Personalizado' },
-];
 
 const TONE_CLASS: Record<string, string> = {
   success: 'border-success/30 bg-success/10 text-success',
@@ -34,10 +29,16 @@ const TONE_CLASS: Record<string, string> = {
 };
 
 export default function AnalyticsPage() {
-  const [token, setToken] = useState('');
-  const [authed, setAuthed] = useState(false);
-  const [authChecking, setAuthChecking] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const { locale, t } = useI18n();
+  const admin = usePlatformAdminSession();
+  const presets: Array<{ value: AnalyticsRangePreset; label: string }> = [
+    { value: 'today', label: t('analytics.today') },
+    { value: '7d', label: t('analytics.last7') },
+    { value: '30d', label: t('analytics.last30') },
+    { value: 'custom', label: t('analytics.custom') },
+  ];
+  const shortDate = (value: string) =>
+    formatDate(value, locale, { month: 'short', day: 'numeric' });
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,7 +58,6 @@ export default function AnalyticsPage() {
       preset: AnalyticsRangePreset;
       from?: string;
       to?: string;
-      tokenOverride?: string;
     }) => {
       const seq = ++requestSeq.current;
       setLoading(true);
@@ -72,7 +72,7 @@ export default function AnalyticsPage() {
       try {
         const response = await fetch(
           `/api/admin/analytics/summary?${params.toString()}`,
-          withAdminAuth({}, options.tokenOverride ?? getAdminToken()),
+          withAdminAuth(),
         );
         const payload = (await response.json().catch(() => null)) as SummaryPayload | null;
 
@@ -88,8 +88,6 @@ export default function AnalyticsPage() {
         }
 
         setSummary(payload);
-        setAuthed(true);
-        setAuthError(null);
       } catch {
         if (seq !== requestSeq.current) return;
         setError('Error de red al cargar analytics. Revisa tu conexión y reintenta.');
@@ -100,45 +98,10 @@ export default function AnalyticsPage() {
     [],
   );
 
-  const handleLogin = async () => {
-    const candidate = token.trim();
-    if (!candidate) return;
-    setAuthChecking(true);
-    setAuthError(null);
-    try {
-      const response = await fetch(
-        '/api/admin/analytics/summary?range=7d',
-        withAdminAuth({}, candidate),
-      );
-      const payload = (await response.json().catch(() => null)) as SummaryPayload | null;
-      if (!response.ok || !payload?.ok) {
-        setAuthError(
-          (payload && 'error' in payload && payload.error) ||
-            'Token de administración inválido.',
-        );
-        return;
-      }
-      setAdminToken(candidate);
-      setSummary(payload);
-      setPreset('7d');
-      setAuthed(true);
-    } catch {
-      setAuthError('No hay conexión con el servidor.');
-    } finally {
-      setAuthChecking(false);
-    }
-  };
-
-  // Reutiliza el token guardado si sigue siendo válido.
-  // Se difiere un microtask para no encadenar renders dentro del efecto de
-  // montaje (la petición arranca igual en el mismo tick visual).
+  // Con sesión de Platform Admin activa, carga el resumen una vez.
   useEffect(() => {
-    const stored = getAdminToken();
-    if (!stored) return;
-    queueMicrotask(() => {
-      void load({ preset: '30d', tokenOverride: stored });
-    });
-  }, [load]);
+    if (admin.status === 'authenticated') void load({ preset: '30d' });
+  }, [admin.status, load]);
 
   const customRangeInvalid =
     preset === 'custom' &&
@@ -157,45 +120,13 @@ export default function AnalyticsPage() {
   const hasOrders = (summary?.sales.allOrders ?? 0) > 0;
   const hasSales = (summary?.sales.orders ?? 0) > 0;
 
-  if (!authed) {
+  if (admin.status !== 'authenticated') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-8 text-primary">
-        <div className="surface-card w-full max-w-sm p-8">
-          <h1 className="mb-2 text-2xl font-semibold">Analytics</h1>
-          <p className="mb-6 text-sm text-tertiary">Ingresa el token de administración.</p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleLogin();
-            }}
-          >
-            <label htmlFor="admin-token" className="field-label">
-              Token de administración
-            </label>
-            <input
-              id="admin-token"
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="ADMIN_API_SECRET"
-              autoComplete="current-password"
-              className="field-input mb-4 h-12"
-              autoFocus
-            />
-            {authError && (
-              <p role="alert" className="mb-4 text-sm text-destructive">
-                {authError}
-              </p>
-            )}
-            <button type="submit" disabled={authChecking} className="btn-primary w-full">
-              {authChecking ? 'Verificando…' : 'Entrar'}
-            </button>
-          </form>
-          <Link href="/admin" className="mt-4 block text-center text-xs text-tertiary hover:text-primary">
-            ← Volver al panel
-          </Link>
-        </div>
-      </div>
+      <AdminAccessScreen
+        title={t('analytics.title')}
+        status={admin.status}
+        onActivate={admin.activate}
+      />
     );
   }
 
@@ -204,27 +135,27 @@ export default function AnalyticsPage() {
       <div className="mx-auto max-w-7xl px-4 sm:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-xs uppercase tracking-[3px] text-tertiary">OPERACIÓN</div>
-            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Analytics</h1>
+            <div className="text-xs uppercase tracking-[3px] text-tertiary">{t('analytics.kicker')}</div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t('analytics.title')}</h1>
           </div>
           <AdminNav />
         </div>
 
         <p className="mt-2 max-w-2xl text-sm text-secondary">
-          Ventas del período en{' '}
-          <span className="font-medium text-primary">{summary?.range.timeZone ?? 'America/Lima'}</span>.
-          Solo cuentan pedidos con pago confirmado (ver regla al pie).
+          {t('analytics.subtitlePrefix')}{' '}
+          <span className="font-medium text-primary">{summary?.range.timeZone ?? 'America/Lima'}</span>.{' '}
+          {t('analytics.subtitleSuffix')}
         </p>
 
         {/* Filtros */}
-        <section aria-label="Filtros de fecha" className="mt-6 surface-card p-4 sm:p-5">
+        <section aria-label={t('analytics.filtersAria')} className="mt-6 surface-card p-4 sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <span className="field-label" id="preset-label">
-                Período
+                {t('analytics.period')}
               </span>
               <div className="flex flex-wrap gap-2" role="group" aria-labelledby="preset-label">
-                {PRESETS.map((option) => (
+                {presets.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -305,14 +236,19 @@ export default function AnalyticsPage() {
 
           {customRangeInvalid && (
             <p role="alert" className="mt-3 text-sm text-destructive">
-              El rango personalizado necesita dos fechas y “Desde” no puede ser posterior a “Hasta”.
+              {t('analytics.customRangeError')}
             </p>
           )}
 
           {summary && (
             <p className="mt-3 text-xs text-tertiary">
-              {summary.range.from} → {summary.range.to} · {summary.range.days} día(s) · comparado con{' '}
-              {summary.previous.from} → {summary.previous.to}
+              {t('analytics.rangeLine', {
+                from: summary.range.from,
+                to: summary.range.to,
+                days: summary.range.days,
+                prevFrom: summary.previous.from,
+                prevTo: summary.previous.to,
+              })}
             </p>
           )}
         </section>
@@ -328,7 +264,7 @@ export default function AnalyticsPage() {
               onClick={() => void load({ preset, from: customFrom, to: customTo })}
               className="btn-secondary h-9 border-destructive/40 px-4 text-destructive"
             >
-              Reintentar
+              {t('analytics.retry')}
             </button>
           </div>
         )}
@@ -336,7 +272,7 @@ export default function AnalyticsPage() {
         {/* Cargando (skeleton) */}
         {loading && !summary && (
           <div aria-busy="true" aria-live="polite" className="mt-6 space-y-5">
-            <span className="sr-only">Cargando analytics…</span>
+            <span className="sr-only">{t('analytics.loading')}</span>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="surface-card h-28 animate-pulse bg-surface-raised/40" />
@@ -349,53 +285,58 @@ export default function AnalyticsPage() {
         {summary && (
           <div aria-busy={loading} className={`mt-6 space-y-6 ${loading ? 'opacity-60' : ''}`}>
             {/* KPIs */}
-            <section aria-label="Indicadores del período" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label={t('analytics.kpisAria')} className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Kpi
-                label="Ventas del período"
-                value={formatMoney(summary.sales.revenueCents)}
+                label={t('analytics.revenue')}
+                value={formatMoney(summary.sales.revenueCents, 'PEN', locale)}
                 change={summary.change.revenuePct}
-                hint={`Anterior: ${formatMoney(summary.previous.revenueCents)}`}
+                hint={t('analytics.previous', {
+                  value: formatMoney(summary.previous.revenueCents, 'PEN', locale),
+                })}
               />
               <Kpi
-                label="Pedidos vendidos"
+                label={t('analytics.ordersSold')}
                 value={String(summary.sales.orders)}
                 change={summary.change.ordersPct}
-                hint={`${summary.sales.allOrders} pedidos creados en total`}
+                hint={t('analytics.ordersCreated', { count: summary.sales.allOrders })}
               />
               <Kpi
-                label="Ticket promedio"
-                value={formatMoney(summary.sales.averageTicketCents)}
-                hint={`Anterior: ${formatMoney(summary.previous.averageTicketCents)}`}
+                label={t('analytics.averageTicket')}
+                value={formatMoney(summary.sales.averageTicketCents, 'PEN', locale)}
+                hint={t('analytics.previous', {
+                  value: formatMoney(summary.previous.averageTicketCents, 'PEN', locale),
+                })}
               />
               <Kpi
-                label="Unidades vendidas"
+                label={t('analytics.unitsSold')}
                 value={String(summary.sales.itemsSold)}
-                hint={`${summary.sales.cancelledOrders} cancelado(s) o expirado(s)`}
+                hint={t('analytics.cancelledOrders', { count: summary.sales.cancelledOrders })}
               />
             </section>
 
             {!hasOrders && (
               <div className="surface-card p-8 text-center">
-                <h2 className="text-lg font-medium">Sin pedidos en este período</h2>
+                <h2 className="text-lg font-medium">{t('analytics.noOrdersTitle')}</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm text-secondary">
-                  No hay pedidos creados entre {summary.range.from} y {summary.range.to}. Prueba con
-                  otro rango o vuelve cuando entre la primera venta.
+                  {t('analytics.noOrdersBody', {
+                    from: summary.range.from,
+                    to: summary.range.to,
+                  })}
                 </p>
               </div>
             )}
 
             {hasOrders && !hasSales && (
               <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
-                Hay {summary.sales.allOrders} pedido(s) en el período, pero ninguno con pago
-                confirmado: todavía no cuentan como venta.
+                {t('analytics.pendingSales', { count: summary.sales.allOrders })}
               </div>
             )}
 
             {/* Gráfico */}
-            <section aria-label="Evolución de ventas">
+            <section aria-label={t('analytics.salesTrend')}>
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="sr-only">Evolución de ventas</h2>
-                <div className="flex gap-2" role="group" aria-label="Granularidad del gráfico">
+                <h2 className="sr-only">{t('analytics.salesTrend')}</h2>
+                <div className="flex gap-2" role="group" aria-label={t('analytics.granularity')}>
                   {(['daily', 'weekly'] as const).map((value) => (
                     <button
                       key={value}
@@ -408,7 +349,7 @@ export default function AnalyticsPage() {
                           : 'border-border text-tertiary hover:text-primary'
                       }`}
                     >
-                      {value === 'daily' ? 'Por día' : 'Por semana'}
+                      {value === 'daily' ? t('analytics.daily') : t('analytics.weekly')}
                     </button>
                   ))}
                 </div>
@@ -462,7 +403,7 @@ export default function AnalyticsPage() {
                   Productos más vendidos
                 </h2>
                 {summary.topProducts.length === 0 ? (
-                  <p className="mt-4 text-sm text-tertiary">Sin ventas en el período.</p>
+                  <p className="mt-4 text-sm text-tertiary">{t('analytics.noSales')}</p>
                 ) : (
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full text-sm">
@@ -492,7 +433,7 @@ export default function AnalyticsPage() {
                               {product.quantity}
                             </td>
                             <td className="py-2 text-right font-mono text-xs">
-                              {formatMoney(product.revenueCents)}
+                              {formatMoney(product.revenueCents, 'PEN', locale)}
                             </td>
                           </tr>
                         ))}
@@ -504,30 +445,55 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <StockPanel title="Productos con menor stock" items={summary.lowStock} empty="Ningún SKU por debajo de su punto de reorden." tone="warning" />
-              <StockPanel title="Productos agotados" items={summary.outOfStock} empty="No hay SKUs agotados." tone="danger" />
+              <StockPanel
+            title={t('analytics.lowStockTitle')}
+            items={summary.lowStock}
+            empty={t('analytics.lowStockEmpty')}
+            tone="warning"
+          />
+              <StockPanel
+                title={t('analytics.outOfStockTitle')}
+                items={summary.outOfStock}
+                empty={t('analytics.outOfStockEmpty')}
+                tone="danger"
+              />
             </div>
 
             {/* Regla de negocio explícita */}
             <section className="rounded-2xl border border-border bg-surface-raised/40 p-4 text-xs leading-relaxed text-tertiary">
-              <h2 className="mb-1 font-medium text-secondary">Cómo se cuentan las ventas</h2>
+              <h2 className="mb-1 font-medium text-secondary">{t('analytics.howCounted')}</h2>
               <p>
-                Cuentan: {summary.rule.countedStatuses.map((status) => ORDER_STATUS_LABELS[status]).join(', ')}, con pago{' '}
-                {summary.rule.paymentStatuses.join(' o ')}. No cuentan: pendientes de pago, cancelados,
-                expirados ni reembolsados. El dinero se calcula en centavos enteros. Días y semanas
-                se cortan en {summary.range.timeZone}. El stock bajo es una foto actual, no del período.
+                {t('analytics.ruleCounted', {
+                  statuses: summary.rule.countedStatuses
+                    .map((status) => ORDER_STATUS_LABELS[status])
+                    .join(', '),
+                  payments: summary.rule.paymentStatuses.join(' / '),
+                })}{' '}
+                {t('analytics.ruleNotCounted')} {t('analytics.ruleMoney')}{' '}
+                {t('analytics.ruleBands', { zone: summary.range.timeZone })}{' '}
+                {t('analytics.ruleStock')}
               </p>
               {summary.previous.revenueCents > 0 && (
                 <p className="mt-2">
-                  Variación vs. período anterior: {summary.change.revenuePct ?? 0}% en ventas y{' '}
-                  {summary.change.ordersPct ?? 0}% en pedidos.
+                  {t('analytics.changeLine', {
+                    revenue: summary.change.revenuePct ?? 0,
+                    orders: summary.change.ordersPct ?? 0,
+                  })}
                 </p>
               )}
             </section>
 
             <p className="text-xs text-muted">
-              Actualizado {new Date(summary.generatedAt).toLocaleString('es-PE')} · Último día del
-              gráfico: {summary.series.daily.length > 0 ? formatShortDate(summary.series.daily[summary.series.daily.length - 1].date) : '—'}
+              {t('analytics.updated', {
+                date: formatDate(summary.generatedAt, locale, {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                }),
+                lastDay:
+                  summary.series.daily.length > 0
+                    ? shortDate(summary.series.daily[summary.series.daily.length - 1].date)
+                    : '—',
+              })}
             </p>
           </div>
         )}
@@ -581,6 +547,7 @@ function StockPanel({
   empty: string;
   tone: 'warning' | 'danger';
 }) {
+  const { t } = useI18n();
   const toneClass =
     tone === 'danger'
       ? 'border-destructive/30 bg-destructive/10 text-destructive'
@@ -608,7 +575,9 @@ function StockPanel({
               <div className="shrink-0 text-right">
                 <div className="font-mono">{item.available}</div>
                 <div className="text-[10px] text-muted">
-                  {item.reorderPoint > 0 ? `mín. ${item.reorderPoint}` : 'sin mínimo'}
+                  {item.reorderPoint > 0
+              ? t('analytics.min', { value: item.reorderPoint })
+              : t('analytics.noMin')}
                 </div>
               </div>
             </li>

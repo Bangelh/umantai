@@ -42,32 +42,8 @@ const nextConfig: NextConfig = {
   // Headers de seguridad portables: se aplican en Vercel, Railway y cualquier
   // hosting Node (antes vivían sólo en vercel.json, que Railway no lee).
   async headers() {
-    const isDev = process.env.NODE_ENV !== 'production';
-    const scriptSrc = isDev
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-      : "script-src 'self' 'unsafe-inline'";
-    const connectSrc = isDev
-      ? "connect-src 'self' https: wss: ws:"
-      : "connect-src 'self' https: wss:";
-    const csp = [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "frame-ancestors 'none'",
-      "form-action 'self'",
-      "img-src 'self' data: blob: https:",
-      "media-src 'self' blob: https:",
-      "font-src 'self' data:",
-      "style-src 'self' 'unsafe-inline'",
-      scriptSrc,
-      connectSrc,
-      "worker-src 'self' blob:",
-      "manifest-src 'self'",
-      isDev ? '' : 'upgrade-insecure-requests',
-    ]
-      .filter(Boolean)
-      .join('; ');
-
+    // La CSP se emite por request en `proxy.ts` porque lleva un nonce único.
+    // Acá quedan solo los headers estáticos.
     return [
       {
         source: '/(.*)',
@@ -86,7 +62,6 @@ const nextConfig: NextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
-          { key: 'Content-Security-Policy', value: csp },
         ],
       },
     ];

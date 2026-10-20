@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useI18n } from '@/components/i18n/I18nProvider';
 
 export function MerchantProductForm({ storeId }: { storeId: string }) {
   const router = useRouter();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -21,11 +23,11 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
 
     const priceValue = Number(price.replace(',', '.'));
     if (!name.trim()) {
-      toast.error('El nombre es obligatorio.');
+      toast.error(t('merchant.nameRequired'));
       return;
     }
     if (!Number.isFinite(priceValue) || priceValue < 0) {
-      toast.error('Ingresa un precio válido.');
+      toast.error(t('merchant.invalidPrice'));
       return;
     }
 
@@ -45,9 +47,9 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
       });
 
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? 'No se pudo crear el producto.');
+      if (!response.ok) throw new Error(payload?.error ?? t('merchant.createProductFailed'));
 
-      toast.success('Producto agregado');
+      toast.success(t('merchant.productAdded'));
       setName('');
       setPrice('');
       setCategory('');
@@ -56,7 +58,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
       setOpen(false);
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear el producto.');
+      toast.error(error instanceof Error ? error.message : t('merchant.createProductFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -69,7 +71,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         onClick={() => setOpen(true)}
         className="mt-3 inline-flex h-10 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
       >
-        + Agregar producto
+        {t('merchant.addProduct')}
       </button>
     );
   }
@@ -78,7 +80,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
     <form onSubmit={submit} className="mt-3 rounded-2xl border border-border bg-surface p-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs text-tertiary sm:col-span-2">
-          Nombre
+          {t('merchant.name')}
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -89,7 +91,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         </label>
 
         <label className="text-xs text-tertiary">
-          Precio (S/)
+          {t('merchant.pricePEN')}
           <input
             value={price}
             onChange={(event) => setPrice(event.target.value)}
@@ -101,7 +103,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         </label>
 
         <label className="text-xs text-tertiary">
-          Stock inicial
+          {t('merchant.initialStockShort')}
           <input
             value={stock}
             onChange={(event) => setStock(event.target.value)}
@@ -111,7 +113,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         </label>
 
         <label className="text-xs text-tertiary">
-          Categoría
+          {t('merchant.category')}
           <input
             value={category}
             onChange={(event) => setCategory(event.target.value)}
@@ -121,7 +123,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         </label>
 
         <label className="text-xs text-tertiary">
-          Marca (opcional)
+          {t('merchant.brandOptional')}
           <input
             value={brand}
             onChange={(event) => setBrand(event.target.value)}
@@ -131,17 +133,17 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         </label>
 
         <label className="text-xs text-tertiary">
-          Unidad de venta
+          {t('merchant.saleUnit')}
           <select
             value={unit}
             onChange={(event) => setUnit(event.target.value)}
             className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
           >
-            <option value="unidad">unidad</option>
-            <option value="kg">kg</option>
-            <option value="metro">metro</option>
-            <option value="litro">litro</option>
-            <option value="paquete">paquete</option>
+            <option value="unidad">{t('merchant.unitUnit')}</option>
+            <option value="kg">{t('merchant.unitKg')}</option>
+            <option value="metro">{t('merchant.unitMeter')}</option>
+            <option value="litro">{t('merchant.unitLiter')}</option>
+            <option value="paquete">{t('merchant.unitPack')}</option>
           </select>
         </label>
       </div>
@@ -152,14 +154,14 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
           disabled={submitting}
           className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-50"
         >
-          {submitting ? 'Guardando…' : 'Guardar producto'}
+          {submitting ? t('merchant.saving') : t('merchant.saveProduct')}
         </button>
         <button
           type="button"
           onClick={() => setOpen(false)}
           className="h-10 rounded-xl border border-border-strong px-4 text-sm hover:bg-surface-raised"
         >
-          Cancelar
+          {t('merchant.cancel')}
         </button>
       </div>
     </form>
