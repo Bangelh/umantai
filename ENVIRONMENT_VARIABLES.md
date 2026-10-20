@@ -484,8 +484,9 @@ CRON_SECRET=... \
 node scripts/trigger-billing.mjs
 ```
 
-`/api/cron/billing` es un job **distinto** del de reservas. Se recomienda un
-segundo servicio cron con schedule `0 * * * *`. El provider real no está
+`/api/cron/billing` es un job **distinto** del de reservas, pero comparte el
+mismo servicio cron (`scripts/run-cron.mjs`, cada 15 min). El runner aísla
+fallos y sale con exit ≠ 0 si cualquiera falla. El provider real no está
 implementado todavía; ver `BILLING_PROVIDER.md`.
 
 ---
@@ -495,7 +496,7 @@ implementado todavía; ver `BILLING_PROVIDER.md`.
 Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
 
 - `npx tsc --noEmit` (sin `|| true`).
-- `npm test` — 287 tests unitarios.
+- `npm test` — 398 tests unitarios.
 - `npm run test:integration` — PostgreSQL 17 efímero con `embedded-postgres`
   (job separado; no usa secretos ni toca Producción).
 - **Lint incremental**: `eslint` estricto sólo sobre archivos JS/TS modificados
@@ -513,6 +514,11 @@ Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
 | `DB_DRIVER`                    | Fuerza `neon` o `pg`; si falta, se autodetecta       | All             |
 | `BILLING_PROVIDER`             | `manual`/`test` para staging; real falla cerrado     | Staging         |
 | `BILLING_GRACE_DAYS`           | Días de gracia antes de expirar `past_due`           | Staging/Prod    |
+| `PLATFORM_ADMIN_SECRET`        | Firma la cookie de Platform Admin (≥32 chars). Si falta, usa `BETTER_AUTH_SECRET` | Staging/Prod |
+| `PLATFORM_ADMIN_EMAILS`        | Bootstrap de admins por correo (lista separada por comas); la tabla `platform_admins` es la fuente principal | Staging |
+| `ALLOW_ADMIN_TOKEN_FALLBACK`   | `1` reactiva el token compartido en Producción (emergencia) | Prod (temporal) |
+| `PLAYWRIGHT_BASE_URL`          | Base para `npm run e2e` (default: staging)           | CI/Dev          |
+| `SMOKE_BASE_URL`               | Base para `scripts/security-smoke.mjs`               | CI/Staging      |
 | `VERCEL_ENV`                   | Fallback de entorno en Vercel                        | Vercel          |
 | `VERCEL_URL`                   | Get the public URL of the current deployment         | All             |
 | `POSTGRES_URL_NON_POOLING`     | More reliable direct connection for local dev        | Development     |

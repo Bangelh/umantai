@@ -56,3 +56,8 @@ skills-lock.json
 # local tool binaries and database backups (never commit)
 .tools/
 backups/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/

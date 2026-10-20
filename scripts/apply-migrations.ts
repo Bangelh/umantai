@@ -20,10 +20,7 @@ import { getDatabaseUrl } from '../lib/db';
 async function main() {
   const args = process.argv.slice(2);
   const allowProduction = args.includes('--allow-production');
-  const requested = args
-    .filter((arg) => !arg.startsWith('--'))
-    .map((arg) => (arg.endsWith('.sql') ? arg : null))
-    .filter((arg): arg is string => !!arg);
+  const requested = args.filter((arg) => !arg.startsWith('--'))
 
   if (requested.length === 0) {
     console.error('Uso: node --import tsx scripts/apply-migrations.ts 019 020 [--allow-production]');

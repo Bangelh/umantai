@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
   },
 
   reactStrictMode: true,
+  poweredByHeader: false,
+
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
 
   // Headers de seguridad portables: se aplican en Vercel, Railway y cualquier
   // hosting Node (antes vivían sólo en vercel.json, que Railway no lee).
