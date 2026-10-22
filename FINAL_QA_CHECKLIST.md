@@ -12,7 +12,12 @@ commit desplegado; los tests locales corren sin servicios externos.
 - `api` → `curl`/script contra staging
 - `ui` → Playwright (`npm run e2e`)
 - `manual` → revisión humana con evidencia
-- `ext` → depende de un tercero (Mercado Pago)
+
+> **Mercado Pago de pedidos está CONGELADO externamente** (checkout hospedado,
+> ver `MP_ORDERS_STATUS.md`). No se ejecutan pagos de prueba ni reales y no se
+> tocan Preferences, Orders, webhooks, callbacks ni credenciales. Por eso **no
+> hay ítems de pago** en esta checklist: el congelamiento **no bloquea** staging
+> QA, hardening, final QA ni la preparación del cutover.
 
 > Estado actual: los ítems de staging están **PENDIENTES** mientras Railway
 > mantiene los builds pausados. No se marcan como aprobados por haber corrido
@@ -30,6 +35,8 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Variables de staging revisadas sin exponer valores.
 - [ ] Backup con restore verificado (`CUTOVER_RUNBOOK.md` §2).
 - [ ] Ventana de freeze y responsables acordados.
+- [ ] Confirmado que Mercado Pago sigue congelado: ningún ítem de este checklist
+      exige un pago (de prueba o real) para cerrarse.
 
 ---
 
@@ -163,7 +170,8 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Límite de SKU bloquea publicar y explica cómo resolverlo.
 - [ ] Cancelación mantiene beneficios hasta el fin del período.
 - [ ] Código +1 mes canjeable una vez por tienda y respeta máximo de canjes.
-- [ ] Simulación de fallo de pago deja el estado esperado (solo staging).
+- [ ] Simulación interna de fallo de cobro deja el estado esperado (sin pasarela
+      real ni Mercado Pago).
 - [ ] Historial de eventos registra cada operación.
 - [ ] `unit`: `tests/billing.domain.test.ts`.
 - [ ] `int`: `tests/billing.integration.test.ts`.
@@ -248,7 +256,8 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] No hay secretos en el bundle ni en `/debug` público.
 - [ ] `/debug*` requiere sesión real; no indexado.
 - [ ] Kiosco exige clave de dispositivo; PIN no se devuelve por API.
-- [ ] Webhook de pago valida firma y es idempotente.
+- [ ] Webhook de pago valida firma e idempotencia por `unit` (no se invoca a
+      Mercado Pago desde el QA).
 - [ ] `node scripts/security-smoke.mjs` sin hallazgos.
 - [ ] `unit`: `tests/security-headers.test.ts`, `tests/csrf-proxy.test.ts`,
       `tests/rate-limit.test.ts`, `tests/platform-admin.test.ts`, `tests/admin-ui.test.ts`.
@@ -308,17 +317,24 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Enlaces a términos/privacidad desde checkout y contacto funcionan.
 - [ ] `unit`: `tests/legal-config.test.ts`.
 
-## 26. Mercado Pago (pendiente externo)
+## 26. Mercado Pago (CONGELADO externamente — fuera de alcance)
 
-- [ ] Credenciales **live** configuradas solo en Producción.
-- [ ] `MERCADOPAGO_WEBHOOK_SECRET` vigente y webhook apuntando al dominio activo.
-- [ ] Preferencia creada con monto resuelto en servidor (nunca desde el cliente).
-- [ ] Pago aprobado confirma el pedido una sola vez (idempotencia).
-- [ ] Pago rechazado/pendiente no confirma ni descuenta stock.
-- [ ] `back_urls` regresan al dominio correcto (`?pago=exitoso|pendiente|fallido`).
-- [ ] Reembolso/cancelación deja el pedido en estado consistente.
-- [ ] `unit`: `tests/mercadopago.*.test.ts`, `tests/mp-orders.cleanroom.test.ts`.
-- [ ] `ext`: prueba real en sandbox y luego en live con montos mínimos.
+> No se ejecutan pagos, ni de prueba ni reales, y no se tocan Preferences,
+> Orders, webhooks, callbacks ni credenciales. Esta sección **no bloquea** el
+> cierre del QA ni el cutover: sólo verifica que el flujo congelado siga intacto.
+
+- [ ] El diff del release no introduce cambios funcionales en pagos (sólo
+      textos/i18n si aplica).
+- [ ] `unit`: `tests/mercadopago.*.test.ts`, `tests/mp-orders.cleanroom.test.ts`,
+      `tests/payment-simulation.qa.test.ts` en verde, sin red ni credenciales.
+- [ ] Credenciales live siguen sólo en Producción; no se emiten ni copian nuevas.
+- [ ] Pedido de invitado/autenticado queda `pending_payment` y sirve para el
+      resto del QA (historial, merchant, kiosco) sin pasar por pago.
+- [ ] Al descongelar: se retoma como fase aparte con su propio checklist
+      (`MP_ORDERS_STATUS.md`), fuera de este documento.
+
+> Estado: **congelado por un tercero**. No marcar como pendiente ni como
+> bloqueante; se documenta y se sigue.
 
 ---
 

@@ -9,8 +9,8 @@ el negocio lo apruebe y Railway reanude los builds.
 detiene el cutover y se ejecuta el rollback de la §9. No se "sigue y se arregla
 después".
 
-**Última actualización:** 2026-10-22 · **HEAD de la rama:** `18f945f` +
-commits locales de hardening (ver `git log feat/railway-staging`).
+**Última actualización:** 2026-10-22 · **HEAD candidato:** el HEAD local de
+`feat/railway-staging` al reanudarse los builds (posterior a `18f945f`).
 
 ---
 
@@ -27,6 +27,11 @@ commits locales de hardening (ver `git log feat/railway-staging`).
 
 Fuera de alcance de este runbook: cambiar el plan de Railway, abrir PostgreSQL a
 Internet, migrar Mercado Pago a otra cuenta, borrar recursos.
+
+**Mercado Pago de pedidos está CONGELADO externamente** (el checkout hospedado
+falla antes del login del comprador; ver `MP_ORDERS_STATUS.md`). Este runbook
+**no** descongela ni toca Preferences, Orders, webhooks, callbacks ni
+credenciales, y la ausencia de pagos reales **no** es criterio de NO-GO.
 
 ---
 
@@ -68,7 +73,8 @@ node scripts/check-i18n-strings.mjs --strict
 `PLATFORM_ADMIN_EMAILS`, `BETTER_AUTH_SECRET`, `KIOSK_ACCESS_CODE`,
 `CRON_SECRET`, `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_SITE_URL`.
 Opcionales: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`,
-`MERCADOPAGO_*` de **prueba**, `MEDIA_DRIVER`, `R2_*`.
+`MERCADOPAGO_*` de prueba **sólo si** se autoriza descongelar (hoy no se usan),
+`MEDIA_DRIVER`, `R2_*`.
 
 Verificación sin exponer valores:
 
@@ -154,8 +160,9 @@ railway variables --service web --environment staging \
 - [ ] `ADMIN_API_SECRET` ≥ 16 caracteres (ideal ≥ 32).
 - [ ] `ALLOW_ADMIN_TOKEN_FALLBACK` **no** definido en Producción (la sesión real
       es obligatoria).
-- [ ] `MERCADOPAGO_*` apuntando a la cuenta correcta y con el webhook secret
-      vigente.
+- [ ] `MERCADOPAGO_*` sin cambios respecto de lo que ya usa Producción; no se
+      piden credenciales nuevas ni se registra webhook en este cutover (Mercado
+      Pago de pedidos sigue congelado).
 - [ ] Ninguna credencial live en staging; ninguna credencial de staging en
       Producción.
 - [ ] `VERCEL_ENV` **no** definido en Railway (el código usa `APP_ENV`).
@@ -168,6 +175,10 @@ Todos los secretos que tocaron staging, QA o un preview deben rotarse **antes**
 de que Producción los use. La lista es de nombres: los valores no se leen, no se
 copian y no se pegan en documentos.
 
+> Excepción: las credenciales de **Mercado Pago de pedidos no se rotan** en este
+> cutover. Están congeladas y cualquier cambio en la app de Mercado Pago queda
+> para la fase de descongelamiento, con su propia autorización.
+
 | Variable | Por qué rotarla | Cuándo | Cómo |
 |---|---|---|---|
 | `BETTER_AUTH_SECRET` | Firmó sesiones de staging/QA; invalida sesiones al rotar | Antes del cutover | `openssl rand -base64 48` en el gestor de secretos → actualizar → desplegar → forzar re-login |
@@ -177,8 +188,8 @@ copian y no se pegan en documentos.
 | `CRON_SECRET` | Autoriza ambos jobs de cron | Antes del cutover | Rotar en `web` y `cron` en la misma operación |
 | `DATABASE_URL` / `POSTGRES_URL_NON_POOLING` | Credenciales de base compartidas con QA | Al crear la base de Producción | Usuario/rol nuevo y contraseña nueva; no reutilizar el de staging |
 | `PAYLOAD_SECRET` | Firma del CMS | Antes del cutover | Rotar; invalida sesiones del admin de Payload |
-| `MERCADOPAGO_ACCESS_TOKEN` | Token de **prueba** en staging | Al pasar a live | Emitir credenciales live en Mercado Pago; no reutilizar las de test |
-| `MERCADOPAGO_WEBHOOK_SECRET` | Secreto de la app de prueba | Al registrar el webhook live | Generar de nuevo en el panel de Mercado Pago y actualizar Railway |
+| `MERCADOPAGO_ACCESS_TOKEN` | Token de prueba en staging | **No aplica** (congelado) | No se toca; al descongelar se emiten credenciales nuevas y no se reutilizan las de test |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Secreto de la app de prueba | **No aplica** (congelado) | No se toca; al descongelar se registra el webhook con el dominio activo |
 | `RESEND_API_KEY` | Clave de correo usada en staging | Antes de enviar correo real | Crear clave con dominio verificado y permisos mínimos |
 | `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Credenciales de storage si se usaron en staging | Antes del cutover | Token R2 nuevo, alcance solo al bucket |
 | `SUPABASE_SERVICE_ROLE_KEY` | Legacy notes/listas | Si se conserva la función | Rotar en Supabase; no exponer en cliente |
@@ -260,14 +271,16 @@ Cuando se autorice:
 3. Cambiar el registro (A/CNAME según indique Railway) en el proveedor de DNS.
 4. Verificar propagación: `dig +short umantai.com`, `curl -I https://umantai.com`.
 5. Mantener Vercel resolviendo por si hace falta volver atrás.
-6. Actualizar `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_SITE_URL`,
-   `BETTER_AUTH_URL` y `MERCADOPAGO_BACK_URL_BASE` **antes** de cambiar el DNS,
-   para que los enlaces y las cookies no queden con el host viejo.
+6. Actualizar `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_SITE_URL` y
+   `BETTER_AUTH_URL` **antes** de cambiar el DNS, para que los enlaces y las
+   cookies no queden con el host viejo. `MERCADOPAGO_BACK_URL_BASE` no se toca
+   mientras Mercado Pago siga congelado.
 7. Volver a subir el TTL a 3600 s después de 48 h estables.
 
 - [ ] TTL bajo aplicado con antelación.
 - [ ] Certificado emitido y válido.
-- [ ] Webhook de Mercado Pago apunta al dominio nuevo.
+- [ ] (Sólo al descongelar) el webhook de Mercado Pago apunta al dominio nuevo;
+      no se modifica en este cutover.
 - [ ] Correo (SPF/DKIM) del dominio nuevo verificado si se envía desde ahí.
 
 ---
@@ -331,6 +344,10 @@ Verificar `/api/health` con el `commit` anterior y repetir el smoke mínimo.
 
 ### 9.4 Si el problema es Mercado Pago
 
+Mercado Pago de pedidos está fuera del alcance mientras siga congelado: un fallo
+suyo **no** obliga a rollback del cutover, porque ningún paso de este runbook
+depende de un pago.
+
 - No se toca la cuenta ni el webhook live sin aprobación.
 - Pausar pagos (feature flag / retirar botón) y seguir con el flujo manual
   acordado. El stock reservado se libera por cron.
@@ -348,14 +365,15 @@ Verificar `/api/health` con el `commit` anterior y repetir el smoke mínimo.
 - [ ] Backup verificado con restore y fingerprint.
 - [ ] Migraciones 001–022 aplicadas y auditadas.
 - [ ] `/api/health` con commit correcto y base reachable.
-- [ ] `FINAL_QA_CHECKLIST.md` cerrado, salvo los ítems marcados como
-      "pendiente externo" (Mercado Pago live).
+- [ ] `FINAL_QA_CHECKLIST.md` cerrado. Los ítems de Mercado Pago están marcados
+      como **congelados externamente** y no condicionan el GO.
 - [ ] Security smoke y load baseline dentro de los umbrales acordados.
 - [ ] Rollback probado.
 - [ ] Ventana de convivencia definida y aceptada por el negocio.
 - [ ] Responsable del cutover y del rollback nominados.
 
-**NO-GO** si ocurre cualquiera:
+**NO-GO** si ocurre cualquiera (Mercado Pago **no** es criterio de NO-GO
+mientras siga congelado):
 
 - Builds de Railway pausados o inestables.
 - Backup sin restore verificado.
@@ -363,7 +381,7 @@ Verificar `/api/health` con el `commit` anterior y repetir el smoke mínimo.
 - `/api/health` sin base o con commit equivocado.
 - Falla de aislamiento entre tiendas (RLS/tenant guards).
 - Sesión de Platform Admin accesible sin cuenta autorizada.
-- Mercado Pago live sin webhook secret configurado.
+- Cron con `CRON_SECRET` inválido o primera corrida fallida.
 - Cualquier 500 nuevo en rutas públicas.
 - No hay ventana de rollback acordada.
 
@@ -384,8 +402,9 @@ Reglas de convivencia:
 
 - **Una sola** base recibe escrituras. Nunca dual-write.
 - Vercel queda en standby (sin cron, sin webhooks duplicados).
-- El webhook de Mercado Pago apunta a **un** host; al cambiarlo, verificar que el
-  anterior no siga recibiendo.
+- El webhook de Mercado Pago apunta a **un** host; como está congelado no se
+  cambia en el cutover. Al descongelarlo, verificar que el host anterior no siga
+  recibiendo.
 - Los correos y enlaces usan el dominio que esté activo.
 - Si hay que volver a Vercel, se restaura el último backup de Railway en Neon y
   se documenta la pérdida de datos de la ventana.
