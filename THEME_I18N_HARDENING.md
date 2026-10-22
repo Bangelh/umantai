@@ -31,7 +31,18 @@
 - **Cubierto:** navegación superior e inferior, footer, login/registro,
   recuperación/restablecimiento, cuenta y seguridad, vitrina de tienda,
   buscador global y home, geolocalización manual, carrito y checkout, alta de
-  tienda, paneles de catálogo/inventario/analytics/planes y kiosco.
+  tienda, estado público del pedido (`/pedido/[token]`), lista de compras
+  (`/list`) y paneles de catálogo/inventario/analytics/planes.
+- **Excepción documentada:** el terminal de kiosco (`app/admin/kiosco/*`) es una
+  pantalla operada por personal en tienda y se mantiene en español; los
+  documentos legales solo existen en español (borrador pendiente de validación
+  del negocio) y declaran `lang="es"`; la imagen Open Graph es un artefacto de
+  marketing con texto fijo.
+- `scripts/check-i18n-strings.mjs` audita el repo sin red: verifica que toda
+  clave usada con `t('…')` exista en es/en y reporta texto JSX/atributos
+  visibles en español fuera del diccionario. Allowlist explícita por archivo y
+  motivo. `npm test` lo ejecuta vía `tests/i18n-ui.test.ts`; en CI/local también
+  se puede correr con `--strict`.
 - El contenido de las tiendas (nombres, productos, descripciones, direcciones,
   categorías propias) **nunca** se traduce.
 - Cómo agregar una clave: añadir a `es` y `en`, usar `t('clave')`; el test falla
@@ -62,11 +73,15 @@
 4. En `/admin/planes`, “Activar sesión de administrador” canjea la sesión por la
    cookie firmada. `DELETE /api/admin/session` la revoca.
 
-## 4. Verificación (2026-10-20, local con PostgreSQL efímero + seed real)
+## 4. Verificación (2026-10-22, local con PostgreSQL efímero + seed real)
 
 - `npx tsc --noEmit` → 0 errores.
-- `npm test` → **415/415**.
-- `npm run test:integration` (PostgreSQL 17 real, migraciones 001–022) → **94/94**.
+- `npm test` → **445/445** (incluye i18n-ui, tema, auth lifecycle, rate limit,
+  CSRF de `proxy.ts`, admin sin token y gates del cleanup).
+- `node scripts/check-i18n-strings.mjs --strict` → 796 claves válidas, 0 strings
+  hardcodeados fuera de la allowlist.
+- `npm run test:integration` (PostgreSQL 17 real, migraciones 001–022) → **94/94**
+  (incluye RLS y tenant guards).
 - `npm run build` → OK (con `PAYLOAD_SECRET` de build).
 - `npx playwright test` contra `next start` local → **52 passed, 1 skipped**
   (`E2E_ADMIN_EMAIL` no configurado). Incluye auth lifecycle completo,
@@ -116,3 +131,7 @@
 8. **Producción**: no se desplegó ni se cambiaron variables/DNS. Antes del
    cutover hay que crear el primer Platform Admin y definir
    `PLATFORM_ADMIN_SECRET`.
+9. **Cutover**: procedimiento y checklist en `CUTOVER_RUNBOOK.md` y
+   `FINAL_QA_CHECKLIST.md`. Incluyen la rotación de secretos (sin valores) y la
+   ventana de convivencia Vercel/Railway. Se ejecutan cuando Railway reactive
+   los builds.
