@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
@@ -19,6 +18,51 @@ import { AdminNav } from '../components/AdminNav';
 import { SalesChart } from './components/SalesChart';
 
 type SummaryPayload = ({ ok: true } & AnalyticsSummary) | { ok: false; error?: string; code?: string };
+
+type RangeOptions = {
+  preset: AnalyticsRangePreset;
+  from?: string;
+  to?: string;
+};
+
+type SummaryResult = { ok: true; summary: AnalyticsSummary } | { ok: false; error: string };
+
+/**
+ * Petición pura del resumen: no toca estado de React. La usan tanto el efecto de
+ * carga inicial (que aplica la respuesta en su callback) como `load`, que sí
+ * puede actualizar estado porque lo dispara un evento del usuario.
+ */
+async function requestSummary(options: RangeOptions): Promise<SummaryResult> {
+  const params = new URLSearchParams({ range: options.preset });
+  if (options.preset === 'custom') {
+    params.set('from', options.from ?? '');
+    params.set('to', options.to ?? '');
+  }
+
+  try {
+    const response = await fetch(
+      `/api/admin/analytics/summary?${params.toString()}`,
+      withAdminAuth(),
+    );
+    const payload = (await response.json().catch(() => null)) as SummaryPayload | null;
+
+    if (!response.ok || !payload?.ok) {
+      return {
+        ok: false,
+        error:
+          (payload && 'error' in payload && payload.error) ||
+          'No se pudo cargar el resumen de ventas.',
+      };
+    }
+
+    return { ok: true, summary: payload };
+  } catch {
+    return {
+      ok: false,
+      error: 'Error de red al cargar analytics. Revisa tu conexión y reintenta.',
+    };
+  }
+}
 
 const TONE_CLASS: Record<string, string> = {
   success: 'border-success/30 bg-success/10 text-success',
@@ -41,7 +85,8 @@ export default function AnalyticsPage() {
     formatDate(value, locale, { month: 'short', day: 'numeric' });
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Arranca cargando: la primera petición la dispara el efecto al autenticarse.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [preset, setPreset] = useState<AnalyticsRangePreset>('30d');
@@ -53,55 +98,47 @@ export default function AnalyticsPage() {
 
   const requestSeq = useRef(0);
 
-  const load = useCallback(
-    async (options: {
-      preset: AnalyticsRangePreset;
-      from?: string;
-      to?: string;
-    }) => {
-      const seq = ++requestSeq.current;
-      setLoading(true);
-      setError(null);
+  // Sólo para acciones del usuario (presets, rango personalizado, reintentar):
+  // puede marcar `loading` de inmediato porque no corre dentro de un efecto.
+  const load = useCallback(async (options: RangeOptions) => {
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    setError(null);
 
-      const params = new URLSearchParams({ range: options.preset });
-      if (options.preset === 'custom') {
-        params.set('from', options.from ?? '');
-        params.set('to', options.to ?? '');
-      }
+    const result = await requestSummary(options);
+    if (seq !== requestSeq.current) return; // llegó tarde: la descarta
 
-      try {
-        const response = await fetch(
-          `/api/admin/analytics/summary?${params.toString()}`,
-          withAdminAuth(),
-        );
-        const payload = (await response.json().catch(() => null)) as SummaryPayload | null;
+    if (result.ok) {
+      setSummary(result.summary);
+    } else {
+      setSummary(null);
+      setError(result.error);
+    }
+    setLoading(false);
+  }, []);
 
-        if (seq !== requestSeq.current) return; // llegó tarde: la descarta
-
-        if (!response.ok || !payload?.ok) {
-          setSummary(null);
-          setError(
-            (payload && 'error' in payload && payload.error) ||
-              'No se pudo cargar el resumen de ventas.',
-          );
-          return;
-        }
-
-        setSummary(payload);
-      } catch {
-        if (seq !== requestSeq.current) return;
-        setError('Error de red al cargar analytics. Revisa tu conexión y reintenta.');
-      } finally {
-        if (seq === requestSeq.current) setLoading(false);
-      }
-    },
-    [],
-  );
-
-  // Con sesión de Platform Admin activa, carga el resumen una vez.
+  // Con sesión de Platform Admin activa, carga el resumen una vez. El estado se
+  // aplica en el callback de la promesa (nunca de forma síncrona dentro del
+  // efecto) y se descarta si la sesión cambió o el componente se desmontó.
   useEffect(() => {
-    if (admin.status === 'authenticated') void load({ preset: '30d' });
-  }, [admin.status, load]);
+    if (admin.status !== 'authenticated') return;
+    const seq = ++requestSeq.current;
+    let cancelled = false;
+    void requestSummary({ preset: '30d' }).then((result) => {
+      if (cancelled || seq !== requestSeq.current) return;
+      if (result.ok) {
+        setSummary(result.summary);
+        setError(null);
+      } else {
+        setSummary(null);
+        setError(result.error);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [admin.status]);
 
   const customRangeInvalid =
     preset === 'custom' &&

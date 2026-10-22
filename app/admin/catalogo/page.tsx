@@ -17,6 +17,50 @@ interface MasterHit {
   archivedAt: string | null;
 }
 
+interface CatalogFacets {
+  categories: string[];
+  brands: string[];
+}
+
+interface CatalogSnapshot {
+  products: MasterHit[];
+  /** `null` cuando los facets fallaron: se conservan los que ya estaban. */
+  facets: CatalogFacets | null;
+}
+
+/**
+ * Petición pura del catálogo maestro: no toca estado de React. La usan el efecto
+ * de carga inicial (que aplica la respuesta en su callback) y `load`, que sí
+ * actualiza estado porque lo dispara un evento del usuario.
+ */
+async function requestCatalog(params: URLSearchParams): Promise<CatalogSnapshot> {
+  const response = await fetch(
+    `/api/admin/master-products?${params.toString()}`,
+    withAdminAuth(),
+  );
+  const payload = (await response.json().catch(() => null)) as {
+    products?: MasterHit[];
+    error?: string;
+  } | null;
+  if (!response.ok) throw new Error(payload?.error ?? 'No autorizado.');
+
+  const products = payload?.products ?? [];
+  const facetResponse = await fetch('/api/admin/master-products/facets', withAdminAuth());
+  if (!facetResponse.ok) return { products, facets: null };
+
+  const facetPayload = (await facetResponse.json().catch(() => null)) as {
+    categories?: string[];
+    brands?: string[];
+  } | null;
+  return {
+    products,
+    facets: {
+      categories: facetPayload?.categories ?? [],
+      brands: facetPayload?.brands ?? [],
+    },
+  };
+}
+
 /**
  * /admin/catalogo — Platform Admin (catálogo maestro global).
  *
@@ -30,7 +74,7 @@ export default function MasterCatalogPage() {
   const [error, setError] = useState<string | null>(null);
   const [products, setProducts] = useState<MasterHit[]>([]);
   const [query, setQuery] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterBrand, setFilterBrand] = useState('');
@@ -49,56 +93,54 @@ export default function MasterCatalogPage() {
   const [editCategory, setEditCategory] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  const load = useCallback(
-    async () => {
-      setBusy(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({
-          q: query,
-          includeArchived: showArchived ? '1' : '0',
-        });
-        if (filterCategory) params.set('category', filterCategory);
-        if (filterBrand) params.set('brand', filterBrand);
-        const response = await fetch(
-          `/api/admin/master-products?${params.toString()}`,
-          withAdminAuth(),
-        );
-        const payload = (await response.json().catch(() => null)) as {
-          products?: MasterHit[];
-          error?: string;
-        } | null;
-        if (!response.ok) throw new Error(payload?.error ?? 'No autorizado.');
-        setProducts(payload?.products ?? []);
+  // Sólo para acciones del usuario: marca `busy` de inmediato porque no corre
+  // dentro de un efecto.
+  const load = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        includeArchived: showArchived ? '1' : '0',
+      });
+      if (filterCategory) params.set('category', filterCategory);
+      if (filterBrand) params.set('brand', filterBrand);
 
-        const facetResponse = await fetch(
-          '/api/admin/master-products/facets',
-          withAdminAuth(),
-        );
-        if (facetResponse.ok) {
-          const facetPayload = (await facetResponse.json().catch(() => null)) as {
-            categories?: string[];
-            brands?: string[];
-          } | null;
-          setFacets({
-            categories: facetPayload?.categories ?? [],
-            brands: facetPayload?.brands ?? [],
-          });
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'No autorizado.');
-      } finally {
-        setBusy(false);
-      }
-    },
-    [filterBrand, filterCategory, query, showArchived],
-  );
+      const snapshot = await requestCatalog(params);
+      setProducts(snapshot.products);
+      if (snapshot.facets) setFacets(snapshot.facets);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No autorizado.');
+    } finally {
+      setBusy(false);
+    }
+  }, [filterBrand, filterCategory, query, showArchived]);
 
+  // Carga inicial al activarse la sesión de Platform Admin. El estado se aplica
+  // en el callback de la promesa (nunca de forma síncrona dentro del efecto) y
+  // se descarta si la sesión cambió o el componente se desmontó.
   useEffect(() => {
-    if (admin.status === 'authenticated') void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga única al autenticar
+    if (admin.status !== 'authenticated') return;
+    let cancelled = false;
+    // Primer listado sin filtros: es el estado inicial del panel.
+    void requestCatalog(new URLSearchParams({ q: '', includeArchived: '0' }))
+      .then((snapshot) => {
+        if (cancelled) return;
+        setProducts(snapshot.products);
+        if (snapshot.facets) setFacets(snapshot.facets);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'No autorizado.');
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [admin.status]);
-
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
