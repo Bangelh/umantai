@@ -131,7 +131,7 @@ export default async function RootLayout({
           {/* Top Navigation */}
           <nav aria-label={t('nav.primary')} className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-5 sm:px-8 h-20 flex items-center justify-between gap-4">
-              <Link href="/" className="shrink-0" aria-label="UMANTAI — inicio">
+              <Link href="/" className="shrink-0" aria-label={t('nav.homeAria')}>
                 <BrandLogo />
               </Link>
               <div className="flex items-center gap-2 sm:gap-4">

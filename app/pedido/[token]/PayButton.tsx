@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useI18n } from "@/components/i18n/I18nProvider";
+
 /**
  * Botón "Pay with Mercado Pago" de la página de estado del pedido.
  *
@@ -23,6 +25,7 @@ interface PayButtonProps {
 }
 
 export function PayButton({ publicToken, amountLabel }: PayButtonProps) {
+  const { t } = useI18n();
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const handlePay = async () => {
@@ -40,7 +43,7 @@ export function PayButton({ publicToken, amountLabel }: PayButtonProps) {
       const initPoint = typeof payload?.initPoint === "string" ? payload.initPoint : null;
 
       if (!response.ok || !initPoint) {
-        toast.error(payload?.error ?? "We could not open Mercado Pago. Please try again.");
+        toast.error(payload?.error ?? t("order.payFailed"));
         setIsRedirecting(false);
         return;
       }
@@ -49,7 +52,7 @@ export function PayButton({ publicToken, amountLabel }: PayButtonProps) {
       // Mercado Pago, no dentro de la app. No usamos router.push().
       window.location.assign(initPoint);
     } catch {
-      toast.error("Network error. Your payment was not started.");
+      toast.error(t("order.payNetwork"));
       setIsRedirecting(false);
     }
   };
@@ -62,10 +65,10 @@ export function PayButton({ publicToken, amountLabel }: PayButtonProps) {
         disabled={isRedirecting}
         className="inline-flex h-14 w-full items-center justify-center rounded-2xl bg-[#009EE3] px-8 font-medium text-white transition-colors hover:bg-[#0089c7] disabled:cursor-not-allowed disabled:bg-[#009EE3]/60 sm:w-auto"
       >
-        {isRedirecting ? "Opening Mercado Pago…" : `Pay ${amountLabel} with Mercado Pago`}
+        {isRedirecting ? t("order.payOpening") : t("order.payCta", { amount: amountLabel })}
       </button>
       <p className="mt-3 text-xs text-white/40">
-        You will be redirected to Mercado Pago to finish the payment.
+        {t("order.payRedirect")}
       </p>
     </div>
   );

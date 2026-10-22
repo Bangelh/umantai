@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { expireStaleOrders, getIssuedPickupCode, getOrderByPublicToken } from "@/lib/commerce.server";
 import {
   evaluateOrderPayability,
-  type FulfillmentType,
   type OrderStatus,
   type OrderWithItems,
   type PickupCode,
 } from "@/lib/commerce";
 import { PayButton } from "./PayButton";
+import { getTranslator } from "@/lib/i18n/server";
+import type { Translator } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n/dictionaries";
 
 /**
  * /pedido/[token] — estado público del pedido.
@@ -29,20 +31,6 @@ import { PayButton } from "./PayButton";
  * descarta los PIN vencidos— y se renderiza en grande, tipo ticket.
  */
 
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  pending_payment: "Awaiting payment",
-  confirmed: "Payment confirmed",
-  preparing: "Being prepared",
-  ready_for_pickup: "Ready for pickup",
-  picked_up: "Picked up",
-  out_for_delivery: "Out for delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  expired: "Reservation expired",
-  refunded: "Refunded",
-};
-
 const STATUS_TONES: Record<OrderStatus, string> = {
   pending_payment: "border-amber-500/30 bg-amber-500/10 text-amber-300",
   confirmed: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
@@ -57,12 +45,6 @@ const STATUS_TONES: Record<OrderStatus, string> = {
   refunded: "border-red-500/30 bg-red-500/10 text-red-300",
 };
 
-const FULFILLMENT_LABELS: Record<FulfillmentType, string> = {
-  pickup_locker: "Pickup at locker",
-  pickup_counter: "Pickup at counter",
-  delivery: "Home delivery",
-};
-
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -74,22 +56,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  */
 type PaymentReturnFlag = "exitoso" | "pendiente" | "fallido";
 
-const PAYMENT_RETURN_NOTICES: Record<PaymentReturnFlag, { tone: string; message: string }> = {
-  exitoso: {
-    tone: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-    message:
-      "Mercado Pago approved your payment. We are confirming it against this order — if the status has not changed yet, check again in a few seconds.",
-  },
-  pendiente: {
-    tone: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-    message:
-      "Your payment is pending. Yape, Plin and other methods can take a few minutes to confirm; the order updates as soon as Mercado Pago reports it.",
-  },
-  fallido: {
-    tone: "border-red-500/30 bg-red-500/10 text-red-200",
-    message:
-      "The payment was not completed and nothing was charged. You can try again with another payment method.",
-  },
+const PAYMENT_RETURN_TONES: Record<PaymentReturnFlag, string> = {
+  exitoso: "border-sky-500/30 bg-sky-500/10 text-sky-200",
+  pendiente: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  fallido: "border-red-500/30 bg-red-500/10 text-red-200",
 };
 
 function readPaymentReturnFlag(value: string | string[] | undefined): PaymentReturnFlag | null {
@@ -131,7 +101,15 @@ function formatDateTime(value: string | null): string | null {
   }).format(date);
 }
 
-function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode: boolean }) {
+function Notice({
+  order,
+  hasPickupCode,
+  t,
+}: {
+  order: OrderWithItems;
+  hasPickupCode: boolean;
+  t: Translator;
+}) {
   if (order.status === "pending_payment") {
     const expiresAt = formatDateTime(order.reservationExpiresAt);
 
@@ -140,17 +118,16 @@ function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode
     if (evaluateOrderPayability(order) !== "payable") {
       return (
         <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
-          The stock reservation for this order expired
-          {expiresAt ? ` on ${expiresAt}` : ""}. Nothing was charged. Start the checkout
-          again to reserve the items.
+          {expiresAt
+            ? t("order.notice.expiredReservationAt", { date: expiresAt })
+            : t("order.notice.expiredReservation")}
         </p>
       );
     }
 
     return (
       <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
-        We are holding your items{expiresAt ? ` until ${expiresAt}` : ""}. They are released back
-        to the store if the payment is not completed in time.
+        {expiresAt ? t("order.notice.holdingUntil", { date: expiresAt }) : t("order.notice.holding")}
       </p>
     );
   }
@@ -158,7 +135,7 @@ function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode
   if (order.status === "cancelled" || order.status === "expired") {
     return (
       <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
-        This order is no longer active. Nothing was charged and the stock was released.
+        {t("order.notice.inactive")}
       </p>
     );
   }
@@ -172,8 +149,9 @@ function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode
     // "Ready for pickup" y ningún código. Hay que decirle que no venga y que pregunte.
     return (
       <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
-        Your order is ready{order.lockerCode ? ` at ${order.lockerCode}` : ""}, but its pickup code is
-        no longer valid. Contact the store before coming so they can issue a new one.
+        {order.lockerCode
+          ? t("order.notice.readyAt", { location: order.lockerCode })
+          : t("order.notice.ready")}
       </p>
     );
   }
@@ -188,11 +166,19 @@ function Notice({ order, hasPickupCode }: { order: OrderWithItems; hasPickupCode
  * tiene que poder leerlo o dictarlo en voz alta a la operaria, y esconderlo no protegería
  * nada (quien tiene el enlace ya tiene el pedido).
  */
-function PickupCodeTicket({ order, code }: { order: OrderWithItems; code: PickupCode }) {
+function PickupCodeTicket({
+  order,
+  code,
+  t,
+}: {
+  order: OrderWithItems;
+  code: PickupCode;
+  t: Translator;
+}) {
   const expiresAt = formatDateTime(code.expiresAt);
   const location = code.lockerSlot
-    ? `Locker ${code.lockerSlot}`
-    : code.lockerCode ?? order.lockerCode ?? "Store counter";
+    ? t("order.locker", { slot: code.lockerSlot })
+    : code.lockerCode ?? order.lockerCode ?? t("order.storeCounter");
 
   return (
     <section
@@ -200,12 +186,12 @@ function PickupCodeTicket({ order, code }: { order: OrderWithItems; code: Pickup
       className="mt-6 rounded-3xl border-2 border-emerald-400/60 bg-emerald-500/10 px-6 pt-6 pb-0 overflow-hidden"
     >
       <p id="pickup-code-heading" className="text-center text-xs tracking-[0.3em] text-emerald-300">
-        YOUR PICKUP CODE
+        {t("order.pickupKicker")}
       </p>
 
       {/* Los dígitos se anuncian una sola vez y de corrido: un lector de pantalla no
           debería leer "uno, guion, dos..." seis casillas sueltas. */}
-      <p className="sr-only">Your pickup code is {code.code.split("").join(" ")}.</p>
+      <p className="sr-only">{t("order.pickupSr", { code: code.code.split("").join(" ") })}</p>
       <div aria-hidden="true" className="mt-5 flex justify-center gap-2 sm:gap-3">
         {code.code.split("").map((digit, index) => (
           <span
@@ -218,17 +204,19 @@ function PickupCodeTicket({ order, code }: { order: OrderWithItems; code: Pickup
       </div>
 
       <p className="mt-5 text-center text-sm text-emerald-100">
-        Show this code at the store. The operator types it in to hand over your order.
+        {t("order.pickupBody")}
       </p>
 
       <dl className="mt-6 -mx-6 grid grid-cols-2 gap-px border-t-2 border-dashed border-emerald-400/40 bg-emerald-400/30 text-center">
         <div className="bg-neutral-950/80 px-4 py-4">
-          <dt className="text-[11px] tracking-widest text-white/50">PICK UP AT</dt>
+          <dt className="text-[11px] tracking-widest text-white/50">{t("order.pickupAt")}</dt>
           <dd className="mt-1 font-semibold break-words">{location}</dd>
         </div>
         <div className="bg-neutral-950/80 px-4 py-4">
-          <dt className="text-[11px] tracking-widest text-white/50">CODE VALID UNTIL</dt>
-          <dd className="mt-1 font-semibold">{expiresAt ?? "Ask the store"}</dd>
+          <dt className="text-[11px] tracking-widest text-white/50">
+            {t("order.pickupValidUntil")}
+          </dt>
+          <dd className="mt-1 font-semibold">{expiresAt ?? t("order.askStore")}</dd>
         </div>
       </dl>
     </section>
@@ -245,6 +233,7 @@ export default async function OrderStatusPage({
   // En esta versión de Next `params` y `searchParams` son Promises: hay que esperarlas.
   const { token } = await params;
   const { pago } = await searchParams;
+  const { t } = await getTranslator();
 
   // Validación barata: evita mandar basura a Postgres con un cast ::uuid.
   if (!UUID_PATTERN.test(token)) notFound();
@@ -259,15 +248,13 @@ export default async function OrderStatusPage({
     return (
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-8">
         <div className="max-w-md text-center">
-          <h1 className="text-3xl tracking-tight mb-4">We could not load this order</h1>
-          <p className="text-white/60 mb-8">
-            This is usually temporary. Please try again in a moment.
-          </p>
+          <h1 className="text-3xl tracking-tight mb-4">{t("order.loadFailedTitle")}</h1>
+          <p className="text-white/60 mb-8">{t("order.loadFailedBody")}</p>
           <Link
             href="/products"
             className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
           >
-            Back to the collection
+            {t("order.backToCollection")}
           </Link>
         </div>
       </div>
@@ -312,9 +299,9 @@ export default async function OrderStatusPage({
     }
   }
 
-  const statusLabel = STATUS_LABELS[order.status];
+  const statusLabel = t(`status.${order.status}` as MessageKey);
   const statusTone = STATUS_TONES[order.status];
-  const fulfillmentLabel = FULFILLMENT_LABELS[order.fulfillmentType];
+  const fulfillmentLabel = t(`order.fulfillment.${order.fulfillmentType}` as MessageKey);
   const placedAt = formatDateTime(order.createdAt);
 
   // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
@@ -325,13 +312,19 @@ export default async function OrderStatusPage({
   // El aviso de regreso solo se muestra si el pago sigue pendiente: si el pedido ya
   // está confirmado, el badge de estado cuenta la historia y el aviso sobra.
   const returnFlag = readPaymentReturnFlag(pago);
-  const returnNotice = returnFlag && order.status === "pending_payment" ? PAYMENT_RETURN_NOTICES[returnFlag] : null;
+  const returnNotice =
+    returnFlag && order.status === "pending_payment"
+      ? {
+          tone: PAYMENT_RETURN_TONES[returnFlag],
+          messageKey: `order.return.${returnFlag}` as MessageKey,
+        }
+      : null;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white">
       <div className="max-w-3xl mx-auto px-8 py-12">
         <Link href="/products" className="text-sm text-white/50 hover:text-white/80">
-          ← Continue shopping
+          {t("order.continueShopping")}
         </Link>
 
         <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -342,40 +335,42 @@ export default async function OrderStatusPage({
           {simulated && (
             <span
               className="rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-1 text-sm text-fuchsia-200"
-              title="Payment approved by the QA simulator, not by Mercado Pago"
+              title={t("order.simulatedTitle")}
             >
-              Pago simulado — QA
+              {t("order.simulatedBadge")}
             </span>
           )}
         </div>
 
         <p className="mt-3 text-sm text-white/50">
-          {placedAt ? `Placed on ${placedAt}` : "Just placed"}
+          {placedAt ? t("order.placedOn", { date: placedAt }) : t("order.justPlaced")}
           {order.itemCount > 0
-            ? ` · ${order.itemCount} item${order.itemCount === 1 ? "" : "s"}`
+            ? ` · ${t(
+                order.itemCount === 1 ? "order.itemCountOne" : "order.itemCountMany",
+                { count: order.itemCount },
+              )}`
             : ""}
         </p>
 
-        <Notice order={order} hasPickupCode={pickupCode !== null} />
+        <Notice order={order} hasPickupCode={pickupCode !== null} t={t} />
 
         {returnNotice && (
           <div className={`mt-4 rounded-2xl border px-5 py-4 text-sm ${returnNotice.tone}`}>
-            <p>{returnNotice.message}</p>
+            <p>{t(returnNotice.messageKey)}</p>
             <Link href={`/pedido/${order.publicToken}`} className="mt-2 inline-block underline underline-offset-4">
-              Check status again
+              {t("order.checkAgain")}
             </Link>
           </div>
         )}
 
-        {pickupCode && <PickupCodeTicket order={order} code={pickupCode} />}
+        {pickupCode && <PickupCodeTicket order={order} code={pickupCode} t={t} />}
 
         {canPay && (
           <div className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-6">
-            <div className="text-xs tracking-widest text-white/50 mb-2">PAYMENT</div>
-            <p className="text-sm text-white/70 mb-5">
-              Pay with Yape, Plin, card or your Mercado Pago balance. The stock stays reserved
-              for you until the reservation expires.
-            </p>
+            <div className="text-xs tracking-widest text-white/50 mb-2">
+              {t("order.paymentKicker")}
+            </div>
+            <p className="text-sm text-white/70 mb-5">{t("order.paymentBody")}</p>
             <PayButton
               publicToken={order.publicToken}
               amountLabel={formatMoney(order.total, order.currency)}
@@ -423,33 +418,33 @@ export default async function OrderStatusPage({
         {/* Totales */}
         <div className="mt-10 border-t border-white/10 pt-6 space-y-2 text-sm">
           <div className="flex justify-between text-white/70">
-            <span>Subtotal</span>
+            <span>{t("order.subtotal")}</span>
             <span className="font-mono">{formatMoney(order.subtotal, order.currency)}</span>
           </div>
 
           {order.discountTotal > 0 && (
             <div className="flex justify-between text-white/70">
-              <span>Discount</span>
+              <span>{t("order.discount")}</span>
               <span className="font-mono">−{formatMoney(order.discountTotal, order.currency)}</span>
             </div>
           )}
 
           {order.taxTotal > 0 && (
             <div className="flex justify-between text-white/70">
-              <span>Tax</span>
+              <span>{t("order.tax")}</span>
               <span className="font-mono">{formatMoney(order.taxTotal, order.currency)}</span>
             </div>
           )}
 
           {order.shippingTotal > 0 && (
             <div className="flex justify-between text-white/70">
-              <span>Shipping</span>
+              <span>{t("order.shipping")}</span>
               <span className="font-mono">{formatMoney(order.shippingTotal, order.currency)}</span>
             </div>
           )}
 
           <div className="flex justify-between items-baseline border-t border-white/10 pt-4 text-xl">
-            <span>Total</span>
+            <span>{t("order.total")}</span>
             <span className="font-mono tracking-tighter">
               {formatMoney(order.total, order.currency)}
             </span>
@@ -459,15 +454,21 @@ export default async function OrderStatusPage({
         {/* Entrega y contacto */}
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
           <div className="border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">FULFILLMENT</div>
+            <div className="text-xs tracking-widest text-white/50 mb-2">
+              {t("order.fulfillment")}
+            </div>
             <div className="font-medium">{fulfillmentLabel}</div>
             {order.lockerCode && (
-              <div className="text-sm text-white/60 mt-1">Location: {order.lockerCode}</div>
+              <div className="text-sm text-white/60 mt-1">
+                {t("order.location", { location: order.lockerCode })}
+              </div>
             )}
           </div>
 
           <div className="border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">CONTACT</div>
+            <div className="text-xs tracking-widest text-white/50 mb-2">
+              {t("order.contact")}
+            </div>
             <div className="font-medium break-all">{order.contactEmail}</div>
             {order.contactPhone && (
               <div className="text-sm text-white/60 mt-1">{order.contactPhone}</div>
@@ -477,13 +478,15 @@ export default async function OrderStatusPage({
 
         {order.customerNote && (
           <div className="mt-4 border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">YOUR NOTE</div>
+            <div className="text-xs tracking-widest text-white/50 mb-2">
+              {t("order.yourNote")}
+            </div>
             <p className="text-sm text-white/80 whitespace-pre-wrap">{order.customerNote}</p>
           </div>
         )}
 
         <p className="mt-10 text-xs text-white/40">
-          Save this link: it is both your order reference and your payment link.
+          {t("order.saveLink")}
         </p>
       </div>
     </div>

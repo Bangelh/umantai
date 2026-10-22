@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useShoppingListStore } from "@/lib/shoppingListStore";
 import { useCartStore } from "@/lib/cartStore";
 import { toast } from "sonner";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 export default function ShoppingListPage() {
+  const { t } = useI18n();
   const { 
     items, 
     removeItem, 
@@ -43,15 +45,13 @@ export default function ShoppingListPage() {
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-6">📝</div>
-          <h1 className="text-4xl tracking-tight mb-4">Your Shopping List is empty</h1>
-          <p className="text-white/60 mb-8 max-w-md mx-auto">
-            Add products from the collection to build your personalized Umantai shopping list.
-          </p>
+          <h1 className="text-4xl tracking-tight mb-4">{t("list.emptyTitle")}</h1>
+          <p className="text-white/60 mb-8 max-w-md mx-auto">{t("list.emptyBody")}</p>
           <Link 
             href="/products" 
             className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
           >
-            Browse Products
+            {t("list.browse")}
           </Link>
         </div>
       </div>
@@ -64,9 +64,9 @@ export default function ShoppingListPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8 print:mb-4">
           <div>
-            <div className="uppercase tracking-[3px] text-xs text-white/50">PLANNING</div>
-            <h1 className="text-5xl tracking-tighter font-semibold">My Shopping List</h1>
-            <p className="text-white/60 mt-1">{totalItems} items • Umantai 2026</p>
+            <div className="uppercase tracking-[3px] text-xs text-white/50">{t("list.kicker")}</div>
+            <h1 className="text-5xl tracking-tighter font-semibold">{t("list.title")}</h1>
+            <p className="text-white/60 mt-1">{t("list.summary", { count: totalItems })}</p>
           </div>
           
           <div className="flex flex-col items-end gap-2 print:hidden">
@@ -79,7 +79,7 @@ export default function ShoppingListPage() {
                   onChange={(e) => setPrintUncheckedOnly(e.target.checked)}
                   className="accent-white"
                 />
-                <span>Only unchecked</span>
+                <span>{t("list.onlyUnchecked")}</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -88,7 +88,7 @@ export default function ShoppingListPage() {
                   onChange={(e) => setIncludePricesInPrint(e.target.checked)}
                   className="accent-white"
                 />
-                <span>Include prices</span>
+                <span>{t("list.includePrices")}</span>
               </label>
             </div>
 
@@ -97,16 +97,16 @@ export default function ShoppingListPage() {
               <button
                 onClick={() => {
                   if (checkedItems.length === 0) {
-                    toast.info("No checked items to add");
+                    toast.info(t("list.noChecked"));
                     return;
                   }
                   const cart = useCartStore.getState();
                   checkedItems.forEach(item => cart.addItem(item.product, item.quantity));
-                  toast.success(`Added ${checkedItems.length} items to cart`);
+                  toast.success(t("list.addedChecked", { count: checkedItems.length }));
                 }}
                 className="px-4 py-1 text-xs rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
               >
-                Add checked to Cart
+                {t("list.addChecked")}
               </button>
             </div>
 
@@ -116,19 +116,19 @@ export default function ShoppingListPage() {
                 onClick={handlePrint}
                 className="px-6 py-2 rounded-full border border-white/20 hover:bg-white/5 transition-colors flex items-center gap-2"
               >
-                🖨️ Print List
+                🖨️ {t("list.print")}
               </button>
               <button 
                 onClick={handlePrint}
                 className="px-6 py-2 rounded-full bg-white text-black font-medium hover:bg-white/90 transition-colors flex items-center gap-2"
               >
-                🖨️ Compact Print
+                🖨️ {t("list.compactPrint")}
               </button>
               <button 
                 onClick={clearList}
                 className="px-6 py-2 rounded-full border border-white/20 hover:bg-white/5 transition-colors text-red-400"
               >
-                Clear All
+                {t("list.clearAll")}
               </button>
             </div>
           </div>
@@ -139,16 +139,18 @@ export default function ShoppingListPage() {
           <div className="mb-10 bg-neutral-900 border border-emerald-500/20 rounded-3xl p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="text-emerald-400 text-sm font-medium tracking-widest">SMART ACTIONS</div>
-                <h2 className="text-2xl font-semibold tracking-tight">Ready to Fulfill</h2>
+                <div className="text-emerald-400 text-sm font-medium tracking-widest">
+                  {t("list.smartKicker")}
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight">{t("list.smartTitle")}</h2>
               </div>
               <div className="text-sm text-white/60 bg-neutral-800 px-3 py-1 rounded-full">
-                {checkedItems.length} item{checkedItems.length > 1 ? 's' : ''} ready
+                {t("list.readyCount", { count: checkedItems.length })}
               </div>
             </div>
 
             <p className="text-white/70 text-sm mb-6">
-              You’ve checked these off. How would you like to receive them?
+              {t("list.smartBody")}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -157,38 +159,38 @@ export default function ShoppingListPage() {
                 onClick={() => {
                   const cart = useCartStore.getState();
                   checkedItems.forEach(item => cart.addItem(item.product, item.quantity));
-                  toast.success(`${checkedItems.length} items added to Cart`);
+                  toast.success(t("list.addedChecked", { count: checkedItems.length }));
                 }}
                 className="flex flex-col items-start p-5 rounded-2xl border border-white/10 hover:border-emerald-400/40 bg-neutral-950 text-left transition-all active:scale-[0.985]"
               >
-                <div className="text-lg font-semibold mb-1">🛒 Ready to Buy</div>
-                <div className="text-sm text-white/70">Add to Cart for online purchase</div>
+                <div className="text-lg font-semibold mb-1">🛒 {t("list.readyBuy")}</div>
+                <div className="text-sm text-white/70">{t("list.readyBuyBody")}</div>
               </button>
 
               {/* Ready for Pickup */}
               <button
                 onClick={() => {
-                  toast.success(`Sent ${checkedItems.length} items for Pickup`, {
-                    description: "You can collect them using the Kiosk at our SoHo store",
+                  toast.success(t("list.pickupToast", { count: checkedItems.length }), {
+                    description: t("list.pickupToastBody"),
                   });
                 }}
                 className="flex flex-col items-start p-5 rounded-2xl border border-white/10 hover:border-emerald-400/40 bg-neutral-950 text-left transition-all active:scale-[0.985]"
               >
-                <div className="text-lg font-semibold mb-1">📍 Ready for Pickup</div>
-                <div className="text-sm text-white/70">Collect at our flagship store</div>
+                <div className="text-lg font-semibold mb-1">📍 {t("list.readyPickup")}</div>
+                <div className="text-sm text-white/70">{t("list.readyPickupBody")}</div>
               </button>
 
               {/* Delivery */}
               <button
                 onClick={() => {
-                  toast.success(`Delivery requested for ${checkedItems.length} items`, {
-                    description: "Our team will contact you shortly to schedule",
+                  toast.success(t("list.deliveryToast", { count: checkedItems.length }), {
+                    description: t("list.deliveryToastBody"),
                   });
                 }}
                 className="flex flex-col items-start p-5 rounded-2xl border border-white/10 hover:border-emerald-400/40 bg-neutral-950 text-left transition-all active:scale-[0.985]"
               >
-                <div className="text-lg font-semibold mb-1">🚚 Delivery</div>
-                <div className="text-sm text-white/70">Have it delivered to you</div>
+                <div className="text-lg font-semibold mb-1">🚚 {t("list.delivery")}</div>
+                <div className="text-sm text-white/70">{t("list.deliveryBody")}</div>
               </button>
             </div>
           </div>
@@ -230,6 +232,8 @@ export default function ShoppingListPage() {
                   >
                     <button
                       onClick={() => toggleChecked(item.id)}
+                      aria-label={t("list.markItem", { name: item.product.name })}
+                      aria-pressed={item.checked}
                       className={`mt-1 w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
                         item.checked 
                           ? "bg-white border-white" 
@@ -255,6 +259,7 @@ export default function ShoppingListPage() {
                           type="number"
                           value={item.quantity}
                           onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
+                          aria-label={t("list.quantity", { name: item.product.name })}
                           className="w-14 bg-neutral-800 border border-white/20 rounded px-2 py-1 text-center"
                           min="1"
                         />
@@ -263,7 +268,8 @@ export default function ShoppingListPage() {
                           type="text"
                           value={item.note || ""}
                           onChange={(e) => updateNote(item.id, e.target.value)}
-                          placeholder="Add note..."
+                          placeholder={t("list.addNote")}
+                          aria-label={t("list.note", { name: item.product.name })}
                           className="flex-1 bg-neutral-800 border border-white/20 rounded px-3 py-1 text-sm placeholder:text-white/40"
                         />
                       </div>
@@ -273,15 +279,15 @@ export default function ShoppingListPage() {
                       <button 
                         onClick={() => {
                           useCartStore.getState().addItem(item.product, item.quantity);
-                          toast.success(`Added ${item.product.name} to cart`);
+                          toast.success(t("list.addedToCart", { name: item.product.name }));
                         }}
                         className="text-xs px-3 py-1 rounded-full bg-white text-black font-medium hover:bg-white/90 active:scale-[0.985] transition-all"
                       >
-                        Add to Cart
+                        {t("list.addToCart")}
                       </button>
-                      <button 
-                        onClick={() => removeItem(item.id)}
-                        className="text-white/40 hover:text-red-400 text-xl leading-none"
+                      <button                          onClick={() => removeItem(item.id)}
+                          aria-label={t("list.remove", { name: item.product.name })}
+                          className="text-white/40 hover:text-red-400 text-xl leading-none"
                       >
                         ×
                       </button>
@@ -295,12 +301,12 @@ export default function ShoppingListPage() {
 
         {/* Totals */}
         <div className="mt-8 pt-6 border-t border-white/10 flex justify-between items-center text-lg font-medium">
-          <div>Total Items</div>
+          <div>{t("list.totalItemsLabel")}</div>
           <div className="font-mono">{totalItems}</div>
         </div>
 
         <div className="flex justify-between items-center text-xl font-semibold mt-1">
-          <div>Estimated Total</div>
+          <div>{t("list.estimatedTotal")}</div>
           <div className="font-mono">
             ${items.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toFixed(2)}
           </div>
@@ -308,9 +314,9 @@ export default function ShoppingListPage() {
 
         {/* Ultra Compact Print Version */}
         <div className="hidden print:block mt-4">
-          <div className="text-[10pt] font-semibold mb-1">Umantai Shopping List</div>
+          <div className="text-[10pt] font-semibold mb-1">{t("list.printHeader")}</div>
           <div className="text-[8pt] text-gray-600 mb-2">
-            {new Date().toLocaleDateString()} — {totalItems} items
+            {t("list.printMeta", { date: new Date().toLocaleDateString(), count: totalItems })}
           </div>
 
           {Object.entries(groupedItems).map(([category, categoryItems]) => {
@@ -343,10 +349,12 @@ export default function ShoppingListPage() {
           })}
 
           <div className="mt-2 pt-1 border-t text-[8.5pt] flex justify-between">
-            <span>Total Items: {totalItems}</span>
+            <span>{t("list.totalItems", { count: totalItems })}</span>
             {includePricesInPrint && (
               <span className="font-mono">
-                Total: ${items.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toFixed(2)}
+                {t("list.printTotal", {
+                  amount: `$${items.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toFixed(2)}`,
+                })}
               </span>
             )}
           </div>
@@ -358,13 +366,13 @@ export default function ShoppingListPage() {
             onClick={() => window.print()}
             className="flex-1 py-3 rounded-xl border border-white/20 text-sm font-medium flex items-center justify-center gap-2 active:bg-white/5"
           >
-            🖨️ Print List
+            🖨️ {t("list.print")}
           </button>
           <button 
             onClick={() => window.print()}
             className="flex-1 py-3 rounded-xl bg-white text-black text-sm font-medium flex items-center justify-center gap-2 active:bg-white/90"
           >
-            Compact Print
+            {t("list.compactPrint")}
           </button>
         </div>
       </div>

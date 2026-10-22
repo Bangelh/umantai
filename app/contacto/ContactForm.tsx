@@ -150,7 +150,7 @@ export function ContactForm() {
             aria-invalid={Boolean(errors.email)}
             aria-describedby={errors.email ? 'contact-email-error' : undefined}
             className="field-input"
-            placeholder="tu@correo.com"
+            placeholder={t('contact.emailPlaceholder')}
           />
           {errors.email && (
             <p id="contact-email-error" className="mt-1 text-xs text-destructive">

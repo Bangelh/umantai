@@ -366,11 +366,11 @@ export default function MasterCatalogPage() {
                     <input value={editName} onChange={(event) => setEditName(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border-strong bg-background px-2 text-sm" />
                   </label>
                   <label className="text-xs text-tertiary">
-                    Marca
+                    {t('catalog.brand')}
                     <input value={editBrand} onChange={(event) => setEditBrand(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border-strong bg-background px-2 text-sm" />
                   </label>
                   <label className="text-xs text-tertiary">
-                    Categoría
+                    {t('catalog.category')}
                     <input value={editCategory} onChange={(event) => setEditCategory(event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border-strong bg-background px-2 text-sm" />
                   </label>
                   <label className="text-xs text-tertiary sm:col-span-2">

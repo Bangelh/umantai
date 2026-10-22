@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label htmlFor="range-from" className="field-label">
-                    Desde
+                    {t('analytics.from')}
                   </label>
                   <input
                     id="range-from"
@@ -196,7 +196,7 @@ export default function AnalyticsPage() {
                 </div>
                 <div>
                   <label htmlFor="range-to" className="field-label">
-                    Hasta
+                    {t('analytics.to')}
                   </label>
                   <input
                     id="range-to"
@@ -365,10 +365,10 @@ export default function AnalyticsPage() {
               {/* Pedidos por estado */}
               <section aria-labelledby="status-title" className="surface-card p-4 sm:p-6">
                 <h2 id="status-title" className="text-lg font-medium">
-                  Pedidos por estado
+                  {t('analytics.ordersByStatus')}
                 </h2>
                 <p className="mt-1 text-xs text-tertiary">
-                  Todos los pedidos creados en el período, incluidos los que no son venta.
+                  {t('analytics.ordersByStatusHint')}
                 </p>
                 <ul className="mt-4 space-y-2">
                   {summary.ordersByStatus.map((row) => {
@@ -400,7 +400,7 @@ export default function AnalyticsPage() {
               {/* Top productos */}
               <section aria-labelledby="top-title" className="surface-card p-4 sm:p-6">
                 <h2 id="top-title" className="text-lg font-medium">
-                  Productos más vendidos
+                  {t('analytics.topProducts')}
                 </h2>
                 {summary.topProducts.length === 0 ? (
                   <p className="mt-4 text-sm text-tertiary">{t('analytics.noSales')}</p>
@@ -408,12 +408,12 @@ export default function AnalyticsPage() {
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full text-sm">
                       <caption className="sr-only">
-                        Productos ordenados por ingresos en el período
+                        {t('analytics.topProductsCaption')}
                       </caption>
                       <thead>
                         <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-tertiary">
                           <th scope="col" className="py-2 pr-3 font-medium">
-                            Producto
+                            {t('analytics.productColumn')}
                           </th>
                           <th scope="col" className="py-2 pr-3 text-right font-medium">
                             Unid.

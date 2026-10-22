@@ -547,11 +547,11 @@ export function MerchantCatalog({
                 <label className="text-xs text-tertiary">
                   {t('merchant.unit')}
                   <select value={unit} onChange={(event) => setUnit(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm">
-                    <option value="unidad">unidad</option>
-                    <option value="kg">kg</option>
-                    <option value="metro">metro</option>
-                    <option value="litro">litro</option>
-                    <option value="paquete">paquete</option>
+                    <option value="unidad">{t('merchant.unitUnit')}</option>
+                    <option value="kg">{t('merchant.unitKg')}</option>
+                    <option value="metro">{t('merchant.unitMeter')}</option>
+                    <option value="litro">{t('merchant.unitLiter')}</option>
+                    <option value="paquete">{t('merchant.unitPack')}</option>
                   </select>
                 </label>
                 <label className="text-xs text-tertiary sm:col-span-2">
