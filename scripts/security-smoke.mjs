@@ -227,29 +227,41 @@ try {
 try {
   const probe = await fetch(`${base}/api/auth/test/outbox?email=smoke-probe%40example.invalid`);
   const testMode = probe.status === 200;
-  const maxAttempts = testMode ? 130 : 18;
+  // Margen amplio sobre el cupo (120) para que el bucket llegue al tope aunque
+  // el balanceador reparta algunas peticiones en otra clave de IP.
+  const maxAttempts = testMode ? 200 : 18;
   const concurrency = testMode ? 20 : 6;
   let limitedAt = null;
   let issued = 0;
+  let errors = 0;
 
   const attempt = async () => {
     while (limitedAt === null && issued < maxAttempts) {
       issued += 1;
-      const response = await fetch(`${base}/api/auth/sign-in/email`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', origin: base },
-        body: JSON.stringify({
-          email: `rate-limit-${Date.now()}-${issued}@example.invalid`,
-          password: 'not-the-password',
-        }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (response.status === 429 && limitedAt === null) limitedAt = issued;
+      try {
+        const response = await fetch(`${base}/api/auth/sign-in/email`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', origin: base },
+          body: JSON.stringify({
+            email: `rate-limit-${Date.now()}-${issued}@example.invalid`,
+            password: 'not-the-password',
+          }),
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (response.status === 429 && limitedAt === null) limitedAt = issued;
+      } catch {
+        // Un timeout aislado no invalida la prueba; se cuenta y se sigue.
+        errors += 1;
+      }
     }
   };
 
   await Promise.all(Array.from({ length: concurrency }, attempt));
-  record('rate limit de login', limitedAt !== null, limitedAt ? `429 en intento ${limitedAt}` : 'nunca 429');
+  record(
+    'rate limit de login',
+    limitedAt !== null,
+    limitedAt ? `429 en intento ${limitedAt}` : `nunca 429 (${issued} intentos, ${errors} errores de red)`,
+  );
 } catch (error) {
   record('rate limit de login', false, error instanceof Error ? error.message : String(error));
 }
