@@ -141,7 +141,8 @@ export default async function RootLayout({
             </div>
           </nav>
 
-          <div id="contenido" className="flex-1 pb-16 lg:pb-0">
+          {/* tabIndex -1: el enlace "Saltar al contenido" mueve el foco acá. */}
+          <div id="contenido" tabIndex={-1} className="flex-1 pb-16 lg:pb-0 outline-none">
             {children}
           </div>
 

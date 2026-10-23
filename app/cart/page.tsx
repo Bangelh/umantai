@@ -221,7 +221,7 @@ export default function CartPage() {
   */
   if (!hydrated) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <main className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center" role="status" aria-live="polite">
           <div className="mb-4 text-5xl" aria-hidden="true">
             🛍️
@@ -229,13 +229,13 @@ export default function CartPage() {
           <h1 className="text-3xl font-semibold tracking-tight">{t("cart.title")}</h1>
           <p className="mt-2 text-sm text-tertiary">{t("cart.loading")}</p>
         </div>
-      </div>
+      </main>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <main className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
           <div className="mb-4 text-5xl" aria-hidden="true">
             🛍️
@@ -249,12 +249,12 @@ export default function CartPage() {
             {t("cart.browse")}
           </Link>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 pb-16 pt-6 sm:px-6">
+    <main className="mx-auto max-w-4xl px-4 pb-16 pt-6 sm:px-6">
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("cart.title")}</h1>
       <p className="mb-6 mt-1 text-sm text-tertiary">
         {t("cart.store", {
@@ -547,6 +547,6 @@ export default function CartPage() {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

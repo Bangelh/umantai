@@ -27,7 +27,8 @@
   --um-primary: #ededed;
   --um-secondary: #b8b8c0;
   --um-tertiary: #8e8e97;
-  --um-muted: #6a6a73;
+  /* Oscuro: #6a6a73 daba 3.4–3.7:1 sobre fondo/superficie (falla AA). */
+  --um-muted: #8a8a93;
 
   /* Líneas y marca */
   --um-border: #2a2a2f;
@@ -54,7 +55,8 @@
   --um-primary: #16161a;
   --um-secondary: #45454d;
   --um-tertiary: #5d5d66;
-  --um-muted: #7a7a83;
+  /* Claro: #7a7a83 daba 3.9:1 sobre #f7f7f5 (falla AA). */
+  --um-muted: #6b6b74;
   --um-border: #e2e2df;
   --um-border-strong: #cfcfca;
   --um-brand: #16161a;

@@ -13,6 +13,7 @@ import { DEFAULT_LOCALE, type Locale } from './config';
 export const MESSAGES = {
   es: {
     'nav.primary': 'Principal',
+    'nav.bottom': 'Navegación inferior',
     'nav.home': 'Inicio',
     'nav.homeAria': 'UMANTAI — inicio',
     'nav.shop': 'Tienda',
@@ -950,6 +951,7 @@ export const MESSAGES = {
   },
   en: {
     'nav.primary': 'Main',
+    'nav.bottom': 'Bottom navigation',
     'nav.home': 'Home',
     'nav.homeAria': 'UMANTAI — home',
     'nav.shop': 'Shop',

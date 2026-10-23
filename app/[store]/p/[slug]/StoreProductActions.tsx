@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useCartStore, type CartConflict } from '@/lib/cartStore';
 import type { Product } from '@/lib/products';
@@ -48,6 +48,19 @@ export function StoreProductActions({ product }: Props) {
   );
   const [quantity, setQuantity] = useState(1);
   const [conflict, setConflict] = useState<CartConflict | null>(null);
+  const keepCartRef = useRef<HTMLButtonElement>(null);
+
+  // El aviso de otra tienda es modal: lleva el foco a la opción segura y se
+  // cierra con Escape, igual que el resto de diálogos de la tienda.
+  useEffect(() => {
+    if (!conflict) return;
+    keepCartRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConflict(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [conflict]);
 
   const selectedKey = variantKeyFromOptionValues(selected);
   const selectedVariant = hasVariants
@@ -252,6 +265,7 @@ export function StoreProductActions({ product }: Props) {
                 {t('product.switchStore')}
               </button>
               <button
+                ref={keepCartRef}
                 type="button"
                 onClick={() => setConflict(null)}
                 className="h-11 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
