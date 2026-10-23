@@ -6,6 +6,7 @@ import {
   requestedNotificationUrlOmission,
 } from '@/lib/payment-preference-routing';
 import { evaluateOrderPayability } from '@/lib/commerce';
+import { isOnlinePaymentEnabled } from '@/lib/online-payments';
 import {
   expireStaleOrders,
   getOrderByPublicToken,
@@ -36,7 +37,14 @@ import {
  * ─── ESTADOS ─────────────────────────────────────────────────────────────────
  * 201 creada · 200 reutilizada · 400 token inválido · 404 pedido inexistente
  * 409 pedido no pagable (ya confirmado/cancelado, o reserva vencida) · 502 MP caído
- * 503 sin base de datos o sin MERCADOPAGO_ACCESS_TOKEN
+ * 503 pago online congelado (`online_payments_unavailable`), sin base de datos o
+ *     sin MERCADOPAGO_ACCESS_TOKEN
+ *
+ * ─── PAGO ONLINE CONGELADO ───────────────────────────────────────────────────
+ * Mientras `ONLINE_PAYMENTS_ENABLED` no sea `1`, este endpoint responde 503 ANTES
+ * de leer el pedido y, sobre todo, ANTES de llamar a Mercado Pago. La página del
+ * pedido tampoco muestra el botón (ver `lib/online-payments.ts`): cerrar el cobro
+ * no depende de que el navegador se porte bien.
  */
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,6 +119,19 @@ export async function POST(request: NextRequest) {
   if (!token) return badRequest('token is required');
   // Validación barata: evita mandar basura a Postgres con un cast ::uuid.
   if (!UUID_PATTERN.test(token)) return badRequest('token must be a valid UUID');
+
+  // Pago online congelado: se corta acá, sin tocar la base ni la API de Mercado
+  // Pago. Va después de las validaciones para no cambiar el contrato de los casos
+  // inválidos (400/401/403) y antes de cualquier efecto.
+  if (!isOnlinePaymentEnabled()) {
+    return NextResponse.json(
+      {
+        error: 'El pago online no está disponible en este momento.',
+        code: 'online_payments_unavailable',
+      },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
+    );
+  }
 
   let order;
   try {

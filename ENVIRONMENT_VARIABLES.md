@@ -129,6 +129,21 @@ MERCADOPAGO_STATEMENT_DESCRIPTOR=UMANTAI
 > Mercado Pago needs both the notification URL and the signature secret configured
 > in Your integrations → Webhooks.
 
+### Interruptor del pago online (congelado)
+```env
+# Mercado Pago está congelado por decisión del negocio. Mientras no exista
+# ONLINE_PAYMENTS_ENABLED=1, la página del pedido NO muestra el botón de pago y
+# POST /api/payments/preference responde 503 (online_payments_unavailable) ANTES de
+# llamar a Mercado Pago. No hace falta quitar credenciales: el interruptor manda.
+# Default seguro: ausente = congelado. Reabrir el cobro es cambiar esta variable,
+# no tocar código.
+ONLINE_PAYMENTS_ENABLED=0
+```
+
+> El resto del flujo no cambia: el pedido se crea en `pending_payment`, la reserva
+> de stock vence igual y el retiro en locker sigue funcionando. No usar este flag
+> para el experimento `mp-orders` (ese tiene sus propios candados).
+
 ### Mercado Pago Orders API (experimento QA — NO productivo)
 
 Estas variables son SOLO para el experimento aislado `mp-orders` (Checkout Pro vía

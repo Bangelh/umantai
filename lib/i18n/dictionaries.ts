@@ -850,6 +850,9 @@ export const MESSAGES = {
     'order.paymentKicker': 'PAGO',
     'order.paymentBody':
       'Paga con Yape, Plin, tarjeta o tu saldo de Mercado Pago. El stock queda reservado hasta que venza la reserva.',
+    'order.paymentUnavailableTitle': 'El pago online no está disponible por ahora',
+    'order.paymentUnavailableBody':
+      'Estamos trabajando para restablecerlo. Tu pedido quedó registrado y no se realizó ningún cobro; la reserva de stock se mantiene hasta que venza. Cuando el pago vuelva a estar disponible, podrás completarlo desde este mismo enlace.',
     'order.subtotal': 'Subtotal',
     'order.discount': 'Descuento',
     'order.tax': 'Impuestos',
@@ -1777,6 +1780,9 @@ export const MESSAGES = {
     'order.paymentKicker': 'PAYMENT',
     'order.paymentBody':
       'Pay with Yape, Plin, card or your Mercado Pago balance. The stock stays reserved for you until the reservation expires.',
+    'order.paymentUnavailableTitle': 'Online payment is unavailable right now',
+    'order.paymentUnavailableBody':
+      'We are working to restore it. Your order has been recorded and no charge was made; the stock reservation stays active until it expires. Once online payment is available again, you can complete it from this same link.',
     'order.subtotal': 'Subtotal',
     'order.discount': 'Discount',
     'order.tax': 'Tax',

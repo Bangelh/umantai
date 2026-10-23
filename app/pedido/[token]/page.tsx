@@ -8,6 +8,7 @@ import {
   type PickupCode,
 } from "@/lib/commerce";
 import { PayButton } from "./PayButton";
+import { isOnlinePaymentEnabled } from "@/lib/online-payments";
 import { getTranslator } from "@/lib/i18n/server";
 import type { Translator } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/dictionaries";
@@ -307,6 +308,10 @@ export default async function OrderStatusPage({
   // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
   const payability = evaluateOrderPayability(order);
   const canPay = payability === "payable";
+  // Mercado Pago está congelado por decisión del negocio: el pedido se crea y la
+  // reserva corre igual, pero no se ofrece cobro online hasta habilitarlo por
+  // entorno (ver lib/online-payments.ts).
+  const onlinePaymentEnabled = isOnlinePaymentEnabled();
   const simulated = isSimulatedPayment(order);
 
   // El aviso de regreso solo se muestra si el pago sigue pendiente: si el pedido ya
@@ -366,15 +371,34 @@ export default async function OrderStatusPage({
         {pickupCode && <PickupCodeTicket order={order} code={pickupCode} t={t} />}
 
         {canPay && (
-          <div className="mt-6 rounded-3xl border border-white/10 bg-neutral-900 p-6">
+          <div
+            className={`mt-6 rounded-3xl border p-6 ${
+              onlinePaymentEnabled
+                ? "border-white/10 bg-neutral-900"
+                : "border-amber-500/30 bg-amber-500/10"
+            }`}
+          >
             <div className="text-xs tracking-widest text-white/50 mb-2">
               {t("order.paymentKicker")}
             </div>
-            <p className="text-sm text-white/70 mb-5">{t("order.paymentBody")}</p>
-            <PayButton
-              publicToken={order.publicToken}
-              amountLabel={formatMoney(order.total, order.currency)}
-            />
+            {onlinePaymentEnabled ? (
+              <>
+                <p className="text-sm text-white/70 mb-5">{t("order.paymentBody")}</p>
+                <PayButton
+                  publicToken={order.publicToken}
+                  amountLabel={formatMoney(order.total, order.currency)}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-amber-200">
+                  {t("order.paymentUnavailableTitle")}
+                </p>
+                <p className="mt-2 text-sm text-white/70">
+                  {t("order.paymentUnavailableBody")}
+                </p>
+              </>
+            )}
           </div>
         )}
 

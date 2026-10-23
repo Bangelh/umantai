@@ -74,9 +74,10 @@ Los valores entre `<>` son placeholders. **Nunca** se commitean secretos.
 | `KIOSK_ACCESS_CODE` | `<10+ chars aleatorios>` | Sí | Kiosco |
 | `CRON_SECRET` | `<aleatorio>` | Sí | Autorización del cron |
 | `COMMERCE_RESERVATION_TTL_MINUTES` | `30` | No | Default del código |
-| `MERCADOPAGO_ACCESS_TOKEN` | `<token de la app de PRUEBA>` | Para probar pagos | Nunca credenciales live |
-| `MERCADOPAGO_WEBHOOK_SECRET` | `<secreto de la app de PRUEBA>` | Para probar webhook | Sin él → 503 |
-| `MERCADOPAGO_BACK_URL_BASE` | `https://staging.umantai.com` | Recomendada | `back_urls` estables |
+| `ONLINE_PAYMENTS_ENABLED` | **no definir** | No | Cobro online **congelado**: sin `1`, no se muestra el botón y la ruta de pago responde 503 sin llamar a Mercado Pago |
+| `MERCADOPAGO_ACCESS_TOKEN` | `<token de la app de PRUEBA>` | Sin uso (congelado) | Nunca credenciales live |
+| `MERCADOPAGO_WEBHOOK_SECRET` | `<secreto de la app de PRUEBA>` | Sin uso (congelado) | Sin él → 503 |
+| `MERCADOPAGO_BACK_URL_BASE` | `https://staging.umantai.com` | Sin uso (congelado) | `back_urls` estables |
 | `RESEND_API_KEY` | `<opcional>` | No | Sin ella, el pedido sigue funcionando |
 | `RESEND_FROM_EMAIL` | `Umantai <onboarding@resend.dev>` | No | Sólo entrega al dueño de la cuenta |
 | `NEXT_PUBLIC_SUPABASE_URL` | `<si se conserva notes/shopping list>` | No | Sin ellas, auth SSR queda inactiva |

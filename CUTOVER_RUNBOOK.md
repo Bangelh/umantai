@@ -72,9 +72,11 @@ node scripts/check-i18n-strings.mjs --strict
 `DB_DRIVER=pg`, `PAYLOAD_SECRET`, `ADMIN_API_SECRET`, `PLATFORM_ADMIN_SECRET`,
 `PLATFORM_ADMIN_EMAILS`, `BETTER_AUTH_SECRET`, `KIOSK_ACCESS_CODE`,
 `CRON_SECRET`, `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_SITE_URL`.
-Opcionales: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`,
-`MERCADOPAGO_*` de prueba **sólo si** se autoriza descongelar (hoy no se usan),
-`MEDIA_DRIVER`, `R2_*`.
+Opcionales: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`
+(ver `EMAIL_RESEND_SETUP.md`), `MERCADOPAGO_*` de prueba **sólo si** se autoriza
+descongelar (hoy no se usan), `MEDIA_DRIVER`, `R2_*`.
+El cobro online queda congelado salvo `ONLINE_PAYMENTS_ENABLED=1`; en este
+cutover **no** se define.
 
 Verificación sin exponer valores:
 
@@ -163,6 +165,10 @@ railway variables --service web --environment staging \
 - [ ] `MERCADOPAGO_*` sin cambios respecto de lo que ya usa Producción; no se
       piden credenciales nuevas ni se registra webhook en este cutover (Mercado
       Pago de pedidos sigue congelado).
+- [ ] `ONLINE_PAYMENTS_ENABLED` **no** definida (o `0`): el cobro online sigue
+      congelado y no es GO/NO-GO de este cutover.
+- [ ] Correo real: seguir `EMAIL_RESEND_SETUP.md` (dominio verificado, SPF, DKIM,
+      DMARC y prueba con un buzón real). Sin eso, el correo sale degradado.
 - [ ] Ninguna credencial live en staging; ninguna credencial de staging en
       Producción.
 - [ ] `VERCEL_ENV` **no** definido en Railway (el código usa `APP_ENV`).

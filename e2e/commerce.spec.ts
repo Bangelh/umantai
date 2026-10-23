@@ -94,6 +94,11 @@ test.describe.serial('carrito y checkout', () => {
     await page.getByRole('button', { name: /Confirmar compra/ }).click();
     await page.waitForURL(/\/pedido\//, { timeout: 30_000 });
     await expect(page.getByText(/UM-\d{4}-\d+/).first()).toBeVisible();
+
+    // Mercado Pago está congelado: el pedido se crea igual, pero no se ofrece cobro
+    // online. Cuando se reabra el cobro hay que actualizar este test junto con el flag.
+    await expect(page.getByText(/pago online no está disponible/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /Pagar .* con Mercado Pago/i })).toHaveCount(0);
   });
 
   test('checkout autenticado usa la cuenta y conserva el pedido', async ({ page }) => {
