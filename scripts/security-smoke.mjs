@@ -219,27 +219,36 @@ try {
 // 9. Rate limit de credenciales (15/min; 120/min con AUTH_TEST_MODE).
 // Se detecta el modo test por el outbox: si está habilitado, el cupo es mayor y
 // hay que empujar más intentos para comprobar que el 429 sigue existiendo.
+//
+// Los intentos van en paralelo acotado: en serie, 130 peticiones contra staging
+// tardan más que la ventana de 60 s, los contadores expiran y el 429 nunca se
+// observa (falso negativo que ya se dio contra el staging real).
 // Al final deja esta IP limitada durante la ventana.
 try {
   const probe = await fetch(`${base}/api/auth/test/outbox?email=smoke-probe%40example.invalid`);
   const testMode = probe.status === 200;
   const maxAttempts = testMode ? 130 : 18;
+  const concurrency = testMode ? 20 : 6;
   let limitedAt = null;
-  for (let index = 1; index <= maxAttempts; index += 1) {
-    const response = await fetch(`${base}/api/auth/sign-in/email`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', origin: base },
-      body: JSON.stringify({
-        email: `rate-limit-${Date.now()}@example.invalid`,
-        password: 'not-the-password',
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (response.status === 429) {
-      limitedAt = index;
-      break;
+  let issued = 0;
+
+  const attempt = async () => {
+    while (limitedAt === null && issued < maxAttempts) {
+      issued += 1;
+      const response = await fetch(`${base}/api/auth/sign-in/email`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: base },
+        body: JSON.stringify({
+          email: `rate-limit-${Date.now()}-${issued}@example.invalid`,
+          password: 'not-the-password',
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.status === 429 && limitedAt === null) limitedAt = issued;
     }
-  }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, attempt));
   record('rate limit de login', limitedAt !== null, limitedAt ? `429 en intento ${limitedAt}` : 'nunca 429');
 } catch (error) {
   record('rate limit de login', false, error instanceof Error ? error.message : String(error));
