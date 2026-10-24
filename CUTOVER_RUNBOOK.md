@@ -214,14 +214,14 @@ copian y no se pegan en documentos.
 
 ## 5. Migraciones
 
-Orden vigente: `001` … `022`. Cada una es idempotente donde corresponde.
+Orden vigente: `001` … `023`. Cada una es idempotente donde corresponde.
 
 ```bash
 # 1. Ver el estado sin escribir.
 node --import tsx scripts/audit-schema.ts
 
 # 2. Aplicar por nombre, una o varias, con ON_ERROR_STOP.
-node --import tsx scripts/apply-migrations.ts 019 020 021 022
+node --import tsx scripts/apply-migrations.ts 019 020 021 022 023
 
 # 3. Volver a auditar: fingerprint y marcadores.
 node --import tsx scripts/audit-schema.ts
@@ -240,10 +240,11 @@ Reglas:
 
 Verificación mínima:
 
-- [ ] `audit-schema` reporta 001–022 `OK`.
+- [ ] `audit-schema` reporta 001–023 `OK`.
 - [ ] Fingerprint anotado antes/después.
 - [ ] `payment_webhook_events`, `contact_messages`, `stores`, `plans`,
-      `subscriptions`, `platform_admins`, `email_outbox` existen.
+      `subscriptions`, `platform_admins`, `email_outbox`,
+      `consumer_complaints` existen.
 - [ ] `SELECT count(*)` de tablas críticas coincide con el backup.
 - [ ] `tests/rls.integration.test.ts` y `tests/tenant-guards.integration.test.ts`
       verdes contra un clon.
@@ -374,7 +375,7 @@ depende de un pago.
 
 - [ ] Preflight local verde y HEAD congelado.
 - [ ] Backup verificado con restore y fingerprint.
-- [ ] Migraciones 001–022 aplicadas y auditadas.
+- [ ] Migraciones 001–023 aplicadas y auditadas.
 - [ ] `/api/health` con commit correcto y base reachable.
 - [ ] `FINAL_QA_CHECKLIST.md` cerrado. Los ítems de Mercado Pago están marcados
       como **congelados externamente** y no condicionan el GO.

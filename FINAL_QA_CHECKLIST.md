@@ -209,6 +209,8 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Un cliente no ve pedidos de otro por API ni por URL.
 - [ ] `/api/merchant/stores/<otra>/...` → 403/404.
 - [ ] `022_rls_tenant_isolation.sql` aplicada y RLS activa en las tablas.
+- [ ] `023_consumer_complaints.sql` aplicada (tabla + secuencia del Libro de
+      Reclamaciones).
 - [ ] Las políticas no bloquean al rol de la app en operaciones legítimas.
 - [ ] `int`: `tests/rls.integration.test.ts`, `tests/tenant-guards.integration.test.ts`,
       `tests/multi-tenant.integration.test.ts`.
