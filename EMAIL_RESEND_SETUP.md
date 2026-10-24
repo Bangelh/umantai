@@ -45,13 +45,18 @@ Puntos finos que hay que respetar al configurar:
 | 1 | Cuenta de Resend y acceso al panel | Negocio | Plan gratuito alcanza para el volumen inicial |
 | 2 | Dominio propio para enviar (recomendado: subdominio, ej. `send.<dominio>`) | Negocio | Debe ser un dominio que controlen; no usar `resend.dev` |
 | 3 | Acceso al DNS del dominio | Negocio / proveedor de hosting DNS | Los registros se cargan una vez |
-| 4 | Buzón real para `CONTACT_TO_EMAIL` | Negocio | Ahí llegan los mensajes del formulario |
-| 5 | Buzón real para `LEGAL_EMAIL` | Negocio | También se muestra en las páginas legales (hoy `[PENDIENTE]`) |
+| 4 | Buzón para `CONTACT_TO_EMAIL` | **Confirmado** | `juancallerosales19@gmail.com` (ya es el valor central) |
+| 5 | Buzón para `LEGAL_EMAIL` | **Confirmado** | `juancallerosales19@gmail.com` (ya se muestra en las páginas legales) |
 | 6 | API key con permiso **solo envío** | Negocio | Se pega en Railway; nunca en el repo |
 | 7 | Aprobar el cambio de variables y la prueba real | Negocio | Último paso antes de abrir |
 
-No se inventa ningún dato: dominio, remitente y buzones salen de lo que confirme
-el dueño.
+No se inventa ningún dato: dominio y remitente salen de lo que confirme el dueño.
+Los buzones de contacto y legal ya están confirmados y viven en
+`config/business.ts`.
+
+> **Gmail no puede ser el remitente.** `RESEND_FROM_EMAIL` debe usar un dominio
+> verificado de UMANTAI (por ejemplo `pedidos@send.<dominio>`). El correo de
+> atención/legal es el **destinatario** y el contacto publicado, nunca el `FROM`.
 
 ---
 
@@ -103,11 +108,13 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxx
 # Remitente del dominio verificado. NO usar onboarding@resend.dev.
 RESEND_FROM_EMAIL=Umantai <pedidos@send.<dominio>>
 
-# Destinatario del formulario de contacto.
-CONTACT_TO_EMAIL=<buzón real>
+# Destinatario del formulario de contacto. Ya tiene un valor por defecto en
+# config/business.ts; solo hace falta declararla para cambiarlo.
+CONTACT_TO_EMAIL=juancallerosales19@gmail.com
 
-# Correo legal mostrado en privacidad/términos (deja de ser [PENDIENTE]).
-LEGAL_EMAIL=<buzón real>
+# Correo legal mostrado en privacidad/términos/reembolsos y aviso legal.
+# También tiene valor por defecto en config/business.ts.
+LEGAL_EMAIL=juancallerosales19@gmail.com
 
 # Host activo: los enlaces de verificación/reset salen con este origen.
 NEXT_PUBLIC_SITE_URL=https://<host activo>
@@ -125,9 +132,10 @@ AUTH_TEST_MODE=
 AUTH_REQUIRE_EMAIL_VERIFICATION=1
 ```
 
-`CONTACT_TO_EMAIL` y `LEGAL_EMAIL` ya se leen en `config/business.ts`; el correo
-legal se sigue mostrando como `[PENDIENTE: definir correo legal]` hasta que
-exista el valor.
+`CONTACT_TO_EMAIL` y `LEGAL_EMAIL` se leen en `config/business.ts`, con el correo
+confirmado como valor por defecto: las páginas ya no muestran
+`[PENDIENTE: definir correo legal]`. Lo que falta para que salga correo real es
+`RESEND_API_KEY` y un `RESEND_FROM_EMAIL` de dominio verificado.
 
 ---
 

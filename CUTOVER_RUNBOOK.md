@@ -72,9 +72,11 @@ node scripts/check-i18n-strings.mjs --strict
 `DB_DRIVER=pg`, `PAYLOAD_SECRET`, `ADMIN_API_SECRET`, `PLATFORM_ADMIN_SECRET`,
 `PLATFORM_ADMIN_EMAILS`, `BETTER_AUTH_SECRET`, `KIOSK_ACCESS_CODE`,
 `CRON_SECRET`, `NEXT_PUBLIC_SERVER_URL`, `NEXT_PUBLIC_SITE_URL`.
-Opcionales: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`
-(ver `EMAIL_RESEND_SETUP.md`), `MERCADOPAGO_*` de prueba **sólo si** se autoriza
-descongelar (hoy no se usan), `MEDIA_DRIVER`, `R2_*`.
+Opcionales: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`,
+`LEGAL_EMAIL`, `NEXT_PUBLIC_WHATSAPP_SALES_PHONE` (ver
+`EMAIL_RESEND_SETUP.md` y `ENVIRONMENT_VARIABLES.md`),
+`MERCADOPAGO_*` de prueba **sólo si** se autoriza descongelar (hoy no se usan),
+`MEDIA_DRIVER`, `R2_*`.
 El cobro online queda congelado salvo `ONLINE_PAYMENTS_ENABLED=1`; en este
 cutover **no** se define.
 
@@ -169,6 +171,9 @@ railway variables --service web --environment staging \
       congelado y no es GO/NO-GO de este cutover.
 - [ ] Correo real: seguir `EMAIL_RESEND_SETUP.md` (dominio verificado, SPF, DKIM,
       DMARC y prueba con un buzón real). Sin eso, el correo sale degradado.
+- [ ] Datos de contacto confirmados en `config/business.ts`: correo de atención,
+      correo legal (`juancallerosales19@gmail.com`) y WhatsApp (+51 979 363 149).
+      Las variables de entorno son solo override, no duplicación.
 - [ ] Ninguna credencial live en staging; ninguna credencial de staging en
       Producción.
 - [ ] `VERCEL_ENV` **no** definido en Railway (el código usa `APP_ENV`).
@@ -377,6 +382,10 @@ depende de un pago.
 - [ ] Rollback probado.
 - [ ] Ventana de convivencia definida y aceptada por el negocio.
 - [ ] Responsable del cutover y del rollback nominados.
+- [ ] Datos legales del titular completos (`isLegalReadyForLaunch()` = `true`):
+      razón social, RUC, domicilio fiscal y jurisdicción.
+- [ ] Libro de Reclamaciones virtual implementado y visible (ver
+      `LIBRO_RECLAMACIONES.md`).
 
 **NO-GO** si ocurre cualquiera (Mercado Pago **no** es criterio de NO-GO
 mientras siga congelado):
@@ -390,6 +399,9 @@ mientras siga congelado):
 - Cron con `CRON_SECRET` inválido o primera corrida fallida.
 - Cualquier 500 nuevo en rutas públicas.
 - No hay ventana de rollback acordada.
+- `isLegalReadyForLaunch()` sigue en `false` (las páginas legales muestran
+  `[PENDIENTE: …]`).
+- No existe Libro de Reclamaciones virtual accesible y funcional.
 
 ---
 

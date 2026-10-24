@@ -569,7 +569,7 @@ export const MESSAGES = {
 
     'adminPlans.title': 'Planes y suscripciones',
     'adminPlans.subtitle':
-      'Free 25 · Starter US$4/50 SKU · Growth US$6/100 SKU. Provider actual: manual/test.',
+      'Free 25 SKU · Starter y Growth con precio definido en el catálogo de planes. Provider actual: manual/test.',
     'adminPlans.refresh': 'Actualizar',
     'adminPlans.catalog': 'Catálogo de planes',
     'adminPlans.stores': 'Tiendas',
@@ -1500,7 +1500,7 @@ export const MESSAGES = {
 
     'adminPlans.title': 'Plans and subscriptions',
     'adminPlans.subtitle':
-      'Free 25 · Starter US$4/50 SKUs · Growth US$6/100 SKUs. Current provider: manual/test.',
+      'Free 25 SKUs · Starter and Growth priced in the plan catalog. Current provider: manual/test.',
     'adminPlans.refresh': 'Refresh',
     'adminPlans.catalog': 'Plan catalog',
     'adminPlans.stores': 'Stores',

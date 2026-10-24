@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { businessConfig } from '@/config/business';
+import {
+  PENDING_BUSINESS_FIELDS,
+  businessConfig,
+  pendingBusinessFields,
+} from '@/config/business';
 import { LEGAL_DOCUMENTS, LEGAL_SLUGS } from '@/lib/legal';
 
 export const metadata: Metadata = {
@@ -12,6 +16,8 @@ export const metadata: Metadata = {
 };
 
 export default function LegalIndexPage() {
+  const pending = pendingBusinessFields();
+
   return (
     <main lang="es" className="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-16">
       <nav aria-label="Ruta de navegación" className="mb-6 text-sm text-tertiary">
@@ -28,6 +34,13 @@ export default function LegalIndexPage() {
         confirmó aparecen marcados como <span className="text-warning">pendientes</span>, nunca
         inventados.
       </p>
+
+      {pending.length > 0 && (
+        <p className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
+          Estos documentos no son definitivos para lanzamiento público. Faltan:{' '}
+          {pending.map((field) => PENDING_BUSINESS_FIELDS[field]).join(', ')}.
+        </p>
+      )}
 
       <ul className="mt-8 space-y-3">
         {LEGAL_SLUGS.map((slug) => {

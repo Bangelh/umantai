@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { businessConfig } from '@/config/business';
+import { businessConfig, whatsappDisplay, whatsappUrl } from '@/config/business';
 import { getTranslator } from '@/lib/i18n/server';
 import { ContactForm } from './ContactForm';
 
@@ -21,15 +21,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-function whatsappLink(phone: string | null): string | null {
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
-  return digits.length >= 8 ? `https://wa.me/${digits}` : null;
-}
-
 export default async function ContactPage() {
   const { t } = await getTranslator();
-  const whatsapp = whatsappLink(businessConfig.whatsapp);
+  const whatsapp = whatsappUrl();
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
@@ -55,9 +49,12 @@ export default async function ContactPage() {
             <ul className="mt-3 space-y-2 text-sm">
               <li className="text-secondary">
                 <span className="text-tertiary">{t('contact.email')} </span>
-                {businessConfig.email ?? (
-                  <span className="text-warning">{t('contact.emailPending')}</span>
-                )}
+                <a
+                  href={`mailto:${businessConfig.email}`}
+                  className="underline underline-offset-4 hover:text-primary"
+                >
+                  {businessConfig.email}
+                </a>
               </li>
               <li className="text-secondary">
                 <span className="text-tertiary">{t('contact.whatsapp')} </span>
@@ -68,7 +65,7 @@ export default async function ContactPage() {
                     rel="noopener noreferrer"
                     className="underline underline-offset-4 hover:text-primary"
                   >
-                    {t('contact.openChat')}
+                    {whatsappDisplay()}
                   </a>
                 ) : (
                   <span className="text-warning">{t('contact.whatsappPending')}</span>

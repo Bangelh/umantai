@@ -61,6 +61,29 @@ test('vitrina pública de una tienda sembrada carga', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Hilos');
 });
 
+test('contacto muestra el correo y el WhatsApp configurados (sin duplicar datos)', async ({ page }) => {
+  const response = await page.goto('/contacto');
+  expect(response?.status()).toBe(200);
+
+  await expect(page.locator('a[href="mailto:juancallerosales19@gmail.com"]')).toBeVisible();
+  // Perú: el enlace lleva el código de país, aunque el negocio dicte 979363149.
+  const whatsapp = page.getByRole('link', { name: '+51979363149' });
+  await expect(whatsapp).toBeVisible();
+  await expect(whatsapp).toHaveAttribute('href', /^https:\/\/wa\.me\/51979363149/);
+});
+
+test('legales: reembolsos prudente y aviso de documento no definitivo', async ({ page }) => {
+  await page.goto('/legal/reembolsos');
+  await expect(
+    page.getByText(/no ofrece reembolsos voluntarios generales, sin perjuicio de los derechos/i),
+  ).toBeVisible();
+  await expect(page.getByText(/no renuncia|renuncia, limitación o exclusión/i).first()).toBeVisible();
+
+  await page.goto('/legal');
+  await expect(page.getByText(/no son definitivos para lanzamiento público/i)).toBeVisible();
+  await expect(page.getByText(/razón social/i).first()).toBeVisible();
+});
+
 test('una mutación con Origin ajeno se rechaza (CSRF)', async ({ request }) => {
   const response = await request.post('/api/admin/session', {
     headers: { origin: 'https://evil.example' },

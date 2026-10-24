@@ -21,6 +21,7 @@
  */
 
 import { Resend } from 'resend';
+import { businessConfig } from '@/config/business';
 import { createSqlClient, type SqlClient } from './db-driver.server';
 import { getDatabaseUrl } from './db';
 import { getPrefixedEnv } from './env';
@@ -54,10 +55,14 @@ export function isContactStorageConfigured(): boolean {
   return !!getDatabaseUrl();
 }
 
-/** Destinatario de la bandeja. Sin configurar, el correo se omite (no falla). */
+/**
+ * Destinatario de la bandeja. `CONTACT_TO_EMAIL` manda; si no está, se usa el
+ * correo de atención centralizado en `config/business.ts`. Sin API key de
+ * Resend el aviso igual se omite (el mensaje queda guardado en la base).
+ */
 export function getContactRecipient(): string | null {
   const value = (getPrefixedEnv('CONTACT_TO_EMAIL') ?? '').trim();
-  return value || null;
+  return value || businessConfig.email.trim() || null;
 }
 
 export function isContactEmailConfigured(): boolean {

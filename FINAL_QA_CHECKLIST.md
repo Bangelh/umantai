@@ -310,12 +310,26 @@ commit desplegado; los tests locales corren sin servicios externos.
 
 - [ ] `/legal` y los 5 documentos responden 200.
 - [ ] Los `[PENDIENTE: …]` visibles son solo los datos que el negocio no
-      confirmó (razón social, RUC, dirección, correo legal, jurisdicción, plazo
-      de reembolso).
+      confirmó (razón social, RUC, domicilio fiscal, jurisdicción).
+- [ ] Correo de atención, correo legal y WhatsApp salen de
+      `config/business.ts` (sin duplicados hardcodeados en páginas).
 - [ ] No se inventó ningún dato legal.
-- [ ] Aviso de “documento en borrador” visible.
+- [ ] Aviso de “documento en borrador” visible, con la lista de datos faltantes
+      y la marca de “no definitivo para lanzamiento público”.
+- [ ] La Política de Reembolso dice que no hay reembolsos voluntarios generales
+      **sin perjuicio** de los derechos del consumidor, y no limita derechos
+      irrenunciables.
 - [ ] Enlaces a términos/privacidad desde checkout y contacto funcionan.
 - [ ] `unit`: `tests/legal-config.test.ts`.
+
+## 25.1 Libro de Reclamaciones (bloquea lanzamiento público)
+
+- [ ] Existe enlace permanente y visible al Libro de Reclamaciones.
+- [ ] Registra quejas y reclamos con numeración correlativa.
+- [ ] Incluye los campos del Anexo I (D.S. N.º 011-2011-PCM).
+- [ ] Entrega constancia imprimible o por correo al consumidor.
+- [ ] Bandeja de respuesta con plazo de 15 días hábiles visibles.
+- [ ] Ver `LIBRO_RECLAMACIONES.md`. Hoy **no implementado**: NO-GO.
 
 ## 26. Mercado Pago (CONGELADO externamente — fuera de alcance)
 

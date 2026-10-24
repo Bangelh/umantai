@@ -9,6 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { businessConfig } from '../config/business';
 import { CONTACT_LIMITS, validateContactPayload } from '../lib/contact';
 import {
   getContactRecipient,
@@ -115,7 +116,9 @@ test('configuración incompleta: no se anuncia como disponible', async () => {
   delete process.env.DATABASE_URL;
 
   try {
-    assert.equal(getContactRecipient(), null);
+    // Sin CONTACT_TO_EMAIL manda el correo central de config/business.ts; sin
+    // API key de Resend el aviso NO se anuncia como disponible.
+    assert.equal(getContactRecipient(), businessConfig.email);
     assert.equal(isContactEmailConfigured(), false);
     assert.equal(isContactStorageConfigured(), false);
 

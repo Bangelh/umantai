@@ -22,6 +22,17 @@ Fuente única: `plans` (migración `017_plans_subscriptions.sql`) y
 No hay conversión PEN/USD automática en esta fase. El precio comercial se
 muestra en USD y el cobro real queda pendiente del proveedor.
 
+Reglas confirmadas (2026-10-24):
+
+- **Free** permanece en **US$0** (precio fijo, no editable).
+- **Starter** y **Growth** viven en el catálogo de planes (`plans`), no en el
+  código de la UI; hoy US$4/mes y US$6/mes respectivamente.
+- El precio se cambia en la base (o con una futura pantalla de edición del
+  catálogo); todavía **no** existe un editor de precios en el panel de Platform
+  Admin. `PLAN_DEFINITIONS` solo refleja el catálogo para tests/docs y el seed.
+- Ningún precio se hardcodea en páginas ni textos: la UI lee el plan de la base
+  y formatea con `formatUsdCents`.
+
 ## 2. Qué cuenta como SKU
 
 La única definición vive en la vista `store_sku_usage`:

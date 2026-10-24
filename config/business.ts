@@ -4,18 +4,26 @@
  * ─────────────────────────────────────────────────────────────────────────────
  *  REGLA: NO INVENTAR DATOS LEGALES
  *
- *  Razón social, RUC, dirección, correo legal, plazos de reembolso y
- *  jurisdicción todavía NO están definidos por el negocio. Acá quedan en `null`
- *  y las páginas muestran un placeholder explícito (`[PENDIENTE: …]`), nunca un
- *  dato que parezca definitivo.
+ *  Razón social, RUC, domicilio fiscal, dirección y jurisdicción todavía NO
+ *  están definidos por el negocio. Acá quedan en `null` y las páginas muestran
+ *  un placeholder explícito (`[PENDIENTE: …]`), nunca un dato que parezca
+ *  definitivo.
  *
  *  Cuando el negocio confirme cada dato, se completa acá y todas las páginas
  *  (legales, contacto, footer) se actualizan solas. No hay que tocar el texto
  *  página por página.
  *
- *  Este archivo NO contiene secretos: solo datos públicos (o pendientes).
- *  Cuando exista Multi-Tienda, estos valores pasarán a la entidad Store; no se
- *  modela todavía.
+ *  Mientras quede un solo campo pendiente, `isLegalReadyForLaunch()` es `false`
+ *  y las páginas legales NO pueden considerarse definitivas para lanzamiento
+ *  público.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  CONTACTO REAL (confirmado 2026-10-24)
+ *
+ *  Correo de atención, correo legal y WhatsApp se centralizan acá. Cada valor
+ *  puede sobrescribirse por entorno (CONTACT_TO_EMAIL, LEGAL_EMAIL,
+ *  NEXT_PUBLIC_WHATSAPP_SALES_PHONE) sin cambiar código ni duplicar el dato en
+ *  páginas. Son datos públicos de contacto: NO hay secretos en este archivo.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -40,6 +48,21 @@ function readPublicEnv(name: string): string | null {
 /** Marca visible. Ya existe en la app, no es un dato inventado. */
 const BRAND_NAME = 'Umantai';
 
+/** Correo de atención al cliente confirmado por el negocio. */
+const DEFAULT_CONTACT_EMAIL = 'juancallerosales19@gmail.com';
+
+/** Correo para asuntos legales/privacidad confirmado por el negocio. */
+const DEFAULT_LEGAL_EMAIL = 'juancallerosales19@gmail.com';
+
+/** WhatsApp de ventas/atención confirmado por el negocio (sin código de país). */
+const DEFAULT_WHATSAPP_NUMBER = '979363149';
+
+/** Perú (+51). El sitio vende en soles y opera en Perú. */
+const DEFAULT_WHATSAPP_COUNTRY_CODE = '51';
+
+/** Placeholder cuando no hay correo legal configurado. */
+export const LEGAL_EMAIL_PENDING_LABEL = '[PENDIENTE: definir correo legal]';
+
 export interface BusinessConfig {
   /** Nombre comercial visible. */
   name: string;
@@ -49,13 +72,15 @@ export interface BusinessConfig {
   ruc: string | null;
   /** Domicilio fiscal / atención al público (pendiente). */
   address: string | null;
-  /** Correo de atención general (pendiente). */
-  email: string | null;
-  /** Correo para asuntos legales/privacidad (pendiente). */
-  legalEmail: string | null;
-  /** WhatsApp de ventas (se configura por entorno, no se inventa). */
-  whatsapp: string | null;
-  /** Teléfono de soporte (pendiente). */
+  /** Correo de atención general. */
+  email: string;
+  /** Correo para asuntos legales/privacidad. */
+  legalEmail: string;
+  /** WhatsApp de ventas/atención, tal como lo dictó el negocio. */
+  whatsapp: string;
+  /** Código de país para armar el enlace `wa.me` (+51). */
+  whatsappCountryCode: string;
+  /** Teléfono de soporte (mismo canal de WhatsApp). */
   phone: string | null;
   /** Redes sociales verificadas (pendiente). */
   social: {
@@ -64,8 +89,6 @@ export interface BusinessConfig {
   };
   /** Jurisdicción aplicable (pendiente de definición legal). */
   jurisdiction: string | null;
-  /** Plazo de reembolso en días (pendiente de definición del negocio). */
-  refundWindowDays: number | null;
   /** URL pública del sitio, para metadata/canonical/sitemap. */
   siteUrl: string;
 }
@@ -87,16 +110,16 @@ export const businessConfig: BusinessConfig = {
   legalName: null,
   ruc: null,
   address: null,
-  email: readPublicEnv('CONTACT_TO_EMAIL'),
-  legalEmail: readPublicEnv('LEGAL_EMAIL'),
-  whatsapp: readPublicEnv('NEXT_PUBLIC_WHATSAPP_SALES_PHONE'),
+  email: readPublicEnv('CONTACT_TO_EMAIL') ?? DEFAULT_CONTACT_EMAIL,
+  legalEmail: readPublicEnv('LEGAL_EMAIL') ?? DEFAULT_LEGAL_EMAIL,
+  whatsapp: readPublicEnv('NEXT_PUBLIC_WHATSAPP_SALES_PHONE') ?? DEFAULT_WHATSAPP_NUMBER,
+  whatsappCountryCode: DEFAULT_WHATSAPP_COUNTRY_CODE,
   phone: null,
   social: {
     instagram: null,
     tiktok: null,
   },
   jurisdiction: null,
-  refundWindowDays: null,
   siteUrl: resolveSiteUrl(),
 };
 
@@ -105,9 +128,7 @@ export const PENDING_BUSINESS_FIELDS = {
   legalName: 'razón social',
   ruc: 'RUC',
   address: 'dirección legal',
-  legalEmail: 'correo legal',
   jurisdiction: 'jurisdicción',
-  refundWindowDays: 'plazo de reembolso',
 } as const satisfies Record<string, string>;
 
 export type PendingBusinessField = keyof typeof PENDING_BUSINESS_FIELDS;
@@ -130,4 +151,45 @@ export function businessValue(field: PendingBusinessField): string {
 /** Lista de campos aún pendientes (vacía = listo para publicar legalmente). */
 export function pendingBusinessFields(): PendingBusinessField[] {
   return (Object.keys(PENDING_BUSINESS_FIELDS) as PendingBusinessField[]).filter(isPendingBusinessField);
+}
+
+/**
+ * ¿Los documentos legales pueden considerarse definitivos para lanzamiento?
+ *
+ * `false` mientras falte cualquier dato del titular. Es un candado de lectura:
+ * lo usan las páginas legales y los tests para que un placeholder no pase
+ * inadvertido a Producción.
+ */
+export function isLegalReadyForLaunch(): boolean {
+  return pendingBusinessFields().length === 0;
+}
+
+/** Contacto legal listo para mostrar (nunca `null`). */
+export function legalContactEmail(): string {
+  return businessConfig.legalEmail.trim() || LEGAL_EMAIL_PENDING_LABEL;
+}
+
+/**
+ * Número para `wa.me`: solo dígitos y con código de país.
+ * Si el valor ya trae código de país (más de 9 dígitos), se respeta.
+ */
+export function whatsappNumber(): string | null {
+  const digits = businessConfig.whatsapp.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length > 9) return digits;
+  return `${businessConfig.whatsappCountryCode}${digits}`;
+}
+
+/** Enlace de WhatsApp con mensaje opcional. `null` si no hay número. */
+export function whatsappUrl(message?: string): string | null {
+  const number = whatsappNumber();
+  if (!number) return null;
+  const base = `https://wa.me/${number}`;
+  return message ? `${base}?text=${encodeURIComponent(message)}` : base;
+}
+
+/** Texto visible: `+51979363149`. */
+export function whatsappDisplay(): string {
+  const number = whatsappNumber();
+  return number ? `+${number}` : '';
 }

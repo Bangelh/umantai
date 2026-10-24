@@ -13,7 +13,7 @@
  *  `[PENDIENTE: …]`. Acá no se inventa ningún dato legal, plazo ni jurisdicción.
  */
 
-import { businessConfig, businessValue, pendingLabel, type PendingBusinessField } from '@/config/business';
+import { businessConfig, businessValue, legalContactEmail, pendingLabel } from '@/config/business';
 
 export const LEGAL_DRAFT_NOTICE =
   'Borrador operativo pendiente de validación del negocio y revisión legal. No constituye asesoría jurídica.';
@@ -33,10 +33,8 @@ export interface LegalDocument {
   sections: LegalSection[];
 }
 
-const CONTACT_PENDING: PendingBusinessField = 'legalEmail';
-
 /** Contacto legal: correo configurado o placeholder explícito. */
-const legalContact = businessValue(CONTACT_PENDING);
+const legalContact = legalContactEmail();
 
 export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
   privacidad: {
@@ -158,7 +156,9 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '5. Cancelaciones y reembolsos',
         paragraphs: [
-          `Las cancelaciones y reembolsos se rigen por la Política de Reembolso. El plazo aplicable todavía no está definido por el negocio (${pendingLabel('refundWindowDays')}).`,
+          'Las cancelaciones y los reembolsos se rigen por la Política de Reembolso, que forma parte de estos términos.',
+          'Umantai no ofrece reembolsos voluntarios generales, sin perjuicio de los derechos, garantías, cambios, devoluciones o remedios que correspondan al consumidor conforme a la legislación aplicable.',
+          'Esta cláusula se mantiene como borrador sujeto a revisión legal antes del lanzamiento público.',
         ],
       },
       {
@@ -187,34 +187,37 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
     slug: 'reembolsos',
     title: 'Política de Reembolso',
     description:
-      'Cómo solicitar un reembolso o cambio, qué casos se aceptan y cómo se procesa la devolución del dinero.',
+      'Cómo se atienden los reembolsos, cambios y remedios por compras en Umantai, sin limitar los derechos del consumidor.',
     sections: [
       {
-        heading: '1. Alcance',
+        heading: '1. Alcance y carácter de esta política',
         paragraphs: [
-          'Esta política aplica a compras realizadas en el sitio y en el kiosco de retiro. Describe el procedimiento operativo; los plazos legales concretos deben ser validados por el negocio.',
+          'Esta política aplica a compras realizadas en el sitio y en el kiosco de retiro de Umantai, en Perú.',
+          'Se publica como borrador operativo sujeto a revisión legal. No reemplaza ni limita los derechos, garantías, cambios, devoluciones o remedios que correspondan al consumidor conforme a la legislación aplicable, en particular el Código de Protección y Defensa del Consumidor.',
         ],
       },
       {
-        heading: '2. Plazo para solicitar',
+        heading: '2. Reembolsos voluntarios',
         paragraphs: [
-          `El plazo de reembolso todavía no está definido por el negocio (${pendingLabel('refundWindowDays')}). Hasta que se confirme, cada solicitud se evalúa caso por caso y se responde por el canal de contacto.`,
+          'Umantai no ofrece reembolsos voluntarios generales, sin perjuicio de los derechos, garantías, cambios, devoluciones o remedios que correspondan al consumidor conforme a la legislación aplicable.',
+          'Es decir, no mantiene una política comercial de devolución del dinero por decisión unilateral del comprador, como un cambio de opinión, una vez confirmado el pedido.',
+          'La ausencia de una política voluntaria general no afecta los derechos que la ley reconoce al consumidor ni los remedios que correspondan cuando el producto o el servicio no cumple lo ofrecido.',
         ],
       },
       {
-        heading: '3. Cuándo corresponde',
+        heading: '3. Cuándo se atiende una solicitud',
         paragraphs: [
-          'Producto entregado en mal estado, vencido o distinto al pedido.',
+          'Producto entregado en mal estado, vencido, incompleto o distinto al pedido.',
           'Pedido pagado que no pudo entregarse por falta de stock y el comprador no acepta una alternativa.',
           'Cobro duplicado o cobro confirmado sin pedido asociado.',
+          'En estos supuestos se aplicará el remedio que corresponda conforme a la legislación aplicable: entrega del producto conforme, cambio, devolución del monto pagado u otro remedio reconocido por ley.',
         ],
       },
       {
-        heading: '4. Cuándo no corresponde',
+        heading: '4. Derechos que no se limitan',
         paragraphs: [
-          'Productos perecederos abiertos o consumidos, salvo defecto de origen.',
-          'Daños causados por uso indebido después de la entrega.',
-          'Solicitudes fuera del plazo que finalmente se defina.',
+          'Ninguna disposición de esta política, de los Términos y Condiciones ni de la operación del sitio puede interpretarse como renuncia, limitación o exclusión de derechos irrenunciables del consumidor.',
+          'Si existiera conflicto entre esta política y una norma obligatoria, prevalece la norma.',
         ],
       },
       {
@@ -227,7 +230,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '6. Cómo se procesa',
         paragraphs: [
-          'Si la solicitud se aprueba, el reembolso se realiza por el mismo medio de pago utilizado, a través del proveedor de pagos. El tiempo en reflejarse depende del banco o billetera del comprador.',
+          'Cuando corresponda un reembolso, se realiza por el mismo medio de pago utilizado, a través del proveedor de pagos. El tiempo en reflejarse depende del banco o billetera del comprador.',
           'Si el pedido todavía no se retiró, el stock reservado se libera al aprobarse la cancelación.',
         ],
       },
@@ -297,7 +300,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         paragraphs: [
           `Titular: ${businessValue('legalName')}. RUC: ${businessValue('ruc')}. Domicilio: ${businessValue('address')}.`,
           `Contacto: ${legalContact}.`,
-          'Estos datos están pendientes de confirmación por el negocio y se muestran como placeholder a propósito.',
+          'Los datos marcados como [PENDIENTE] todavía no fueron confirmados por el negocio y se muestran así a propósito: este aviso no es definitivo para lanzamiento público.'
         ],
       },
       {

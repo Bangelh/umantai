@@ -2,7 +2,12 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { businessConfig } from '@/config/business';
+import {
+  PENDING_BUSINESS_FIELDS,
+  businessConfig,
+  isLegalReadyForLaunch,
+  pendingBusinessFields,
+} from '@/config/business';
 import {
   LEGAL_DRAFT_NOTICE,
   LEGAL_LAST_UPDATED,
@@ -43,6 +48,8 @@ export default async function LegalPage({ params }: LegalPageProps) {
   const document = getLegalDocument(slug);
   if (!document) notFound();
 
+  const pending = pendingBusinessFields();
+
   return (
     <main lang="es" className="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-16">
       <nav aria-label="Ruta de navegación" className="mb-6 text-sm text-tertiary">
@@ -67,6 +74,12 @@ export default async function LegalPage({ params }: LegalPageProps) {
         className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning"
       >
         <strong className="font-semibold">Documento en borrador.</strong> {LEGAL_DRAFT_NOTICE}
+        {!isLegalReadyForLaunch() && (
+          <p className="mt-2">
+            No puede considerarse definitivo para lanzamiento público: faltan{' '}
+            {pending.map((field) => PENDING_BUSINESS_FIELDS[field]).join(', ')}.
+          </p>
+        )}
       </div>
 
       <div className="mt-10 space-y-10">

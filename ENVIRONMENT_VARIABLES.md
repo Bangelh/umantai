@@ -55,17 +55,17 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 ### WhatsApp
 ```env
-# Sales WhatsApp number (used in FloatingWhatsApp component)
-NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51981177931
+# WhatsApp de ventas/atención (OPCIONAL). Sin esta variable se usa el número
+# confirmado en `config/business.ts` (+51 979 363 149), que ya incluye el código
+# de país al armar el enlace wa.me. No duplicar el número en páginas.
+NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51979363149
 
-# Support WhatsApp number
-NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51934947258
+# Ventas y atención comparten el mismo canal: el botón flotante muestra uno solo.
+NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51979363149
 
-# Default message when opening Sales WhatsApp
-NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your products.
-
-# Default message when opening Support WhatsApp
-NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
+# Mensajes por defecto al abrir WhatsApp (opcionales).
+NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hola, quisiera saber más sobre los productos de Umantai.
+NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hola, necesito ayuda con mi pedido o mi cuenta.
 ```
 
 ### Postgres
@@ -302,14 +302,14 @@ RESEND_FROM_EMAIL=Umantai <pedidos@umantai.com>
 # https://umantai.com (solo en producción).
 NEXT_PUBLIC_SITE_URL=https://umantai.com
 
-# Destinatario del aviso del formulario de contacto. OPCIONAL: sin esta variable (o sin
-# RESEND_API_KEY) el mensaje se guarda igual en `contact_messages`; solo no sale el correo
-# y la UI lo informa. El formulario NO se rompe por no tener Resend.
-CONTACT_TO_EMAIL=hola@umantai.com
+# Destinatario del aviso del formulario de contacto. OPCIONAL: sin esta variable se usa el
+# correo de atención confirmado en `config/business.ts`. Sin RESEND_API_KEY el mensaje se
+# guarda igual en `contact_messages`; solo no sale el correo y la UI lo informa.
+CONTACT_TO_EMAIL=juancallerosales19@gmail.com
 
-# Correo legal mostrado en privacidad/términos/reembolsos. Mientras no exista, las páginas
-# muestran `[PENDIENTE: definir correo legal]` (nunca un dato inventado).
-LEGAL_EMAIL=legal@umantai.com
+# Correo legal mostrado en privacidad/términos/reembolsos y en el aviso legal. OPCIONAL:
+# sin esta variable se usa el correo confirmado en `config/business.ts`.
+LEGAL_EMAIL=juancallerosales19@gmail.com
 ```
 
 ```env
@@ -357,8 +357,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 ### WhatsApp
 ```env
-NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51981177931
-NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51934947258
+NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51979363149
+NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51979363149
 NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your products.
 NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
 ```
@@ -397,8 +397,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 ### WhatsApp
 ```env
-NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51981177931
-NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51934947258
+NEXT_PUBLIC_WHATSAPP_SALES_PHONE=51979363149
+NEXT_PUBLIC_WHATSAPP_SUPPORT_PHONE=51979363149
 NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE=Hello! I'd like to know more about your products.
 NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE=Hello! I need help with my order or account.
 ```
