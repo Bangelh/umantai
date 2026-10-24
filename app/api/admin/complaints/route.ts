@@ -11,6 +11,10 @@ import {
   listComplaints,
 } from '@/lib/complaints.server';
 import { requirePlatformAdminSession } from '@/lib/platform-admin.server';
+import {
+  PERU_HOLIDAY_CALENDAR_VERSION,
+  peruHolidayCalendarYears,
+} from '@/lib/peru-holidays';
 
 /**
  * GET /api/admin/complaints — bandeja del Libro de Reclamaciones.
@@ -116,7 +120,15 @@ export async function GET(request: Request) {
   try {
     const complaints = await listComplaints({ status, kind, from: rawFrom, to: rawTo, limit });
     return NextResponse.json(
-      { ok: true, complaints, generatedAt: new Date().toISOString() },
+      {
+        ok: true,
+        complaints,
+        calendar: {
+          version: PERU_HOLIDAY_CALENDAR_VERSION,
+          configuredYears: peruHolidayCalendarYears(),
+        },
+        generatedAt: new Date().toISOString(),
+      },
       { headers: NO_STORE },
     );
   } catch (error) {

@@ -8,21 +8,27 @@
  *   · el formato del número correlativo.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- *  PLAZO — LIMITACIÓN CONOCIDA
+ *  PLAZO
  *
- *  Se cuentan 15 días hábiles desde el día siguiente a la presentación, en hora
- *  de Lima (UTC-5), excluyendo SÁBADO y DOMINGO.
+ *  Se cuentan 15 días hábiles desde el día siguiente a la presentación, en la
+ *  zona America/Lima, excluyendo SÁBADO, DOMINGO y los feriados nacionales del
+ *  calendario versionado (`lib/peru-holidays.ts`).
  *
- *  NO se excluyen feriados nacionales porque el proyecto no tiene un calendario
- *  confiable. Antes del lanzamiento público hay que reemplazar
- *  `PERU_HOLIDAYS` por el calendario oficial del año o aceptar por escrito que
- *  el vencimiento puede caer en feriado (se respondería el mismo día o antes).
- *  Está documentado en LIBRO_RECLAMACIONES.md.
+ *  Si falta el calendario de un año que atraviesa el plazo, el cómputo sigue
+ *  solo con sábados y domingos y lo reporta en `calendar.missingYears`: el
+ *  vencimiento queda antes o igual al legal máximo, nunca después. La bandeja
+ *  de admin muestra esa advertencia. Ver LIBRO_RECLAMACIONES.md.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  *  SEGURIDAD: los errores son CÓDIGOS, no textos. La UI los traduce y el
  *  servidor nunca devuelve DNI, teléfono ni correo en una respuesta pública.
  */
+
+import {
+  isPeruHoliday,
+  peruHolidayCalendarStatus,
+  type PeruHolidayCalendarStatus,
+} from './peru-holidays';
 
 export const COMPLAINT_KINDS = ['reclamo', 'queja'] as const;
 export type ComplaintKind = (typeof COMPLAINT_KINDS)[number];
@@ -33,16 +39,11 @@ export type ComplaintStatus = (typeof COMPLAINT_STATUSES)[number];
 /** Plazo legal: 15 días hábiles improrrogables. */
 export const COMPLAINT_RESPONSE_BUSINESS_DAYS = 15;
 
-/** Zona horaria de referencia para el cómputo. Lima no tiene horario de verano. */
-export const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
+/** Responsable operativo por defecto hasta que un Platform Admin la asigne. */
+export const COMPLAINT_DEFAULT_OWNER = 'Platform Admin (UMANTAI)';
 
-/**
- * Feriados nacionales de Perú.
- *
- * VACÍO A PROPÓSITO: no se inventan fechas. Ver la limitación documentada
- * arriba y en LIBRO_RECLAMACIONES.md antes de publicar.
- */
-export const PERU_HOLIDAYS: readonly string[] = [];
+/** Zona horaria de referencia del cómputo. Lima no tiene horario de verano. */
+export const LIMA_TIME_ZONE = 'America/Lima';
 
 export const COMPLAINT_LIMITS = {
   nameMin: 2,
@@ -342,51 +343,125 @@ export function validateComplaintPayload(raw: unknown): ComplaintValidation {
 //  PLAZO
 // =============================================================================
 
-/** Fecha local de Lima como día UTC (para operar con getUTC*). */
-function limaCalendarDate(date: Date): Date {
-  return new Date(date.getTime() - LIMA_OFFSET_MS);
+export interface ComplaintDeadlineOptions {
+  /** Feriados oficiales adicionales (`YYYY-MM-DD`), p. ej. `PERU_HOLIDAYS`. */
+  extraHolidays?: Iterable<string>;
+}
+
+export interface ComplaintDeadline {
+  dueAt: Date;
+  /** Cobertura del calendario para los años que atraviesa el plazo. */
+  calendar: PeruHolidayCalendarStatus;
+}
+
+const limaFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: LIMA_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function limaParts(date: Date): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const parts = limaFormatter.formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute'),
+    second: value('second'),
+  };
+}
+
+/** Fecha local de Lima como clave `YYYY-MM-DD`. */
+function limaDayKey(date: Date): string {
+  const { year, month, day } = limaParts(date);
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Desfase de America/Lima en ese instante (negativo al oeste de UTC). */
+function limaOffsetMs(date: Date): number {
+  const { year, month, day, hour, minute, second } = limaParts(date);
+  return Date.UTC(year, month - 1, day, hour, minute, second) - date.getTime();
 }
 
 function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function isBusinessDay(date: Date): boolean {
+function isBusinessDay(date: Date, options: ComplaintDeadlineOptions): boolean {
   const weekday = date.getUTCDay(); // 0 domingo, 6 sábado
   if (weekday === 0 || weekday === 6) return false;
-  return !PERU_HOLIDAYS.includes(isoDay(date));
+  return !isPeruHoliday(isoDay(date), options.extraHolidays);
 }
 
 /**
  * Suma días hábiles empezando SIEMPRE por el día siguiente. Devuelve el final de
- * ese día en hora de Lima (23:59:59), expresado en UTC.
+ * ese día en America/Lima (23:59:59), expresado como instante UTC.
  */
-export function addBusinessDaysLima(start: Date, businessDays: number): Date {
+export function addBusinessDaysLima(
+  start: Date,
+  businessDays: number,
+  options: ComplaintDeadlineOptions = {},
+): Date {
   if (!Number.isFinite(start.getTime())) throw new Error('Fecha inicial inválida');
   const days = Math.max(0, Math.trunc(businessDays));
 
-  const cursor = limaCalendarDate(start);
-  let year = cursor.getUTCFullYear();
-  let month = cursor.getUTCMonth();
-  let day = cursor.getUTCDate();
+  const [yearPart, monthPart, dayPart] = limaDayKey(start).split('-');
+  let year = Number(yearPart);
+  let month = Number(monthPart) - 1;
+  let day = Number(dayPart);
   let remaining = days;
 
   while (remaining > 0) {
-    day += 1;
-    const probe = new Date(Date.UTC(year, month, day));
+    const probe = new Date(Date.UTC(year, month, day + 1));
     year = probe.getUTCFullYear();
     month = probe.getUTCMonth();
     day = probe.getUTCDate();
-    if (isBusinessDay(probe)) remaining -= 1;
+    if (isBusinessDay(probe, options)) remaining -= 1;
   }
 
-  // 23:59:59 en Lima = 04:59:59 UTC del día siguiente.
-  return new Date(Date.UTC(year, month, day, 23, 59, 59) + LIMA_OFFSET_MS);
+  // 23:59:59 del día local. El desfase se deriva de America/Lima, no se asume.
+  const endOfDayAsUtc = Date.UTC(year, month, day, 23, 59, 59);
+  return new Date(endOfDayAsUtc - limaOffsetMs(new Date(endOfDayAsUtc)));
+}
+
+/**
+ * Fecha límite con la cobertura del calendario usada. Si `missingYears` no está
+ * vacío, el plazo se calculó sin feriados para ese año (nunca más tarde).
+ */
+export function complaintDeadline(
+  submittedAt: Date,
+  options: ComplaintDeadlineOptions = {},
+): ComplaintDeadline {
+  const dueAt = addBusinessDaysLima(submittedAt, COMPLAINT_RESPONSE_BUSINESS_DAYS, options);
+  const startYear = Number(limaDayKey(submittedAt).slice(0, 4));
+  const dueYear = Number(limaDayKey(dueAt).slice(0, 4));
+  const years: number[] = [];
+  for (let year = startYear; year <= dueYear; year += 1) years.push(year);
+
+  return { dueAt, calendar: peruHolidayCalendarStatus(years) };
 }
 
 /** Fecha límite de respuesta para una presentación dada. */
-export function complaintDueAt(submittedAt: Date): Date {
-  return addBusinessDaysLima(submittedAt, COMPLAINT_RESPONSE_BUSINESS_DAYS);
+export function complaintDueAt(
+  submittedAt: Date,
+  options: ComplaintDeadlineOptions = {},
+): Date {
+  return complaintDeadline(submittedAt, options).dueAt;
 }
 
 /** ¿Sigue pendiente y ya venció? (una respuesta cerrada nunca está vencida). */

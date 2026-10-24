@@ -531,6 +531,7 @@ Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
 | `BILLING_GRACE_DAYS`           | Días de gracia antes de expirar `past_due`           | Staging/Prod    |
 | `PLATFORM_ADMIN_SECRET`        | Firma la cookie de Platform Admin (≥32 chars). Si falta, usa `BETTER_AUTH_SECRET` | Staging/Prod |
 | `PLATFORM_ADMIN_EMAILS`        | Bootstrap de admins por correo (lista separada por comas); la tabla `platform_admins` es la fuente principal | Staging |
+| `PERU_HOLIDAYS`                | Feriados oficiales adicionales (`YYYY-MM-DD`, separados por coma) para el plazo del Libro de Reclamaciones | Staging/Prod (opcional) |
 | `ALLOW_ADMIN_TOKEN_FALLBACK`   | `1` reactiva el token compartido en Producción (emergencia) | Prod (temporal) |
 | `PLAYWRIGHT_BASE_URL`          | Base para `npm run e2e` (default: staging)           | CI/Dev          |
 | `SMOKE_BASE_URL`               | Base para `scripts/security-smoke.mjs`               | CI/Staging      |
@@ -540,6 +541,21 @@ Bloqueantes en cada push/PR a `main` y `feat/railway-staging`:
 | `BANGELH_*` / `UMANTAI_URL_*` prefixed keys | Match Supabase integration prefix (Bangelh or umantai vercel pulls) | All             |
 
 ---
+
+### `PERU_HOLIDAYS` (opcional)
+
+Agrega feriados nacionales oficiales declarados **después** del release, sin
+tocar código. No reemplaza el calendario versionado de `lib/peru-holidays.ts` ni
+marca un año como completo.
+
+```env
+PERU_HOLIDAYS=2026-07-24,2026-12-31
+```
+
+- Formato `YYYY-MM-DD`; se aceptan comas, espacios o saltos de línea.
+- Las fechas inválidas se ignoran y el servidor registra solo la cantidad.
+- Sirve para decretos puntuales. Para un año nuevo hay que cargar el calendario
+  completo y subir la versión (ver `LIBRO_RECLAMACIONES.md`).
 
 Verificación local: `npm test` (unitarios) y `npm run test:integration`
 (PostgreSQL efímero, sin tocar ninguna base externa).

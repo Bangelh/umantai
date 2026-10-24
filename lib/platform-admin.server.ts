@@ -146,6 +146,30 @@ function bootstrapEmails(): string[] {
 }
 
 /**
+ * Etiqueta de auditoría para una acción administrativa (p. ej. responsable de
+ * una reclamación). Prefiere el correo, que es único; si la cuenta ya no existe
+ * conserva un texto genérico en vez de romper la operación.
+ */
+export async function getPlatformAdminLabel(userId: string): Promise<string> {
+  const sql = getPlatformSql();
+  if (sql) {
+    try {
+      const rows = await sql`
+        SELECT email, name FROM users WHERE id = ${userId} LIMIT 1
+      `;
+      const row = rows[0];
+      const email = row?.email ? String(row.email).trim() : '';
+      if (email) return email.slice(0, 120);
+      const name = row?.name ? String(row.name).trim() : '';
+      if (name) return name.slice(0, 120);
+    } catch {
+      // La sesión ya está validada; la etiqueta es evidencia, no autorización.
+    }
+  }
+  return 'Platform Admin';
+}
+
+/**
  * Autorización real: tabla `platform_admins` o allowlist de bootstrap.
  * Falla cerrado si no hay DB y el correo no está en la allowlist.
  */

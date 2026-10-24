@@ -72,5 +72,10 @@ test.describe('Platform Admin autorizado', () => {
       await page.goto(path);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     }
+
+    // La bandeja muestra el responsable y el estado del calendario de feriados.
+    await page.goto('/admin/reclamaciones');
+    await expect(page.getByRole('columnheader', { name: 'Responsable' })).toBeVisible();
+    await expect(page.getByText(/feriados nacionales del calendario versionado/i).first()).toBeVisible();
   });
 });

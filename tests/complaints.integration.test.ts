@@ -92,6 +92,12 @@ test('registra el reclamo con correlativo y código público no secuencial', asy
   assert.notEqual(created.publicCode, created.complaintNumber);
   assert.ok(new Date(created.dueAt).getTime() > new Date(created.submittedAt).getTime());
   assert.equal(await complaints.countComplaints(), 1);
+
+  const view = await complaints.getComplaintById(created.id);
+  assert.ok(view);
+  assert.equal(view.assignedTo, 'Platform Admin (UMANTAI)');
+  assert.ok(view.assignedAt);
+  assert.equal(view.answeredBy, null);
 });
 
 test('la consulta pública no expone DNI, teléfono ni correo', async () => {
@@ -147,17 +153,26 @@ test('filtra por estado, tipo y rango de fechas', async () => {
 test('pasa a revisión y registra una única respuesta', async () => {
   const created = await complaints.createComplaint(input());
 
-  const inReview = await complaints.markComplaintInReview(created.id);
+  const inReview = await complaints.markComplaintInReview(created.id, 'admin@umantai.test');
   assert.ok(inReview);
   assert.equal(inReview.status, 'in_review');
+  assert.equal(inReview.assignedTo, 'admin@umantai.test');
+  assert.ok(inReview.assignedAt);
 
-  const answered = await complaints.answerComplaint(created.id, {
-    responseText: 'Aprobamos el cambio y coordinamos la entrega con el cliente.',
-    providerActions: 'Se verificó el lote con el proveedor.',
-  });
+  const answered = await complaints.answerComplaint(
+    created.id,
+    {
+      responseText: 'Aprobamos el cambio y coordinamos la entrega con el cliente.',
+      providerActions: 'Se verificó el lote con el proveedor.',
+    },
+    new Date(),
+    'admin@umantai.test',
+  );
   assert.ok(answered);
   assert.equal(answered.status, 'answered');
   assert.ok(answered.respondedAt);
+  assert.equal(answered.answeredBy, 'admin@umantai.test');
+  assert.equal(answered.assignedTo, 'admin@umantai.test');
   assert.match(answered.responseText ?? '', /Aprobamos el cambio/);
   assert.equal(answered.providerActions, 'Se verificó el lote con el proveedor.');
   assert.equal(answered.overdue, false);

@@ -9,9 +9,15 @@ import { formatDateTime, formatMoney } from '@/lib/format';
 import type { ComplaintAdminView } from '@/lib/complaints.server';
 import { AdminNav } from '../components/AdminNav';
 
+interface HolidayCalendarInfo {
+  version: string;
+  configuredYears: number[];
+}
+
 interface ListPayload {
   ok?: boolean;
   complaints?: ComplaintAdminView[];
+  calendar?: HolidayCalendarInfo;
   error?: string;
 }
 
@@ -54,6 +60,25 @@ function dueState(complaint: ComplaintAdminView): 'overdue' | 'soon' | null {
   return null;
 }
 
+function dueYear(complaint: ComplaintAdminView): number | null {
+  const year = new Date(complaint.dueAt).getUTCFullYear();
+  return Number.isInteger(year) ? year : null;
+}
+
+function missingCalendarYears(
+  complaints: ComplaintAdminView[],
+  calendar: HolidayCalendarInfo | null,
+): number[] {
+  if (!calendar) return [];
+  const configured = new Set(calendar.configuredYears);
+  const missing = new Set<number>();
+  for (const complaint of complaints) {
+    const year = dueYear(complaint);
+    if (year !== null && !configured.has(year)) missing.add(year);
+  }
+  return [...missing].sort((a, b) => a - b);
+}
+
 /**
  * /admin/reclamaciones — Libro de Reclamaciones (Platform Admin).
  *
@@ -72,6 +97,7 @@ export default function AdminComplaintsPage() {
   const [to, setTo] = useState('');
 
   const [complaints, setComplaints] = useState<ComplaintAdminView[]>([]);
+  const [calendar, setCalendar] = useState<HolidayCalendarInfo | null>(null);
   const [selected, setSelected] = useState<ComplaintAdminView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +123,7 @@ export default function AdminComplaintsPage() {
         throw new Error(payload?.error ?? t('adminComplaints.error'));
       }
       setComplaints(payload.complaints ?? []);
+      setCalendar(payload.calendar ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('adminComplaints.error'));
     } finally {
@@ -115,6 +142,7 @@ export default function AdminComplaintsPage() {
           throw new Error(payload?.error ?? t('adminComplaints.error'));
         }
         setComplaints(payload.complaints ?? []);
+        setCalendar(payload.calendar ?? null);
         setError(null);
       })
       .catch((err: unknown) => {
@@ -221,6 +249,10 @@ export default function AdminComplaintsPage() {
     }
   };
 
+  const overdueCount = complaints.filter((complaint) => dueState(complaint) === 'overdue').length;
+  const soonCount = complaints.filter((complaint) => dueState(complaint) === 'soon').length;
+  const missingYears = missingCalendarYears(complaints, calendar);
+
   if (admin.status !== 'authenticated') {
     return (
       <AdminAccessScreen
@@ -258,6 +290,39 @@ export default function AdminComplaintsPage() {
         <div className="mt-4">
           <AdminNav />
         </div>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface p-4">
+            <div className="text-xs uppercase tracking-wide text-tertiary">
+              {t('adminComplaints.pending')}
+            </div>
+            <div className="mt-1 text-2xl font-semibold">
+              {complaints.filter((complaint) => complaint.status !== 'answered').length}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-warning/40 bg-warning/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-warning">
+              {t('adminComplaints.dueSoon')}
+            </div>
+            <div className="mt-1 text-2xl font-semibold text-warning">{soonCount}</div>
+          </div>
+          <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-4">
+            <div className="text-xs uppercase tracking-wide text-destructive">
+              {t('adminComplaints.overdue')}
+            </div>
+            <div className="mt-1 text-2xl font-semibold text-destructive">{overdueCount}</div>
+          </div>
+        </div>
+
+        {missingYears.length > 0 && (
+          <div
+            role="status"
+            className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning"
+          >
+            {t('adminComplaints.calendarMissing')} {missingYears.join(', ')}.{' '}
+            {t('adminComplaints.calendarMissingHelp')}
+          </div>
+        )}
 
         <form
           onSubmit={(event) => {
@@ -365,6 +430,7 @@ export default function AdminComplaintsPage() {
                 <th className="px-4 py-3">{t('adminComplaints.kind')}</th>
                 <th className="px-4 py-3">{t('adminComplaints.consumer')}</th>
                 <th className="px-4 py-3">{t('adminComplaints.item')}</th>
+                <th className="px-4 py-3">{t('adminComplaints.assignee')}</th>
                 <th className="px-4 py-3">{t('adminComplaints.due')}</th>
                 <th className="px-4 py-3">{t('adminComplaints.status')}</th>
                 <th className="px-4 py-3" />
@@ -385,6 +451,11 @@ export default function AdminComplaintsPage() {
                       <div className="text-xs text-tertiary">{complaint.consumerEmail}</div>
                     </td>
                     <td className="max-w-[16rem] px-4 py-3 text-xs">{complaint.relatedItem}</td>
+                    <td className="max-w-[12rem] px-4 py-3 text-xs">
+                      <div className="truncate" title={complaint.assignedTo}>
+                        {complaint.assignedTo}
+                      </div>
+                    </td>
                     <td
                       className={`px-4 py-3 text-xs ${
                         due === 'overdue'
@@ -447,6 +518,15 @@ export default function AdminComplaintsPage() {
                 <p className="mt-1 text-xs text-tertiary">
                   {t('adminComplaints.date')}: {formatDateTime(selected.submittedAt, locale)} ·{' '}
                   {t('adminComplaints.due')}: {formatDateTime(selected.dueAt, locale)}
+                </p>
+                <p className="mt-1 text-xs text-tertiary">
+                  {t('adminComplaints.assignee')}: {selected.assignedTo}
+                  {selected.assignedAt
+                    ? ` · ${t('adminComplaints.assignedAt')}: ${formatDateTime(selected.assignedAt, locale)}`
+                    : ''}
+                </p>
+                <p className="mt-1 text-xs text-tertiary">
+                  {t('adminComplaints.status')}: {t(STATUS_KEYS[selected.status])}
                 </p>
               </div>
               <button
@@ -537,17 +617,40 @@ export default function AdminComplaintsPage() {
 
             {selected.status === 'answered' ? (
               <div className="mt-6 rounded-2xl border border-border p-4">
-                <h3 className="text-sm font-medium">{t('adminComplaints.answerTitle')}</h3>
-                <p className="mt-2 whitespace-pre-line text-sm text-secondary">
+                <h3 className="text-sm font-medium">{t('adminComplaints.historyTitle')}</h3>
+                <dl className="mt-3 grid gap-2 text-xs text-tertiary sm:grid-cols-2">
+                  <div>
+                    <dt>{t('adminComplaints.answeredBy')}</dt>
+                    <dd className="text-primary">
+                      {selected.answeredBy ?? t('adminComplaints.assigneeUnknown')}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t('adminComplaints.answeredAt')}</dt>
+                    <dd className="text-primary">
+                      {selected.respondedAt
+                        ? formatDateTime(selected.respondedAt, locale)
+                        : t('adminComplaints.assigneeUnknown')}
+                    </dd>
+                  </div>
+                </dl>
+                <h4 className="mt-4 text-xs uppercase tracking-wide text-tertiary">
+                  {t('adminComplaints.responseLabel')}
+                </h4>
+                <p className="mt-1 whitespace-pre-line text-sm text-secondary">
                   {selected.responseText}
                 </p>
-                {selected.respondedAt && (
-                  <p className="mt-2 text-xs text-tertiary">
-                    {t('adminComplaints.answeredAt')}:{' '}
-                    {formatDateTime(selected.respondedAt, locale)}
-                  </p>
+                {selected.providerActions && (
+                  <>
+                    <h4 className="mt-4 text-xs uppercase tracking-wide text-tertiary">
+                      {t('adminComplaints.actionsHistory')}
+                    </h4>
+                    <p className="mt-1 whitespace-pre-line text-sm text-secondary">
+                      {selected.providerActions}
+                    </p>
+                  </>
                 )}
-                <p className="mt-2 text-xs text-tertiary">{t('adminComplaints.answered')}</p>
+                <p className="mt-3 text-xs text-tertiary">{t('adminComplaints.answered')}</p>
               </div>
             ) : (
               <form onSubmit={submitAnswer} className="mt-6 space-y-4">

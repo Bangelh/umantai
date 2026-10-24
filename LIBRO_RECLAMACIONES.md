@@ -1,8 +1,12 @@
 # Libro de Reclamaciones — implementación y estado para lanzamiento
 
-**Fecha:** 2026-10-24 · **Estado:** implementado en staging · **Bloqueo restante:**
-datos del titular (razón social, RUC, domicilio, jurisdicción) y revisión legal
-del texto/aviso. No se inventó ningún dato.
+**Fecha:** 2026-10-24 · **Estado:** aprobado técnicamente en staging · **Bloqueo
+restante:** datos del titular (razón social, RUC, domicilio, jurisdicción) y
+revisión legal del texto/aviso. No se inventó ningún dato.
+
+**Responsable operativo inicial:** el Platform Admin de UMANTAI. No se publica
+su nombre personal en el formulario ni en la constancia; queda registrado en la
+bandeja para auditoría.
 
 Este documento no es asesoría legal. Resume el requisito, lo implementado y lo
 que falta antes de abrir UMANTAI al público.
@@ -36,8 +40,9 @@ establecimiento y en las plataformas de venta por internet.
 
 | Pieza | Dónde |
 |---|---|
-| Migración | `db/migrations/023_consumer_complaints.sql` |
+| Migración | `db/migrations/023_consumer_complaints.sql`, `db/migrations/024_complaint_assignment.sql` |
 | Dominio + plazo | `lib/complaints.ts` |
+| Calendario de feriados | `lib/peru-holidays.ts` (versionado) |
 | Persistencia | `lib/complaints.server.ts` |
 | Constancia/respuesta por correo | `lib/complaints-email.server.ts` |
 | API pública | `POST /api/complaints` |
@@ -81,21 +86,47 @@ personales. Permite listar, filtrar por estado/tipo/fecha, abrir el detalle,
 marcar en revisión y registrar una respuesta única (no se sobrescribe). No hay
 borrado desde la UI ni endpoint `DELETE`.
 
-### Plazo — limitación documentada
+La bandeja muestra:
 
-El cómputo cuenta **15 días hábiles desde el día siguiente**, en hora de Lima,
-excluyendo sábado y domingo. **No descuenta feriados nacionales** porque el
-proyecto no tiene un calendario oficial confiable. La bandeja lo advierte y el
-vencimiento se calcula a las 23:59:59 de Lima.
+- **responsable asignado** (`assigned_to`); al registrarse es el rol
+  `Platform Admin (UMANTAI)` y al tomar la hoja queda el correo del admin;
+- **estado** (recibido, en revisión, atendido);
+- **fecha límite** y **días de alerta**: rojo si está vencido, ámbar si vence en
+  los próximos 3 días, con contadores de pendientes/por vencer/vencidos;
+- **historial mínimo de respuesta**: texto de la respuesta, acciones u
+  observaciones, fecha y autor (`answered_by`).
 
-Antes del lanzamiento hay que decidir una de estas dos opciones:
+### Plazo y feriados
 
-1. cargar el calendario oficial de feriados del año en `PERU_HOLIDAYS`
-   (`lib/complaints.ts`) y agregar tests; o
-2. aceptar por escrito que el vencimiento puede caer en feriado y que se
-   responderá el mismo día o antes.
+El cómputo cuenta **15 días hábiles desde el día siguiente**, en la zona
+`America/Lima`, excluyendo sábado, domingo y los **feriados nacionales** del
+calendario versionado en `lib/peru-holidays.ts` (versión
+`2026-2027.1`, 16 feriados por año). El vencimiento se fija a las 23:59:59 de
+Lima.
 
-La opción 1 es la recomendada; ambas dejan el sistema en cumplimiento.
+Solo se excluyen feriados **nacionales**. Los feriados regionales y los días no
+laborables compensables no detienen el plazo para todo el país y no se cuentan.
+Los feriados peruanos no se trasladan al lunes: rige la fecha exacta, incluso si
+cae en fin de semana.
+
+**Actualización anual del calendario:**
+
+1. Agregar el año en `CALENDARS` de `lib/peru-holidays.ts` con los feriados
+   nacionales publicados por el Estado (D.L. 713 y modificatorias). No inventar
+   ni copiar el año anterior: Jueves/Viernes Santo cambian y pueden aparecer
+   feriados por decreto.
+2. Subir `PERU_HOLIDAY_CALENDAR_VERSION` (por ejemplo `2028.1`).
+3. Agregar/ajustar el test de 16 feriados y el de un plazo que cruce un feriado
+   de ese año.
+4. Desplegar antes del 1 de enero del año nuevo.
+
+**Fail-safe:** si un plazo atraviesa un año sin calendario, el sistema no se
+cae ni bloquea el registro. Calcula solo con fines de semana y lo advierte en
+la bandeja; como no descuenta feriados, el vencimiento puede quedar **antes**
+del máximo legal, nunca después. La solución correcta sigue siendo cargar el
+año. Para feriados puntuales declarados por decreto después del deploy se puede
+usar `PERU_HOLIDAYS` (ver `ENVIRONMENT_VARIABLES.md`), que agrega fechas pero no
+marca un año como completo.
 
 ---
 
@@ -127,8 +158,9 @@ La **funcionalidad ya no bloquea**. Lo que sigue bloqueando es:
       “no listo para lanzamiento público”.
 - [ ] Revisión legal del texto del formulario, del aviso y del flujo de
       respuesta.
-- [ ] Definir el responsable interno de responder dentro de 15 días hábiles.
-- [ ] Decidir feriados (§2).
+
+Resuelto técnicamente: responsable operativo (Platform Admin) y calendario de
+feriados nacionales 2026–2027 con fail-safe documentado.
 
 El enlace al Libro ya está visible en footer, contacto, legal y checkout/pedido.
 
@@ -137,10 +169,12 @@ El enlace al Libro ya está visible en footer, contacto, legal y checkout/pedido
 ## 5. Pruebas
 
 - `tests/complaints.test.ts`: validación, menores, honeypot, monto, XSS como
-  dato, correlativo, código opaco y plazo.
-- `tests/complaints.integration.test.ts`: PostgreSQL real (migración 023),
-  correlativo, consulta sin PII, filtros, revisión, respuesta única y
-  autorización estricta de las rutas admin.
+  dato, correlativo, código opaco, plazo con feriados (Fiestas Patrias, fin de
+  año, feriado adicional) y fail-safe de un año sin calendario.
+- `tests/complaints.integration.test.ts`: PostgreSQL real (migraciones 023 y
+  024), correlativo, consulta sin PII, filtros, responsable, autor de la
+  respuesta, revisión, respuesta única y autorización estricta de las rutas
+  admin.
 - `e2e/public.spec.ts`: registro real, constancia imprimible, XSS escapado y
   no enumeración.
 - `e2e/admin.spec.ts`: puerta de sesión y navegación del panel.
@@ -153,5 +187,5 @@ Ninguna compra ni contratación.
 
 1. **Dueño:** entregar razón social, RUC y domicilio fiscal.
 2. **Asesoría legal:** validar textos, aviso y plazos.
-3. **Negocio:** nombrar responsable de respuestas y decidir el tratamiento de
-   feriados.
+3. **Negocio:** confirmar que el Platform Admin asume la bandeja y mantener
+   actualizado el calendario anual de feriados antes de cada 1 de enero.

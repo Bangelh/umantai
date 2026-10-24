@@ -8,7 +8,7 @@ import {
   markComplaintInReview,
 } from '@/lib/complaints.server';
 import { sendComplaintResponse } from '@/lib/complaints-email.server';
-import { requirePlatformAdminSession } from '@/lib/platform-admin.server';
+import { getPlatformAdminLabel, requirePlatformAdminSession } from '@/lib/platform-admin.server';
 
 /**
  * GET   /api/admin/complaints/:id — detalle (Platform Admin).
@@ -29,26 +29,36 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-function gate(request: Request) {
+type Gate =
+  | { ok: true; userId: string }
+  | { ok: false; response: NextResponse };
+
+function gate(request: Request): Gate {
   const access = requirePlatformAdminSession(request);
   if (!access.ok) {
-    return NextResponse.json(
-      { ok: false, code: access.code, error: access.message },
-      { status: access.status, headers: NO_STORE },
-    );
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, code: access.code, error: access.message },
+        { status: access.status, headers: NO_STORE },
+      ),
+    };
   }
   if (!isComplaintsStorageConfigured()) {
-    return NextResponse.json(
-      { ok: false, code: 'database_not_configured', error: 'La base de datos no está configurada.' },
-      { status: 503, headers: NO_STORE },
-    );
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, code: 'database_not_configured', error: 'La base de datos no está configurada.' },
+        { status: 503, headers: NO_STORE },
+      ),
+    };
   }
-  return null;
+  return { ok: true, userId: access.userId };
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const blocked = gate(request);
-  if (blocked) return blocked;
+  const access = gate(request);
+  if (!access.ok) return access.response;
 
   const { id } = await context.params;
   if (!UUID_PATTERN.test(id)) {
@@ -79,8 +89,9 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const blocked = gate(request);
-  if (blocked) return blocked;
+  const access = gate(request);
+  if (!access.ok) return access.response;
+  const actor = await getPlatformAdminLabel(access.userId);
 
   const { id } = await context.params;
   if (!UUID_PATTERN.test(id)) {
@@ -145,7 +156,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (action === 'start_review') {
-      const updated = await markComplaintInReview(id);
+      const updated = await markComplaintInReview(id, actor);
       return NextResponse.json({ ok: true, complaint: updated ?? current }, { headers: NO_STORE });
     }
 
@@ -164,7 +175,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const updated = await answerComplaint(id, validation.value);
+    const updated = await answerComplaint(id, validation.value, new Date(), actor);
     if (!updated) {
       return NextResponse.json(
         {

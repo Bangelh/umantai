@@ -209,8 +209,8 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Un cliente no ve pedidos de otro por API ni por URL.
 - [ ] `/api/merchant/stores/<otra>/...` → 403/404.
 - [ ] `022_rls_tenant_isolation.sql` aplicada y RLS activa en las tablas.
-- [ ] `023_consumer_complaints.sql` aplicada (tabla + secuencia del Libro de
-      Reclamaciones).
+- [ ] `023_consumer_complaints.sql` y `024_complaint_assignment.sql` aplicadas
+      (tabla, secuencia, responsable y autor de la respuesta).
 - [ ] Las políticas no bloquean al rol de la app en operaciones legítimas.
 - [ ] `int`: `tests/rls.integration.test.ts`, `tests/tenant-guards.integration.test.ts`,
       `tests/multi-tenant.integration.test.ts`.
@@ -338,8 +338,16 @@ Implementado en `/libro-de-reclamaciones` (ver `LIBRO_RECLAMACIONES.md`).
 - [ ] **Bloqueo restante:** datos del titular (razón social, RUC, domicilio,
       jurisdicción) y revisión legal. Mientras falten, el formulario muestra
       `[PENDIENTE: …]` y “no listo para lanzamiento público”.
-- [ ] Decidir feriados: cargar `PERU_HOLIDAYS` o aceptar por escrito responder
-      antes del vencimiento cuando caiga en feriado.
+- [ ] Responsable operativo visible en la bandeja: Platform Admin (UMANTAI) por
+      defecto y correo del admin al tomar la hoja.
+- [ ] Plazo con feriados nacionales (calendario `2026-2027.1` de
+      `lib/peru-holidays.ts`), zona `America/Lima`, sábados y domingos.
+- [ ] La bandeja advierte si un vencimiento cae en un año sin calendario
+      (fail-safe: nunca alarga el plazo).
+- [ ] Historial de respuesta muestra texto, acciones, fecha y autor; una
+      respuesta emitida no se sobrescribe.
+- [ ] `unit`: `tests/complaints.test.ts`; `int`:
+      `tests/complaints.integration.test.ts`.
 
 ## 26. Mercado Pago (CONGELADO externamente — fuera de alcance)
 

@@ -1,7 +1,7 @@
 /**
  * tests/helpers/embedded-postgres.ts — PostgreSQL REAL y efímero para tests.
  *
- * Levanta un cluster local con `embedded-postgres` (PG 17), crea una base *   `umantai_test` y aplica `db/migrations/001…023.sql` en orden.
+ * Levanta un cluster local con `embedded-postgres` (PG 17), crea una base *   `umantai_test` y aplica `db/migrations/001…024.sql` en orden.
  *
  * Reglas de seguridad:
  *   · Nunca lee `DATABASE_URL` ni ninguna URL externa.
@@ -45,6 +45,7 @@ const MIGRATIONS = [
   '021_email_outbox.sql',
   '022_rls_tenant_isolation.sql',
   '023_consumer_complaints.sql',
+  '024_complaint_assignment.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {

@@ -214,14 +214,14 @@ copian y no se pegan en documentos.
 
 ## 5. Migraciones
 
-Orden vigente: `001` … `023`. Cada una es idempotente donde corresponde.
+Orden vigente: `001` … `024`. Cada una es idempotente donde corresponde.
 
 ```bash
 # 1. Ver el estado sin escribir.
 node --import tsx scripts/audit-schema.ts
 
 # 2. Aplicar por nombre, una o varias, con ON_ERROR_STOP.
-node --import tsx scripts/apply-migrations.ts 019 020 021 022 023
+node --import tsx scripts/apply-migrations.ts 019 020 021 022 023 024
 
 # 3. Volver a auditar: fingerprint y marcadores.
 node --import tsx scripts/audit-schema.ts
@@ -235,16 +235,17 @@ Reglas:
   correr, no se edita a mano la base.
 - `022_rls_tenant_isolation.sql` activa RLS: verificar que la app use el rol
   correcto y que los tests de aislamiento pasen **después** de aplicarla.
-- Las migraciones `down` existen solo para 001–007; para 008–022 el rollback es
+- Las migraciones `down` existen solo para 001–007; para 008–024 el rollback es
   restaurar el backup, no improvisar un `DROP`.
 
 Verificación mínima:
 
-- [ ] `audit-schema` reporta 001–023 `OK`.
+- [ ] `audit-schema` reporta 001–024 `OK`.
 - [ ] Fingerprint anotado antes/después.
 - [ ] `payment_webhook_events`, `contact_messages`, `stores`, `plans`,
       `subscriptions`, `platform_admins`, `email_outbox`,
-      `consumer_complaints` existen.
+      `consumer_complaints` (con `assigned_to`, `assigned_at`, `answered_by`)
+      existen.
 - [ ] `SELECT count(*)` de tablas críticas coincide con el backup.
 - [ ] `tests/rls.integration.test.ts` y `tests/tenant-guards.integration.test.ts`
       verdes contra un clon.
@@ -375,7 +376,7 @@ depende de un pago.
 
 - [ ] Preflight local verde y HEAD congelado.
 - [ ] Backup verificado con restore y fingerprint.
-- [ ] Migraciones 001–023 aplicadas y auditadas.
+- [ ] Migraciones 001–024 aplicadas y auditadas.
 - [ ] `/api/health` con commit correcto y base reachable.
 - [ ] `FINAL_QA_CHECKLIST.md` cerrado. Los ítems de Mercado Pago están marcados
       como **congelados externamente** y no condicionan el GO.

@@ -15,13 +15,17 @@ import { randomBytes } from 'node:crypto';
 
 import { createSqlClient, type SqlClient } from './db-driver.server';
 import { getDatabaseUrl } from './db';
+import { getPrefixedEnv } from './env';
 import {
-  complaintDueAt,
+  COMPLAINT_DEFAULT_OWNER,
+  complaintDeadline,
   formatComplaintNumber,
+  type ComplaintDeadlineOptions,
   type ComplaintInput,
   type ComplaintKind,
   type ComplaintStatus,
 } from './complaints';
+import { parsePeruHolidayList } from './peru-holidays';
 
 export interface ComplaintCreated {
   id: string;
@@ -61,6 +65,11 @@ export interface ComplaintAdminView extends ComplaintPublicView {
   isMinor: boolean;
   guardianName: string | null;
   guardianDocument: string | null;
+  /** Responsable de atender la hoja. */
+  assignedTo: string;
+  assignedAt: string | null;
+  /** Platform Admin que emitió la respuesta, si ya fue atendida. */
+  answeredBy: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +94,21 @@ function getComplaintSql(): SqlClient | null {
 
 export function isComplaintsStorageConfigured(): boolean {
   return !!getDatabaseUrl();
+}
+
+/**
+ * Feriados oficiales agregados después del release. Se leen en cada llamada
+ * (no al importar) para que un cambio de entorno no requiera reiniciar tests.
+ * Las fechas mal formadas se ignoran y se registra solo la cantidad.
+ */
+function deadlineOptions(): ComplaintDeadlineOptions {
+  const parsed = parsePeruHolidayList(getPrefixedEnv('PERU_HOLIDAYS'));
+  if (parsed.invalid.length > 0) {
+    console.warn('[reclamaciones] PERU_HOLIDAYS contiene fechas inválidas', {
+      invalid: parsed.invalid.length,
+    });
+  }
+  return { extraHolidays: parsed.dates };
 }
 
 function toIso(value: unknown): string | null {
@@ -133,6 +157,9 @@ function mapAdmin(row: Record<string, unknown>): ComplaintAdminView {
     isMinor: row.is_minor === true,
     guardianName: row.guardian_name === null ? null : String(row.guardian_name),
     guardianDocument: row.guardian_document === null ? null : String(row.guardian_document),
+    assignedTo: row.assigned_to ? String(row.assigned_to) : COMPLAINT_DEFAULT_OWNER,
+    assignedAt: toIso(row.assigned_at),
+    answeredBy: row.answered_by === null || row.answered_by === undefined ? null : String(row.answered_by),
     createdAt: toIso(row.created_at) ?? new Date().toISOString(),
     updatedAt: toIso(row.updated_at) ?? new Date().toISOString(),
   };
@@ -167,7 +194,13 @@ export async function createComplaint(
   if (!sql) throw new Error('complaints_storage_unavailable');
 
   // Se recalcula acá también para que un llamador no pueda imponer un plazo.
-  const dueAt = complaintDueAt(submittedAt);
+  const deadline = complaintDeadline(submittedAt, deadlineOptions());
+  const dueAt = deadline.dueAt;
+  if (deadline.calendar.missingYears.length > 0) {
+    console.warn('[reclamaciones] calendario de feriados incompleto', {
+      years: deadline.calendar.missingYears,
+    });
+  }
 
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -180,14 +213,15 @@ export async function createComplaint(
           is_minor, guardian_name, guardian_document,
           related_item, amount_cents, currency,
           detail, consumer_request,
-          submitted_at, due_at
+          submitted_at, due_at, assigned_at
         ) VALUES (
           ${publicCode}, ${input.kind},
           ${input.consumerName}, ${input.consumerDocument}, ${input.consumerPhone}, ${input.consumerEmail},
           ${input.isMinor}, ${input.guardianName}, ${input.guardianDocument},
           ${input.relatedItem}, ${input.amountCents}, 'PEN',
           ${input.detail}, ${input.consumerRequest},
-          ${submittedAt.toISOString()}::timestamptz, ${dueAt.toISOString()}::timestamptz
+          ${submittedAt.toISOString()}::timestamptz, ${dueAt.toISOString()}::timestamptz,
+          ${submittedAt.toISOString()}::timestamptz
         )
         RETURNING id, complaint_number, public_code, submitted_at, due_at
       `;
@@ -261,14 +295,20 @@ export async function listComplaints(filters: ComplaintListFilters = {}): Promis
   return rows.map(mapAdmin);
 }
 
-/** Pasa un reclamo recibido a "en revisión". Idempotente. */
-export async function markComplaintInReview(id: string): Promise<ComplaintAdminView | null> {
+/** Pasa un reclamo recibido a "en revisión" y lo asigna al admin actual. */
+export async function markComplaintInReview(
+  id: string,
+  actor: string | null = null,
+): Promise<ComplaintAdminView | null> {
   const sql = getComplaintSql();
   if (!sql) return null;
 
   const rows = await sql`
     UPDATE consumer_complaints
-       SET status = 'in_review', updated_at = NOW()
+       SET status = 'in_review',
+           assigned_to = COALESCE(${actor}::text, assigned_to),
+           assigned_at = CASE WHEN ${actor}::text IS NULL THEN assigned_at ELSE NOW() END,
+           updated_at = NOW()
      WHERE id = ${id}::uuid AND status = 'received'
      RETURNING *
   `;
@@ -285,6 +325,7 @@ export async function answerComplaint(
   id: string,
   response: { responseText: string; providerActions?: string | null },
   respondedAt: Date = new Date(),
+  actor: string | null = null,
 ): Promise<ComplaintAdminView | null> {
   const sql = getComplaintSql();
   if (!sql) return null;
@@ -297,6 +338,9 @@ export async function answerComplaint(
            response_text = ${response.responseText},
            provider_actions = COALESCE(${actions}, provider_actions, ${response.responseText}),
            responded_at = ${respondedAt.toISOString()}::timestamptz,
+           answered_by = COALESCE(${actor}::text, ${COMPLAINT_DEFAULT_OWNER}),
+           assigned_to = COALESCE(${actor}::text, assigned_to),
+           assigned_at = COALESCE(assigned_at, NOW()),
            updated_at = NOW()
      WHERE id = ${id}::uuid AND status <> 'answered'
      RETURNING *

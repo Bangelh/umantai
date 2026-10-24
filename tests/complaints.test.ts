@@ -4,7 +4,7 @@
  * Lo que se fija acá:
  *   · validación server-side (campos, límites, menores, monto);
  *   · normalización y honeypot;
- *   · cálculo de 15 días hábiles en hora de Lima (sin feriados);
+ *   · cálculo de 15 días hábiles en America/Lima con feriados nacionales;
  *   · código público no secuencial y número correlativo.
  */
 
@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import {
   COMPLAINT_RESPONSE_BUSINESS_DAYS,
   addBusinessDaysLima,
+  complaintDeadline,
   complaintDueAt,
   formatComplaintNumber,
   isComplaintOverdue,
@@ -21,6 +22,12 @@ import {
   validateComplaintPayload,
   validateComplaintResponse,
 } from '../lib/complaints';
+import {
+  PERU_HOLIDAY_CALENDAR_VERSION,
+  getPeruHolidays,
+  parsePeruHolidayList,
+  peruHolidayCalendarStatus,
+} from '../lib/peru-holidays';
 
 const VALID = {
   kind: 'reclamo',
@@ -210,4 +217,69 @@ test('respuesta del proveedor: obligatoria, con límite y acciones opcionales', 
   assert.equal(noActions.ok, true);
   if (!noActions.ok) return;
   assert.equal(noActions.value.providerActions, null);
+});
+
+test('feriados: excluye Fiestas Patrias y no corre el plazo al lunes', () => {
+  // Presentado el jueves 23 de julio (feriado) a las 10:00 de Lima.
+  const oneDay = addBusinessDaysLima(new Date('2026-07-23T15:00:00.000Z'), 1);
+  assert.equal(oneDay.toISOString(), '2026-07-25T04:59:59.000Z'); // viernes 24, 23:59 Lima
+
+  // Miércoles 22: jueves 23 y martes 28/miércoles 29 son feriados; el 3.º hábil es jueves 30.
+  const threeDays = addBusinessDaysLima(new Date('2026-07-22T15:00:00.000Z'), 3);
+  assert.equal(threeDays.toISOString(), '2026-07-31T04:59:59.000Z');
+});
+
+test('feriados: fin de semana + feriado + cambio de año', () => {
+  // Miércoles 30 de diciembre: jueves 31 (1), viernes 1 de enero feriado,
+  // lunes 4 (2) y martes 5 (3).
+  const threeDays = addBusinessDaysLima(new Date('2026-12-30T15:00:00.000Z'), 3);
+  assert.equal(threeDays.toISOString(), '2027-01-06T04:59:59.000Z');
+});
+
+test('feriados adicionales por decreto (PERU_HOLIDAYS) también se excluyen', () => {
+  const due = addBusinessDaysLima(new Date('2026-07-22T15:00:00.000Z'), 1, {
+    extraHolidays: ['2026-07-24'],
+  });
+  assert.equal(due.toISOString(), '2026-07-28T04:59:59.000Z'); // lunes 27, 23:59 Lima
+});
+
+test('calendario: 2026 y 2027 completos; 2028 falla hacia una fecha más temprana', () => {
+  assert.equal(getPeruHolidays(2026)?.length, 16);
+  assert.equal(getPeruHolidays(2027)?.length, 16);
+  assert.equal(
+    getPeruHolidays(2027)?.find((holiday) => holiday.name === 'Jueves Santo')?.date,
+    '2027-03-25',
+  );
+
+  // Presentado el 29/12/2027: el plazo termina en enero de 2028, sin calendario.
+  const deadline = complaintDeadline(new Date('2027-12-29T15:00:00.000Z'));
+  assert.equal(deadline.dueAt.toISOString(), '2028-01-20T04:59:59.000Z');
+  assert.deepEqual(deadline.calendar.missingYears, [2028]);
+  assert.deepEqual(deadline.calendar.configuredYears, [2027]);
+  assert.equal(deadline.calendar.version, PERU_HOLIDAY_CALENDAR_VERSION);
+
+  // El fallback solo descuenta fines de semana: nunca alarga el plazo legal.
+  const withoutHolidays = addBusinessDaysLima(new Date('2027-12-29T15:00:00.000Z'), 15);
+  assert.equal(deadline.dueAt.toISOString(), withoutHolidays.toISOString());
+});
+
+test('calendario: un plazo dentro de 2026 reporta cobertura completa', () => {
+  const deadline = complaintDeadline(new Date('2026-10-23T15:00:00.000Z'));
+  assert.deepEqual(deadline.calendar.missingYears, []);
+  assert.deepEqual(deadline.calendar.configuredYears, [2026]);
+});
+
+test('PERU_HOLIDAYS: parsea ISO, deduplica e ignora fechas imposibles', () => {
+  const parsed = parsePeruHolidayList(
+    '2026-07-24, 2026-07-24;2026-02-30\n2027-01-02 nope 2026-7-4',
+  );
+  assert.deepEqual(parsed.dates, ['2026-07-24', '2027-01-02']);
+  assert.deepEqual(parsed.invalid, ['2026-02-30', 'nope', '2026-7-4']);
+  assert.deepEqual(parsePeruHolidayList(undefined), { dates: [], invalid: [] });
+});
+
+test('cobertura: un año sin calendario se informa, no se inventa', () => {
+  const status = peruHolidayCalendarStatus([2028, 2026, 2028]);
+  assert.deepEqual(status.configuredYears, [2026]);
+  assert.deepEqual(status.missingYears, [2028]);
 });
