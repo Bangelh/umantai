@@ -84,6 +84,47 @@ test('legales: reembolsos prudente y aviso de documento no definitivo', async ({
   await expect(page.getByText(/razón social/i).first()).toBeVisible();
 });
 
+test('libro de reclamaciones: valida, registra y muestra constancia imprimible', async ({ page }) => {
+  await page.goto('/libro-de-reclamaciones');
+  await expect(page.getByRole('heading', { level: 1, name: /Libro de Reclamaciones/ })).toBeVisible();
+
+  // Sin datos, el servidor responde con errores por campo y no crea nada.
+  await page.getByRole('button', { name: /Registrar reclamo/ }).click();
+  await expect(page.getByText(/Revisa los campos marcados/)).toBeVisible();
+  await expect(page.getByText(/Este campo es obligatorio/).first()).toBeVisible();
+
+  const marker = `E2E QA ${Date.now()}`;
+  await page.locator('#complaint-name').fill('E2E Playwright QA');
+  await page.locator('#complaint-document').fill('99999999');
+  await page.locator('#complaint-phone').fill('+51 900 000 000');
+  await page.locator('#complaint-email').fill('e2e-complaints@example.invalid');
+  await page.locator('#complaint-item').fill(marker);
+  await page.locator('#complaint-amount').fill('12.50');
+  // XSS: debe mostrarse como TEXTO, nunca ejecutarse.
+  await page
+    .locator('#complaint-detail')
+    .fill(`Producto vencido. <script>window.__complaintXss = 1</script> ${marker}`);
+  await page
+    .locator('#complaint-request')
+    .fill('Solicito el cambio del producto o la devolución del monto pagado.');
+  await page.locator('#complaint-consent').check();
+
+  await page.getByRole('button', { name: /Registrar reclamo/ }).click();
+  await page.waitForURL(/\/libro-de-reclamaciones\/seguimiento\//, { timeout: 25_000 });
+
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('RC-');
+  await expect(page.getByText(marker)).toBeVisible();
+  await expect(page.getByText(/<script>window\.__complaintXss = 1<\/script>/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Imprimir o guardar PDF/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as { __complaintXss?: number }).__complaintXss)).toBeUndefined();
+
+  // El estado se consulta solo con el código opaco: el correlativo no sirve.
+  const correlative = await page.goto('/libro-de-reclamaciones/seguimiento/RC-000001');
+  expect(correlative?.status()).toBe(404);
+  const unknown = await page.goto(`/libro-de-reclamaciones/seguimiento/${'Z'.repeat(24)}`);
+  expect(unknown?.status()).toBe(404);
+});
+
 test('una mutación con Origin ajeno se rechaza (CSRF)', async ({ request }) => {
   const response = await request.post('/api/admin/session', {
     headers: { origin: 'https://evil.example' },

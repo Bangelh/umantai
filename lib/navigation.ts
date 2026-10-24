@@ -27,6 +27,7 @@ export const LEGAL_NAV_LINKS: readonly NavLink[] = [
 
 export const HELP_NAV_LINKS: readonly NavLink[] = [
   { href: '/contacto', label: 'Contacto' },
+  { href: '/libro-de-reclamaciones', label: 'Libro de Reclamaciones' },
   { href: '/legal', label: 'Documentos legales' },
 ];
 
@@ -35,6 +36,7 @@ export const ADMIN_NAV_LINKS: readonly NavLink[] = [
   { href: '/admin/analytics', label: 'Analytics' },
   { href: '/admin/inventario', label: 'Inventario' },
   { href: '/admin/planes', label: 'Planes' },
+  { href: '/admin/reclamaciones', label: 'Reclamaciones' },
   { href: '/admin/kiosco', label: 'Kiosco' },
   { href: '/admin/notes', label: 'Notas' },
 ];

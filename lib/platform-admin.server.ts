@@ -104,6 +104,40 @@ export function getPlatformAdminSession(
   return verifyPlatformAdminToken(readPlatformAdminCookie(request), nowSeconds);
 }
 
+export type PlatformAdminAccess =
+  | { ok: true; userId: string }
+  | { ok: false; status: 401 | 503; code: string; message: string };
+
+/**
+ * Puerta ESTRICTA para datos sensibles (p. ej. Libro de Reclamaciones).
+ *
+ * A diferencia de `requireAdminToken`, NO acepta el token compartido: exige la
+ * cookie firmada emitida tras validar la cuenta en `platform_admins`. Un token
+ * de automatización no debe poder leer DNI, teléfonos ni correos.
+ */
+export function requirePlatformAdminSession(request: Request): PlatformAdminAccess {
+  if (!isPlatformAdminSessionConfigured()) {
+    return {
+      ok: false,
+      status: 503,
+      code: 'admin_session_not_configured',
+      message: 'Falta PLATFORM_ADMIN_SECRET (o BETTER_AUTH_SECRET) de al menos 32 caracteres.',
+    };
+  }
+
+  const session = getPlatformAdminSession(request);
+  if (!session) {
+    return {
+      ok: false,
+      status: 401,
+      code: 'admin_session_required',
+      message: 'Inicia sesión como Platform Admin para ver esta información.',
+    };
+  }
+
+  return { ok: true, userId: session.userId };
+}
+
 function bootstrapEmails(): string[] {
   return (getPrefixedEnv('PLATFORM_ADMIN_EMAILS') ?? '')
     .split(',')

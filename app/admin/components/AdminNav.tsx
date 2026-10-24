@@ -13,6 +13,7 @@ const LABEL_KEYS: Record<string, MessageKey> = {
   '/admin/kiosco': 'adminNav.kiosk',
   '/admin/notes': 'adminNav.notes',
   '/admin/planes': 'adminNav.plans',
+  '/admin/reclamaciones': 'adminNav.complaints',
 };
 
 /** Nav común del panel. Scroll horizontal en móvil; foco visible por token. */

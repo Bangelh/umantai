@@ -384,8 +384,9 @@ depende de un pago.
 - [ ] Responsable del cutover y del rollback nominados.
 - [ ] Datos legales del titular completos (`isLegalReadyForLaunch()` = `true`):
       razón social, RUC, domicilio fiscal y jurisdicción.
-- [ ] Libro de Reclamaciones virtual implementado y visible (ver
-      `LIBRO_RECLAMACIONES.md`).
+- [ ] Libro de Reclamaciones virtual operativo y visible (implementado; ver
+      `LIBRO_RECLAMACIONES.md`): enlaces, constancia, bandeja y plazo. Lo que
+      falta para el GO es completar los datos del titular y la revisión legal.
 
 **NO-GO** si ocurre cualquiera (Mercado Pago **no** es criterio de NO-GO
 mientras siga congelado):
@@ -401,7 +402,8 @@ mientras siga congelado):
 - No hay ventana de rollback acordada.
 - `isLegalReadyForLaunch()` sigue en `false` (las páginas legales muestran
   `[PENDIENTE: …]`).
-- No existe Libro de Reclamaciones virtual accesible y funcional.
+- El Libro de Reclamaciones no está accesible, no registra o no permite
+      responder dentro del plazo.
 
 ---
 

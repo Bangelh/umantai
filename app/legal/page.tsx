@@ -59,6 +59,20 @@ export default function LegalIndexPage() {
         })}
       </ul>
 
+      <section className="surface-card mt-8 p-5">
+        <h2 className="font-medium text-primary">Libro de Reclamaciones</h2>
+        <p className="mt-2 text-sm text-secondary">
+          Canal permanente para presentar quejas y reclamos sobre productos o servicios, con
+          respuesta en un plazo máximo de 15 días hábiles.
+        </p>
+        <Link
+          href="/libro-de-reclamaciones"
+          className="mt-3 inline-block text-sm underline underline-offset-4 hover:text-primary"
+        >
+          Ir al Libro de Reclamaciones
+        </Link>
+      </section>
+
       <p className="mt-8 text-sm text-secondary">
         Para consultas sobre estos documentos,{' '}
         <Link href="/contacto" className="underline underline-offset-4 hover:text-primary">

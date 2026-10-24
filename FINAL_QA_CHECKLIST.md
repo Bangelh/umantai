@@ -322,14 +322,22 @@ commit desplegado; los tests locales corren sin servicios externos.
 - [ ] Enlaces a términos/privacidad desde checkout y contacto funcionan.
 - [ ] `unit`: `tests/legal-config.test.ts`.
 
-## 25.1 Libro de Reclamaciones (bloquea lanzamiento público)
+## 25.1 Libro de Reclamaciones
 
-- [ ] Existe enlace permanente y visible al Libro de Reclamaciones.
+Implementado en `/libro-de-reclamaciones` (ver `LIBRO_RECLAMACIONES.md`).
+
+- [ ] Enlace permanente y visible en footer, contacto, legal y pedido.
 - [ ] Registra quejas y reclamos con numeración correlativa.
 - [ ] Incluye los campos del Anexo I (D.S. N.º 011-2011-PCM).
-- [ ] Entrega constancia imprimible o por correo al consumidor.
-- [ ] Bandeja de respuesta con plazo de 15 días hábiles visibles.
-- [ ] Ver `LIBRO_RECLAMACIONES.md`. Hoy **no implementado**: NO-GO.
+- [ ] Entrega constancia imprimible y copia por correo cuando Resend está activo.
+- [ ] Seguimiento con código aleatorio, sin PII y sin enumeración.
+- [ ] Bandeja `/admin/reclamaciones` con plazo y respuesta única.
+- [ ] `unit` + integración + Playwright del flujo.
+- [ ] **Bloqueo restante:** datos del titular (razón social, RUC, domicilio,
+      jurisdicción) y revisión legal. Mientras falten, el formulario muestra
+      `[PENDIENTE: …]` y “no listo para lanzamiento público”.
+- [ ] Decidir feriados: cargar `PERU_HOLIDAYS` o aceptar por escrito responder
+      antes del vencimiento cuando caiga en feriado.
 
 ## 26. Mercado Pago (CONGELADO externamente — fuera de alcance)
 

@@ -1,11 +1,11 @@
-# Libro de Reclamaciones — auditoría para lanzamiento público en Perú
+# Libro de Reclamaciones — implementación y estado para lanzamiento
 
-**Fecha:** 2026-10-24 · **Estado:** requisito identificado, **NO implementado** ·
-**Bloquea el lanzamiento público:** sí (ver §4).
+**Fecha:** 2026-10-24 · **Estado:** implementado en staging · **Bloqueo restante:**
+datos del titular (razón social, RUC, domicilio, jurisdicción) y revisión legal
+del texto/aviso. No se inventó ningún dato.
 
-Este documento no es asesoría legal. Resume el requisito, lo que falta en el
-producto y una opción mínima compatible con la arquitectura actual. La
-implementación y el texto final deben validarse con asesoría legal.
+Este documento no es asesoría legal. Resume el requisito, lo implementado y lo
+que falta antes de abrir UMANTAI al público.
 
 ---
 
@@ -19,124 +19,139 @@ establecimiento y en las plataformas de venta por internet.
 - **Reglamento del Libro de Reclamaciones (D.S. N.º 011-2011-PCM).** Define el
   formato (Anexo I) y el aviso visible (Anexo II).
 - **Ley N.º 32495 (noviembre 2025).** Incorporó expresamente a las **plataformas
-  digitales de comercio electrónico** a la obligación y exige un enlace
-  **permanente, visible y fácilmente accesible** al Libro de Reclamaciones en el
-  portal o aplicación. Su entrada en vigor quedó condicionada a la adecuación
-  del Reglamento; la obligación de fondo para ventas por internet ya existía.
+  digitales de comercio electrónico** y exige un enlace **permanente, visible y
+  fácilmente accesible** al Libro de Reclamaciones.
 
-Puntos operativos que impactan el diseño:
-
-| Punto | Exigencia |
-|---|---|
-| Plazo de respuesta | **15 días hábiles improrrogables**, por escrito, para quejas y reclamos |
-| Acceso | En el mismo medio virtual donde se vende, con aviso visible |
-| Copia | El libro virtual debe permitir **imprimir o enviar una copia** al correo del consumidor |
-| Contenido mínimo (Anexo I) | Numeración correlativa · razón social, RUC y dirección del proveedor · fecha · nombre, DNI, teléfono y correo del consumidor · descripción y monto del bien/servicio · detalle del reclamo o queja · pedido concreto · espacio para acciones/observaciones del proveedor |
-| Costo | La atención no puede condicionarse a ningún pago |
-
-INDECOPI publica los formatos y el aviso sin costo en
-<https://consumidor.indecopi.gob.pe/tulibro/> («Tu Libro»). No hace falta
-contratar un proveedor externo para cumplir.
-
-> Verificación pendiente: confirmar con asesoría legal la vigencia exacta del
-> Reglamento adecuado a la Ley N.º 32495 a la fecha del lanzamiento. Aun si esa
-> adecuación siguiera pendiente, el Libro de Reclamaciones virtual ya es exigible
-> para ventas por internet.
+| Punto | Exigencia | Cómo se cumple |
+|---|---|---|
+| Plazo de respuesta | **15 días hábiles improrrogables** | `due_at` calculado en el servidor y visible en admin/constancia |
+| Acceso | En el mismo medio virtual, con aviso visible | Enlace en footer, contacto, legal, checkout y pedido |
+| Copia | Imprimir o enviar copia al correo | Constancia imprimible + envío por Resend (preparado) |
+| Contenido mínimo (Anexo I) | Numeración, proveedor, fecha, consumidor, bien/servicio, detalle, pedido, observaciones | Ver §3 |
+| Costo | No condicionar a pago | Formulario público sin pago |
 
 ---
 
-## 2. Qué hay hoy en UMANTAI
+## 2. Implementación
 
-| Pieza | Estado |
+| Pieza | Dónde |
 |---|---|
-| Página o enlace al Libro de Reclamaciones | **No existe** |
-| Formulario con los campos del Anexo I | **No existe** |
-| Registro persistente con numeración correlativa | **No existe** |
-| Copia/constancia para el consumidor | **No existe** |
-| Bandeja de atención y respuesta con plazo | **No existe** |
-| Aviso visible en footer / checkout | **No existe** |
-| Datos del proveedor para la hoja (razón social, RUC, domicilio) | **Pendientes** en `config/business.ts` |
+| Migración | `db/migrations/023_consumer_complaints.sql` |
+| Dominio + plazo | `lib/complaints.ts` |
+| Persistencia | `lib/complaints.server.ts` |
+| Constancia/respuesta por correo | `lib/complaints-email.server.ts` |
+| API pública | `POST /api/complaints` |
+| Página pública | `/libro-de-reclamaciones` |
+| Constancia y seguimiento | `/libro-de-reclamaciones/seguimiento/<código>` |
+| API admin | `GET /api/admin/complaints`, `GET|PATCH /api/admin/complaints/:id` |
+| Bandeja | `/admin/reclamaciones` |
+| Enlaces | footer, `/contacto`, `/legal`, `/legal/[slug]`, `/cart`, `/pedido/[token]` |
 
-Lo que **sí** se puede reutilizar:
+### Campos guardados
 
-- `app/contacto` y `lib/contact.ts` / `lib/contact.server.ts`: validación,
-  honeypot, rate limit y persistencia con degradación explícita.
-- `lib/notifications.server.ts` (Resend): envío de la constancia al consumidor.
-- PostgreSQL + migraciones (`db/migrations`): tabla y secuencia correlativa.
-- `app/admin/*` y `lib/admin-route.server.ts`: bandeja interna para responder.
-- `config/business.ts`: datos del titular en un solo lugar.
+Número correlativo (`RC-000001`), código público aleatorio, tipo
+(reclamo/queja), nombre, documento, teléfono y correo del consumidor, condición
+de menor y datos del padre/madre/tutor cuando corresponde, producto/servicio,
+monto (opcional, PEN), detalle, pedido concreto, estado, acciones/observaciones
+del proveedor, respuesta, fecha de presentación, fecha límite y fecha de
+respuesta.
+
+No se guarda nada más: no hay IP, user-agent ni metadatos del navegador.
+
+### Constancia
+
+Al registrar se muestra una página con el número correlativo, los datos del
+proveedor, el detalle, la fecha límite y un botón **Imprimir o guardar PDF**.
+Se envía copia al correo del consumidor cuando Resend está configurado; si no,
+la constancia se muestra igual y el estado del correo queda `not_configured`
+(nunca se finge un envío). El registro funciona aunque Resend esté apagado.
+
+### Seguimiento sin login
+
+El enlace usa un **código aleatorio de 144 bits** (base64url, 24 caracteres),
+no el correlativo. Sin el código no se puede enumerar ni adivinar una
+constancia; el correlativo (`RC-000001`) responde 404 en la ruta de seguimiento.
+La vista pública no devuelve DNI, teléfono ni correo.
+
+### Admin
+
+`/admin/reclamaciones` exige **sesión de Platform Admin** (cookie firmada). La
+API rechaza el token compartido (`x-admin-token`) porque muestra datos
+personales. Permite listar, filtrar por estado/tipo/fecha, abrir el detalle,
+marcar en revisión y registrar una respuesta única (no se sobrescribe). No hay
+borrado desde la UI ni endpoint `DELETE`.
+
+### Plazo — limitación documentada
+
+El cómputo cuenta **15 días hábiles desde el día siguiente**, en hora de Lima,
+excluyendo sábado y domingo. **No descuenta feriados nacionales** porque el
+proyecto no tiene un calendario oficial confiable. La bandeja lo advierte y el
+vencimiento se calcula a las 23:59:59 de Lima.
+
+Antes del lanzamiento hay que decidir una de estas dos opciones:
+
+1. cargar el calendario oficial de feriados del año en `PERU_HOLIDAYS`
+   (`lib/complaints.ts`) y agregar tests; o
+2. aceptar por escrito que el vencimiento puede caer en feriado y que se
+   responderá el mismo día o antes.
+
+La opción 1 es la recomendada; ambas dejan el sistema en cumplimiento.
 
 ---
 
-## 3. Opción mínima compatible con la arquitectura actual
+## 3. Seguridad y privacidad
 
-Sin servicios externos y sin contratar nada:
-
-1. **Ruta pública `/libro-de-reclamaciones`** (español, `lang="es"`), con el
-   aviso de INDECOPI y los campos del Anexo I. Mismo patrón que `/contacto`:
-   validación server-side, honeypot y rate limit.
-2. **Tabla `consumer_complaints`** con: número correlativo (secuencia), tipo
-   (queja/reclamo), datos del consumidor (nombre, DNI, teléfono, correo),
-   descripción del bien/servicio y monto, detalle, pedido concreto, fecha/hora,
-   estado, respuesta del proveedor, fecha de respuesta y vencimiento a 15 días
-   hábiles.
-3. **Constancia inmediata**: pantalla con el número correlativo + envío de copia
-   al correo del consumidor vía Resend. Si Resend no está configurado, la
-   constancia se muestra igual y queda registrada (mismo criterio que el
-   formulario de contacto: nunca fingir que se envió).
-4. **Bandeja `/admin/reclamaciones`**: listar, ver vencimiento, responder y
-   cerrar; registrar la fecha de respuesta.
-5. **Enlace visible** en el footer (junto a los documentos legales), en
-   `/contacto` y en la página del pedido.
-6. **Actualizar** la Política de Privacidad (datos DNI/teléfono y finalidad) y
-   los Términos para mencionar el canal.
-
-Tamaño estimado: una migración, una ruta pública, una API, una pantalla de
-administración y sus tests. No requiere dependencias nuevas.
-
-**Datos que faltan para poder implementarlo bien:** razón social, RUC y
-domicilio fiscal (los mismos placeholders de `config/business.ts`). Sin ellos la
-hoja de reclamación estaría incompleta, así que no se debe publicar.
+- Validación server-side con límites de longitud y formatos
+  (`lib/complaints.ts`); el HTML no decide.
+- CSRF por `Origin` en `proxy.ts` para todas las mutaciones de `/api`.
+- Rate limit del formulario: 5 envíos / 10 min por IP.
+- Honeypot `company` con respuesta neutra.
+- Cuerpo máximo 32 KB; respuestas de admin 12 KB.
+- Render seguro: React escapa; no se usa `dangerouslySetInnerHTML`; los correos
+  se envían en texto plano.
+- Sin PII en URLs de admin ni en logs; el código público es la única llave de
+  seguimiento.
+- `robots: noindex` en la constancia.
+- Migración con `CHECK` para estados, moneda y campos de respuesta.
+- La Política de Privacidad (`lib/legal.ts`) describe los datos del reclamo, la
+  finalidad y su conservación como evidencia.
 
 ---
 
 ## 4. ¿Bloquea la publicación pública?
 
-**Sí, como requisito legal independiente.** No es un tema de Mercado Pago ni de
-pagos: aplica aunque el cobro online siga congelado, porque el sitio ya ofrece
-productos y recibe pedidos de consumidores en Perú.
+La **funcionalidad ya no bloquea**. Lo que sigue bloqueando es:
 
-Recomendación: tratarlo como **GO/NO-GO propio** en el cutover, con estas dos
-condiciones:
+- [ ] Razón social, RUC, domicilio fiscal y jurisdicción confirmados. Mientras
+      falten, el formulario y la constancia muestran `[PENDIENTE: …]` y el aviso
+      “no listo para lanzamiento público”.
+- [ ] Revisión legal del texto del formulario, del aviso y del flujo de
+      respuesta.
+- [ ] Definir el responsable interno de responder dentro de 15 días hábiles.
+- [ ] Decidir feriados (§2).
 
-- [ ] Libro de Reclamaciones virtual accesible y funcional (registra, numera y
-      entrega constancia).
-- [ ] Aviso visible enlazado desde el footer y desde el checkout/pedido.
-
-Mientras no exista, el lanzamiento público queda expuesto a sanciones de
-INDECOPI. Staging puede seguir sin él, pero no debe abrirse al público sin
-resolverlo.
+El enlace al Libro ya está visible en footer, contacto, legal y checkout/pedido.
 
 ---
 
-## 5. Lo que NO se debe hacer
+## 5. Pruebas
 
-- Publicar un enlace a un formulario que no guarda ni responde: la obligación
-  incluye atender en 15 días hábiles y poder acreditar la hoja.
-- Copiar un formato de terceros sin verificar que cumple el Anexo I.
-- Inventar razón social, RUC o domicilio para completar la cabecera.
-- Condicionar la presentación del reclamo al pago o a una compra previa.
+- `tests/complaints.test.ts`: validación, menores, honeypot, monto, XSS como
+  dato, correlativo, código opaco y plazo.
+- `tests/complaints.integration.test.ts`: PostgreSQL real (migración 023),
+  correlativo, consulta sin PII, filtros, revisión, respuesta única y
+  autorización estricta de las rutas admin.
+- `e2e/public.spec.ts`: registro real, constancia imprimible, XSS escapado y
+  no enumeración.
+- `e2e/admin.spec.ts`: puerta de sesión y navegación del panel.
 
 ---
 
 ## 6. Acciones externas necesarias
 
-Ninguna compra ni contratación. Solo:
+Ninguna compra ni contratación.
 
-1. **Dueño:** entregar razón social, RUC y domicilio fiscal (hoy `[PENDIENTE]`).
-2. **Asesoría legal:** validar el texto, el aviso y el flujo de respuesta.
-3. **Negocio:** definir responsable y canal interno para responder dentro de 15
-   días hábiles.
-
-Con esos tres puntos se implementa la opción mínima del §3 y se agrega al
-checklist del cutover.
+1. **Dueño:** entregar razón social, RUC y domicilio fiscal.
+2. **Asesoría legal:** validar textos, aviso y plazos.
+3. **Negocio:** nombrar responsable de respuestas y decidir el tratamiento de
+   feriados.

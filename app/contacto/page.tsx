@@ -85,6 +85,19 @@ export default async function ContactPage() {
             <p className="mt-3">{t('contact.ordersBody')}</p>
           </section>
 
+          <section className="surface-card p-5 text-sm text-secondary">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-tertiary">
+              {t('complaints.title')}
+            </h2>
+            <p className="mt-3">{t('complaints.intro')}</p>
+            <Link
+              href="/libro-de-reclamaciones"
+              className="mt-3 inline-block underline underline-offset-4 hover:text-primary"
+            >
+              {t('contact.complaintsLink')}
+            </Link>
+          </section>
+
           <p className="text-xs leading-relaxed text-tertiary">
             {t('contact.consentPrefix')}{' '}
             <Link href="/legal/privacidad" className="underline underline-offset-4 hover:text-primary">

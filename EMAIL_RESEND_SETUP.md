@@ -175,7 +175,16 @@ en Producción después del cutover.
 1. Crear un pedido de prueba y marcarlo listo para retirar desde operación.
 2. Confirmar el correo al comprador con el PIN.
 
-### 5.5 Entregabilidad
+### 5.5 Libro de Reclamaciones
+
+1. Presentar un reclamo en `/libro-de-reclamaciones` con un correo real.
+2. Confirmar que llega la constancia (`RC-…`) y que el enlace de seguimiento
+   funciona **sin login** y sin mostrar DNI/teléfono.
+3. Responder desde `/admin/reclamaciones` y confirmar que llega la respuesta.
+4. Con `RESEND_API_KEY` ausente, comprobar que el reclamo se registra igual y la
+   UI/bandeja informa `not_configured` (no finge envío).
+
+### 5.6 Entregabilidad
 
 - [ ] Cabeceras muestran `spf=pass`, `dkim=pass`, `dmarc=pass`.
 - [ ] Sin rebotes ni quejas en el panel de Resend.

@@ -424,6 +424,15 @@ export default function CartPage() {
         {t("cart.clear")}
       </button>
 
+      <p className="mt-4 text-xs text-tertiary">
+        <Link
+          href="/libro-de-reclamaciones"
+          className="underline underline-offset-4 hover:text-primary"
+        >
+          {t("cart.complaintsLink")}
+        </Link>
+      </p>
+
       {isConfirming && (
         <div
           className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"

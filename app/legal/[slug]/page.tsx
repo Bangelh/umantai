@@ -108,6 +108,16 @@ export default async function LegalPage({ params }: LegalPageProps) {
           </Link>
           .
         </p>
+        <p className="mt-2">
+          ¿Quieres presentar una queja o reclamo?{' '}
+          <Link
+            href="/libro-de-reclamaciones"
+            className="underline underline-offset-4 hover:text-primary"
+          >
+            Libro de Reclamaciones
+          </Link>
+          .
+        </p>
         <Link href="/legal" className="mt-4 inline-block hover:text-primary">
           ← Todos los documentos legales
         </Link>

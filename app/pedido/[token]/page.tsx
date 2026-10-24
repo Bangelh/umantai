@@ -512,6 +512,15 @@ export default async function OrderStatusPage({
         <p className="mt-10 text-xs text-white/40">
           {t("order.saveLink")}
         </p>
+
+        <p className="mt-3 text-xs">
+          <Link
+            href="/libro-de-reclamaciones"
+            className="text-white/60 underline underline-offset-4 hover:text-white"
+          >
+            {t("order.complaintsLink")}
+          </Link>
+        </p>
       </div>
     </div>
   );
