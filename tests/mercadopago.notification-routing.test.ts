@@ -211,8 +211,16 @@ test('C. fuera de Preview no se activa (aunque haya token admin)', async () => {
     assert.equal(decision.code, 'diagnostic_not_available');
   }
 
+  // Esta suite prueba el contrato del endpoint con el cobro online REABIERTO.
+  // Con el cobro congelado el candado responde 503 antes de mirar nada
+  // (ver tests/online-payments.test.ts).
   const response = await withEnv(
-    { VERCEL_ENV: 'production', MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN, ADMIN_API_SECRET: ADMIN_SECRET },
+    {
+      VERCEL_ENV: 'production',
+      MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN,
+      ADMIN_API_SECRET: ADMIN_SECRET,
+      ONLINE_PAYMENTS_ENABLED: '1',
+    },
     async () => {
       const request = new NextRequest('https://localhost:3000/api/payments/preference', {
         method: 'POST',
@@ -245,7 +253,12 @@ test('D. en Preview sin token admin no se activa (401)', async () => {
   if (!decision.ok) assert.equal(decision.status, 401);
 
   const response = await withEnv(
-    { VERCEL_ENV: 'preview', MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN, ADMIN_API_SECRET: ADMIN_SECRET },
+    {
+      VERCEL_ENV: 'preview',
+      MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN,
+      ADMIN_API_SECRET: ADMIN_SECRET,
+      ONLINE_PAYMENTS_ENABLED: '1',
+    },
     async () => {
       const request = new NextRequest('https://localhost:3000/api/payments/preference', {
         method: 'POST',
@@ -262,7 +275,12 @@ test('D. en Preview sin token admin no se activa (401)', async () => {
 
 test('D2. en Preview con token admin INVÁLIDO no se activa (401)', async () => {
   const response = await withEnv(
-    { VERCEL_ENV: 'preview', MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN, ADMIN_API_SECRET: ADMIN_SECRET },
+    {
+      VERCEL_ENV: 'preview',
+      MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN,
+      ADMIN_API_SECRET: ADMIN_SECRET,
+      ONLINE_PAYMENTS_ENABLED: '1',
+    },
     async () => {
       const request = new NextRequest('https://localhost:3000/api/payments/preference', {
         method: 'POST',
@@ -281,7 +299,12 @@ test('D2. en Preview con token admin INVÁLIDO no se activa (401)', async () => 
 test('D3. un header con valor desconocido NO activa el modo (queda como flujo normal)', async () => {
   // Sin header reconocido, el flujo sigue normal: un body vacío da 400, nunca 403.
   const response = await withEnv(
-    { VERCEL_ENV: 'preview', MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN, ADMIN_API_SECRET: ADMIN_SECRET },
+    {
+      VERCEL_ENV: 'preview',
+      MERCADOPAGO_ACCESS_TOKEN: MP_TOKEN,
+      ADMIN_API_SECRET: ADMIN_SECRET,
+      ONLINE_PAYMENTS_ENABLED: '1',
+    },
     async () => {
       const request = new NextRequest('https://localhost:3000/api/payments/preference', {
         method: 'POST',

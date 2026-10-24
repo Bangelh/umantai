@@ -98,10 +98,29 @@ test('congelado: el endpoint responde 503 y NO llama a Mercado Pago', async () =
   }
 });
 
-test('congelado: el token se valida antes del candado (mismo 400 de siempre)', async () => {
+test('congelado: el candado gana incluso con un token inválido', async () => {
+  // El candado es la primera instrucción del handler: no inspecciona el cuerpo.
+  // Así el comprador nunca ve un error de validación ni de configuración de la
+  // pasarela mientras el cobro esté pausado.
   const response = await withEnv(
     {
       [ONLINE_PAYMENTS_ENABLED_ENV]: undefined,
+      MERCADOPAGO_ACCESS_TOKEN: 'TEST-1234567890-abcdefabcdef-3228895377-abcdefabcdef',
+    },
+    () => POST(preferenceRequest('no-es-un-uuid')),
+  );
+
+  assert.equal(response.status, 503);
+  const body = (await response.json()) as Record<string, unknown>;
+  assert.equal(body.code, 'online_payments_unavailable');
+});
+
+test('reabierto: con el flag en 1 el token vuelve a validarse (400)', async () => {
+  // Contraparte del test anterior: al reabrir el cobro, el contrato de los casos
+  // inválidos sigue siendo el de siempre. No se abre ninguna conexión real.
+  const response = await withEnv(
+    {
+      [ONLINE_PAYMENTS_ENABLED_ENV]: '1',
       MERCADOPAGO_ACCESS_TOKEN: 'TEST-1234567890-abcdefabcdef-3228895377-abcdefabcdef',
     },
     () => POST(preferenceRequest('no-es-un-uuid')),

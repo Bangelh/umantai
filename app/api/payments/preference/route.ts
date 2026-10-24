@@ -41,10 +41,13 @@ import {
  *     sin MERCADOPAGO_ACCESS_TOKEN
  *
  * ─── PAGO ONLINE CONGELADO ───────────────────────────────────────────────────
- * Mientras `ONLINE_PAYMENTS_ENABLED` no sea `1`, este endpoint responde 503 ANTES
- * de leer el pedido y, sobre todo, ANTES de llamar a Mercado Pago. La página del
- * pedido tampoco muestra el botón (ver `lib/online-payments.ts`): cerrar el cobro
- * no depende de que el navegador se porte bien.
+ * Mientras `ONLINE_PAYMENTS_ENABLED` no sea `1`, este endpoint responde 503 como
+ * PRIMERA instrucción: antes de mirar el cuerpo, la base, la configuración de
+ * Mercado Pago y —por supuesto— antes de llamar a Mercado Pago. Así el comprador
+ * recibe siempre el mensaje de "pago online no disponible" y nunca uno de
+ * configuración de pasarela. La página del pedido tampoco muestra el botón (ver
+ * `lib/online-payments.ts`): cerrar el cobro no depende de que el navegador se
+ * porte bien.
  */
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -78,6 +81,20 @@ function resolveOrigin(request: NextRequest): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Candado del cobro online: PRIMERO de todo. Sin esto, en un entorno sin
+  // credenciales la respuesta sería "Mercado Pago no está configurado" — un
+  // mensaje de pasarela para un comprador que solo necesita saber que el pago
+  // online está pausado.
+  if (!isOnlinePaymentEnabled()) {
+    return NextResponse.json(
+      {
+        error: 'El pago online no está disponible en este momento.',
+        code: 'online_payments_unavailable',
+      },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
+    );
+  }
+
   if (!isCommerceDbConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured. Run `vercel env pull .env.local` and apply db/migrations/001_commerce_core.sql.' },
@@ -119,19 +136,6 @@ export async function POST(request: NextRequest) {
   if (!token) return badRequest('token is required');
   // Validación barata: evita mandar basura a Postgres con un cast ::uuid.
   if (!UUID_PATTERN.test(token)) return badRequest('token must be a valid UUID');
-
-  // Pago online congelado: se corta acá, sin tocar la base ni la API de Mercado
-  // Pago. Va después de las validaciones para no cambiar el contrato de los casos
-  // inválidos (400/401/403) y antes de cualquier efecto.
-  if (!isOnlinePaymentEnabled()) {
-    return NextResponse.json(
-      {
-        error: 'El pago online no está disponible en este momento.',
-        code: 'online_payments_unavailable',
-      },
-      { status: 503, headers: { 'cache-control': 'no-store' } },
-    );
-  }
 
   let order;
   try {
