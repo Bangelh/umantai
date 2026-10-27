@@ -29,9 +29,10 @@ export const LEGAL_DEMO_NOTICE = 'DATOS DE DEMOSTRACIÓN — NO VÁLIDOS PARA PR
  * pendiente de validación del negocio).
  */
 export const LEGAL_DEMO_NOTICE_BODY =
-  'Los datos del titular que aparecen en esta página (razón social, RUC, domicilio y ' +
-  'jurisdicción) son de ejemplo: existen solo para la revisión visual en staging. No son ' +
-  'válidos para el lanzamiento público ni para el cutover, y no deben publicarse en Producción.';
+  'Los datos del titular del negocio (razón social, RUC, domicilio y jurisdicción) están ' +
+  'configurados en este entorno con valores de EJEMPLO, solo para la revisión visual en ' +
+  'staging. No son válidos para el lanzamiento público ni para el cutover, y no deben ' +
+  'publicarse en Producción.';
 
 /**
  * Valores de ejemplo. Las claves son los campos todavía pendientes del titular
