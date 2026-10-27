@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { validateContactPayload } from '@/lib/contact';
 import { submitContactMessage } from '@/lib/contact.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
-import { consumeRateLimit, rateLimitKeyFor } from '@/lib/rate-limit.server';
 
 /**
  * POST /api/contact — formulario público de contacto.
@@ -11,7 +10,10 @@ import { consumeRateLimit, rateLimitKeyFor } from '@/lib/rate-limit.server';
  *   · validación server-side (`lib/contact.ts`), nunca se confía en el HTML;
  *   · honeypot `company` (los bots que lo rellenan reciben un ok inofensivo);
  *   · consentimiento explícito de privacidad;
- *   · rate limit por IP (5 envíos / 10 min);
+ *   · rate limit por IP de 5 envíos / 10 min, en UNA sola capa (`rateLimitGate`).
+ *     Antes había además un `consumeRateLimit` con la misma clave y ventana: la
+ *     misma petición gastaba 2 unidades y el cupo real era la mitad del
+ *     anunciado. El gate ya devuelve el 429 con `Retry-After`.
  *   · tope de tamaño del cuerpo (16 KB).
  *
  * Respuestas:
@@ -36,20 +38,10 @@ const DELIVERY_MESSAGE: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
+  // Una sola barrera: el gate consume una unidad por petición y responde 429
+  // (con `Retry-After`) cuando se agota el cupo de la ventana.
   const gate = await rateLimitGate(request, 'contact', { limit: 5, windowMs: 10 * 60_000 });
   if (gate) return gate;
-
-  const limit = consumeRateLimit(rateLimitKeyFor(request, 'contact'), 5, 10 * 60_000);
-  if (!limit.allowed) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: 'rate_limited',
-        error: 'Recibimos varios mensajes seguidos. Espera unos minutos antes de reintentar.',
-      },
-      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
-    );
-  }
 
   const declaredLength = Number(request.headers.get('content-length') ?? 0);
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
