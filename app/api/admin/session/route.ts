@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getSessionUser } from '@/lib/auth.server';
-import { requireAdminToken, verifyAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess, verifyAdminToken } from '@/lib/admin.server';
 import { getPlatformSql } from '@/lib/platform-db.server';
 import {
   createPlatformAdminToken,
+  getPlatformAdminGrantState,
   getPlatformAdminSession,
   isPlatformAdminSessionConfigured,
   isPlatformAdminUser,
@@ -26,24 +27,47 @@ const NO_STORE = { 'cache-control': 'no-store' };
 export async function GET(request: Request) {
   const session = getPlatformAdminSession(request);
   if (session) {
-    let email: string | null = null;
-    let name: string | null = null;
-    const sql = getPlatformSql();
-    if (sql) {
-      try {
-        const rows = await sql`
-          SELECT email, name FROM users WHERE id = ${session.userId} LIMIT 1
-        `;
-        email = rows[0]?.email ? String(rows[0].email) : null;
-        name = rows[0]?.name ? String(rows[0].name) : null;
-      } catch {
-        // La cookie ya es válida; el detalle es cosmético.
+    // La cookie solo prueba identidad: el rol se revalida en cada consulta, así
+    // que el panel deja de mostrarse autenticado apenas se revoca el grant.
+    const state = await getPlatformAdminGrantState(session.userId);
+    if (state === 'active') {
+      let email: string | null = null;
+      let name: string | null = null;
+      const sql = getPlatformSql();
+      if (sql) {
+        try {
+          const rows = await sql`
+            SELECT email, name FROM users WHERE id = ${session.userId} LIMIT 1
+          `;
+          email = rows[0]?.email ? String(rows[0].email) : null;
+          name = rows[0]?.name ? String(rows[0].name) : null;
+        } catch {
+          // La cookie y el rol ya están verificados; el detalle es cosmético.
+        }
       }
+      return NextResponse.json(
+        { ok: true, authenticated: true, via: 'session', user: { id: session.userId, email, name } },
+        { headers: NO_STORE },
+      );
     }
-    return NextResponse.json(
-      { ok: true, authenticated: true, via: 'session', user: { id: session.userId, email, name } },
+
+    const response = NextResponse.json(
+      { ok: true, authenticated: false, via: 'session', revoked: state === 'revoked' },
       { headers: NO_STORE },
     );
+    if (state === 'revoked') {
+      // Se descarta la cookie inservible para que el siguiente intento sea limpio.
+      response.cookies.set({
+        name: PLATFORM_ADMIN_COOKIE,
+        value: '',
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 0,
+      });
+    }
+    return response;
   }
 
   const viaToken = verifyAdminToken(request.headers.get('x-admin-token'));
@@ -130,6 +154,6 @@ export async function DELETE() {
 
 /** Compatibilidad: algún cliente antiguo podría pedir el estado con token. */
 export async function HEAD(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   return new NextResponse(null, { status: access.ok ? 204 : access.status, headers: NO_STORE });
 }

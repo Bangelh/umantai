@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPrefixedEnv, isVercelPreview } from '@/lib/env';
-import { requireAdminToken, type AdminAccessCheck } from '@/lib/admin.server';
+import { requireAdminAccess, type AdminAccessCheck } from '@/lib/admin.server';
 import {
   decideNotificationRouting,
   requestedNotificationUrlOmission,
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   const diagnosticRequested = requestedNotificationUrlOmission(request);
   const isPreview = isVercelPreview();
   const admin: AdminAccessCheck =
-    diagnosticRequested && isPreview ? requireAdminToken(request) : { ok: true };
+    diagnosticRequested && isPreview ? await requireAdminAccess(request) : { ok: true };
   const routing = decideNotificationRouting(diagnosticRequested, isPreview, admin);
   if (!routing.ok) {
     return NextResponse.json({ error: routing.message, code: routing.code }, { status: routing.status });

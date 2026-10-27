@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hasDatabaseConnection } from '@/lib/db';
 import { supabaseServer } from '@/lib/supabase/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 
 /**
  * GET /api/admin/shopping-list
@@ -10,7 +10,7 @@ import { requireAdminToken } from '@/lib/admin.server';
  * role, so an open endpoint here would leak every user's list.
  */
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
 // PATCH for admin (bypass RLS)
 export async function PATCH(req: Request) {
-  const access = requireAdminToken(req);
+  const access = await requireAdminAccess(req);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }
@@ -96,7 +96,7 @@ export async function PATCH(req: Request) {
 
 // DELETE for admin
 export async function DELETE(req: Request) {
-  const access = requireAdminToken(req);
+  const access = await requireAdminAccess(req);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

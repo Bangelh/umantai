@@ -8,7 +8,7 @@
  *   3. Emite `umantai_platform_admin`: HMAC-SHA256, HttpOnly, SameSite=Strict,
  *      Secure en producción, 8 horas.
  *
- * `requireAdminToken` valida la firma de forma síncrona (sin DB), así las rutas
+ * `requireAdminAccess` valida la firma de forma síncrona (sin DB), así las rutas
  * existentes no cambian. El token compartido queda como respaldo de desarrollo.
  */
 
@@ -106,16 +106,73 @@ export function getPlatformAdminSession(
 
 export type PlatformAdminAccess =
   | { ok: true; userId: string }
-  | { ok: false; status: 401 | 503; code: string; message: string };
+  | { ok: false; status: 401 | 403 | 503; code: string; message: string };
+
+export type PlatformAdminGrantState =
+  /** La cuenta existe y sigue autorizada en `platform_admins` (o allowlist). */
+  | 'active'
+  /** Cuenta borrada o fila retirada de `platform_admins`: el acceso terminó. */
+  | 'revoked'
+  /** No se pudo comprobar (sin base o error): se falla cerrado. */
+  | 'unavailable';
+
+/**
+ * ¿La cuenta sigue siendo Platform Admin AHORA?
+ *
+ * Se consulta en CADA petición protegida: retirar la fila de `platform_admins`
+ * corta el acceso de inmediato, sin esperar a que venza la cookie firmada. La
+ * cookie prueba quién eres; esta consulta prueba que todavía tienes el rol.
+ *
+ * Fail-closed: sin base (o con la base caída) devuelve `unavailable` y la ruta
+ * responde 503 — nunca se concede acceso "por si acaso".
+ */
+export async function getPlatformAdminGrantState(
+  userId: string,
+): Promise<PlatformAdminGrantState> {
+  const id = userId.trim();
+  if (!id) return 'revoked';
+
+  const sql = getPlatformSql();
+  if (!sql) return 'unavailable';
+
+  try {
+    const rows = await sql`
+      SELECT u.email, (pa.user_id IS NOT NULL) AS granted
+        FROM users u
+        LEFT JOIN platform_admins pa ON pa.user_id = u.id
+       WHERE u.id = ${id}
+       LIMIT 1
+    `;
+
+    const row = rows[0];
+    // Cuenta borrada: la cookie ya no representa a nadie.
+    if (!row) return 'revoked';
+
+    const email = row.email ? String(row.email).trim().toLowerCase() : '';
+    if (email && bootstrapEmails().includes(email)) return 'active';
+
+    return row.granted === true ? 'active' : 'revoked';
+  } catch (error) {
+    console.error('[platform-admin] no se pudo verificar el acceso', {
+      reason: error instanceof Error ? error.name : 'unknown',
+    });
+    return 'unavailable';
+  }
+}
 
 /**
  * Puerta ESTRICTA para datos sensibles (p. ej. Libro de Reclamaciones).
  *
- * A diferencia de `requireAdminToken`, NO acepta el token compartido: exige la
+ * A diferencia de `requireAdminAccess`, NO acepta el token compartido: exige la
  * cookie firmada emitida tras validar la cuenta en `platform_admins`. Un token
  * de automatización no debe poder leer DNI, teléfonos ni correos.
+ *
+ * La cookie se revalida contra la base en cada petición (`getPlatformAdminGrantState`),
+ * así que revocar el rol corta el acceso en el acto.
  */
-export function requirePlatformAdminSession(request: Request): PlatformAdminAccess {
+export async function requireActivePlatformAdminSession(
+  request: Request,
+): Promise<PlatformAdminAccess> {
   if (!isPlatformAdminSessionConfigured()) {
     return {
       ok: false,
@@ -135,7 +192,24 @@ export function requirePlatformAdminSession(request: Request): PlatformAdminAcce
     };
   }
 
-  return { ok: true, userId: session.userId };
+  const state = await getPlatformAdminGrantState(session.userId);
+  if (state === 'active') return { ok: true, userId: session.userId };
+
+  if (state === 'unavailable') {
+    return {
+      ok: false,
+      status: 503,
+      code: 'admin_check_unavailable',
+      message: 'No pudimos verificar tu acceso de Platform Admin. Reintenta en unos segundos.',
+    };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    code: 'admin_grant_inactive',
+    message: 'Tu acceso de Platform Admin ya no está activo.',
+  };
 }
 
 function bootstrapEmails(): string[] {
@@ -170,8 +244,12 @@ export async function getPlatformAdminLabel(userId: string): Promise<string> {
 }
 
 /**
- * Autorización real: tabla `platform_admins` o allowlist de bootstrap.
- * Falla cerrado si no hay DB y el correo no está en la allowlist.
+ * Autorización real en el canje (POST /api/admin/session): tabla
+ * `platform_admins` o allowlist de bootstrap. Falla cerrado si no hay DB y el
+ * correo no está en la allowlist.
+ *
+ * Ojo: esto decide si se EMITE la cookie; la vigencia del rol en cada petición
+ * posterior la decide `getPlatformAdminGrantState()`.
  */
 export async function isPlatformAdminUser(user: {
   id: string;

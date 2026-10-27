@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { getAnalyticsSummary, isAnalyticsDbConfigured } from '@/lib/analytics.server';
 import { resolveAnalyticsRange } from '@/lib/analytics';
 
@@ -23,7 +23,7 @@ import { resolveAnalyticsRange } from '@/lib/analytics';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

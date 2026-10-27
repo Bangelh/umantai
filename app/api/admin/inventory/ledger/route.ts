@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { isCommerceDbConfigured, listInventoryLedger } from '@/lib/commerce.server';
 import { parseLedgerQuery } from '@/lib/inventory-admin';
 import { baseProductsData } from '@/lib/products';
@@ -20,7 +20,7 @@ import { baseProductsData } from '@/lib/products';
  * relacionado. No expone tokens, PIN ni metadata de pago.
  */
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

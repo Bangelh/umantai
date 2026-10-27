@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { getStoreBillingView, listAdminEventsForStore } from '@/lib/billing/subscriptions.server';
 import { platformErrorResponse } from '@/lib/platform-api.server';
 
@@ -12,7 +12,7 @@ interface RouteContext {
 
 /** GET /api/admin/billing/subscriptions/:storeId/history */
 export async function GET(request: Request, context: RouteContext) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

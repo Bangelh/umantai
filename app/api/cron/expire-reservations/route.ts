@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { expireStaleOrders, isCommerceDbConfigured } from '@/lib/commerce.server';
 import { getPrefixedEnv } from '@/lib/env';
-import { isAdminApiConfigured, requireAdminToken } from '@/lib/admin.server';
+import { isAdminApiConfigured, requireAdminAccess } from '@/lib/admin.server';
 
 /**
  * GET /api/cron/expire-reservations — libera la reserva de pedidos sin pagar vencidos.
@@ -31,20 +31,20 @@ import { isAdminApiConfigured, requireAdminToken } from '@/lib/admin.server';
  *
  * 200 con el conteo · 401 sin autorización · 503 sin base de datos.
  */
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
   const cronSecret = (getPrefixedEnv('CRON_SECRET') ?? '').trim();
   if (cronSecret) {
     return request.headers.get('authorization') === `Bearer ${cronSecret}`;
   }
 
-  if (requireAdminToken(request).ok) return true;
+  if ((await requireAdminAccess(request)).ok) return true;
 
   // Ni CRON_SECRET ni ADMIN_API_SECRET: entorno de desarrollo.
   return !isAdminApiConfigured();
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

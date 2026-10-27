@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { BillingError } from '@/lib/billing';
 import { markSubscriptionPaymentFailed } from '@/lib/billing/subscriptions.server';
 import { isProductionRuntime } from '@/lib/runtime-environment.server';
@@ -23,7 +23,7 @@ interface Body {
  * proveedor real. Simula active → past_due sin desactivar la tienda.
  */
 export async function POST(request: Request, context: RouteContext) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

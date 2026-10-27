@@ -10,7 +10,7 @@ import {
   isComplaintsStorageConfigured,
   listComplaints,
 } from '@/lib/complaints.server';
-import { requirePlatformAdminSession } from '@/lib/platform-admin.server';
+import { requireActivePlatformAdminSession } from '@/lib/platform-admin.server';
 import {
   PERU_HOLIDAY_CALENDAR_VERSION,
   peruHolidayCalendarYears,
@@ -19,8 +19,10 @@ import {
 /**
  * GET /api/admin/complaints — bandeja del Libro de Reclamaciones.
  *
- * SOLO Platform Admin con cookie firmada. No acepta `x-admin-token`: acá se leen
- * DNI, teléfonos y correos, así que el token de automatización no alcanza.
+ * SOLO Platform Admin con cookie firmada y rol vigente: la cookie se revalida
+ * contra `platform_admins` en cada petición, así que revocar el rol corta el
+ * acceso de inmediato. No acepta `x-admin-token`: acá se leen DNI, teléfonos y
+ * correos, así que el token de automatización no alcanza.
  *
  * Filtros: ?status=received|in_review|answered · ?kind=reclamo|queja
  *          ?from=YYYY-MM-DD · ?to=YYYY-MM-DD (sobre submitted_at) · ?limit=1..200
@@ -40,7 +42,7 @@ function validDate(value: string): boolean {
 }
 
 export async function GET(request: Request) {
-  const access = requirePlatformAdminSession(request);
+  const access = await requireActivePlatformAdminSession(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

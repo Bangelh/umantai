@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminApiConfigured, requireAdminToken } from '@/lib/admin.server';
+import { isAdminApiConfigured, requireAdminAccess } from '@/lib/admin.server';
 import { runBillingCycle } from '@/lib/billing/lifecycle.server';
 import { getPrefixedEnv } from '@/lib/env';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
@@ -11,10 +11,10 @@ import { isPlatformDbConfigured } from '@/lib/platform-db.server';
  * aparte con `CRON_SECRET`. Es idempotente: cada transición comprueba el
  * período y los eventos tienen `idempotency_key` única.
  */
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
   const cronSecret = (getPrefixedEnv('CRON_SECRET') ?? '').trim();
   if (cronSecret) return request.headers.get('authorization') === `Bearer ${cronSecret}`;
-  if (requireAdminToken(request).ok) return true;
+  if ((await requireAdminAccess(request)).ok) return true;
   return !isAdminApiConfigured();
 }
 
@@ -22,7 +22,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!isPlatformDbConfigured()) {

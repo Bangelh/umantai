@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { isCommerceDbConfigured, listInventoryMovements } from '@/lib/commerce.server';
 
 /**
@@ -29,7 +29,7 @@ import { isCommerceDbConfigured, listInventoryMovements } from '@/lib/commerce.s
 const MOVEMENTS_MAX_LIMIT = 2000;
 
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

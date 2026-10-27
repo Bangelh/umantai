@@ -8,7 +8,7 @@ import {
   markComplaintInReview,
 } from '@/lib/complaints.server';
 import { sendComplaintResponse } from '@/lib/complaints-email.server';
-import { getPlatformAdminLabel, requirePlatformAdminSession } from '@/lib/platform-admin.server';
+import { getPlatformAdminLabel, requireActivePlatformAdminSession } from '@/lib/platform-admin.server';
 
 /**
  * GET   /api/admin/complaints/:id — detalle (Platform Admin).
@@ -33,8 +33,10 @@ type Gate =
   | { ok: true; userId: string }
   | { ok: false; response: NextResponse };
 
-function gate(request: Request): Gate {
-  const access = requirePlatformAdminSession(request);
+async function gate(request: Request): Promise<Gate> {
+  // La cookie se revalida contra `platform_admins`: si el rol fue revocado, la
+  // petición se corta aunque la firma siga siendo válida.
+  const access = await requireActivePlatformAdminSession(request);
   if (!access.ok) {
     return {
       ok: false,
@@ -57,7 +59,7 @@ function gate(request: Request): Gate {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const access = gate(request);
+  const access = await gate(request);
   if (!access.ok) return access.response;
 
   const { id } = await context.params;
@@ -89,7 +91,7 @@ export async function GET(request: Request, context: RouteContext) {
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const access = gate(request);
+  const access = await gate(request);
   if (!access.ok) return access.response;
   const actor = await getPlatformAdminLabel(access.userId);
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getPrefixedEnv } from '@/lib/env';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 
 /**
  * POST /api/admin/setup-db
@@ -85,7 +85,7 @@ async function setupDatabase() {
 }
 
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from './admin.server';
+import { requireAdminAccess } from './admin.server';
 import { isCommerceDbConfigured } from './commerce.server';
 import { enforceRateLimit, rateLimitKeyFor } from './rate-limit.server';
 
@@ -16,7 +16,7 @@ export async function guardAdminMutation(
   request: Request,
   scope: string,
 ): Promise<AdminMutationGuard> {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return {
       ok: false,

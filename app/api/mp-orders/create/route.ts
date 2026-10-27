@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { isProductionRuntime } from '@/lib/runtime-environment.server';
 import {
   DEFAULT_MP_ORDERS_ITEM_PAYLOAD_MODE,
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
   }
 
   // ─── 2. Autenticación administrativa ────────────────────────────────────────
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

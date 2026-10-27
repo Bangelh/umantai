@@ -1,8 +1,13 @@
 /**
  * tests/platform-admin.test.ts — sesión firmada de Platform Admin.
  *
- * Cubre la firma HMAC, expiración, manipulación, allowlist de bootstrap y que
- * `requireAdminToken` acepte la cookie sin necesitar el token compartido.
+ * Cubre la firma HMAC, expiración, manipulación, allowlist de bootstrap y los
+ * dos caminos de autorización: el token compartido (`requireAdminToken`, que ya
+ * NO acepta la cookie) y la puerta de rutas (`requireAdminAccess`), que revalida
+ * el rol contra la base y falla cerrado si no puede comprobarlo.
+ *
+ * La revocación real (grant → 200, revocar → 403 con la MISMA cookie) se prueba
+ * contra PostgreSQL en `platform-admin-revocation.integration.test.ts`.
  */
 
 import test, { after, before } from 'node:test';
@@ -15,7 +20,7 @@ import {
   PLATFORM_ADMIN_TTL_SECONDS,
   verifyPlatformAdminToken,
 } from '../lib/platform-admin.server';
-import { requireAdminToken } from '../lib/admin.server';
+import { requireAdminAccess, requireAdminToken } from '../lib/admin.server';
 
 const SECRET = 'test-platform-admin-secret-0123456789abcdef';
 const saved = {
@@ -100,7 +105,8 @@ test('allowlist de bootstrap normaliza el correo', async () => {
   assert.equal(await isPlatformAdminUser({ id: 'x', email: 'otro@example.com' }), false);
 });
 
-test('requireAdminToken acepta la cookie y no exige el token compartido', () => {
+test('requireAdminToken NO acepta la cookie de sesión', () => {
+  process.env.ADMIN_API_SECRET = 'unit-admin-secret-0123456789';
   const token = createPlatformAdminToken('user-123');
   assert.ok(token);
 
@@ -108,10 +114,35 @@ test('requireAdminToken acepta la cookie y no exige el token compartido', () => 
     headers: { cookie: `${PLATFORM_ADMIN_COOKIE}=${encodeURIComponent(token)}` },
   });
 
+  // La cookie sola no abre nada por este camino: la única puerta que la acepta
+  // es `requireAdminAccess`, que sí revalida el rol contra `platform_admins`.
   const access = requireAdminToken(request);
-  assert.equal(access.ok, true);
-  if (access.ok) {
-    assert.equal(access.via, 'session');
-    assert.equal(access.userId, 'user-123');
+  assert.equal(access.ok, false);
+  if (!access.ok) assert.equal(access.code, 'admin_unauthorized');
+
+  // Y el token compartido sigue siendo el camino de automatización.
+  const withToken = new Request('https://staging.example.com/api/admin/plans', {
+    headers: { 'x-admin-token': 'unit-admin-secret-0123456789' },
+  });
+  assert.equal(requireAdminToken(withToken).ok, true);
+
+  delete process.env.ADMIN_API_SECRET;
+});
+
+test('requireAdminAccess falla cerrado si no puede verificar el rol', async () => {
+  // Sin base configurada no hay forma de comprobar el grant: 503, nunca 200.
+  const token = createPlatformAdminToken('user-123');
+  assert.ok(token);
+
+  const access = await requireAdminAccess(
+    new Request('https://staging.example.com/api/admin/plans', {
+      headers: { cookie: `${PLATFORM_ADMIN_COOKIE}=${encodeURIComponent(token)}` },
+    }),
+  );
+
+  assert.equal(access.ok, false);
+  if (!access.ok) {
+    assert.equal(access.status, 503);
+    assert.equal(access.code, 'admin_check_unavailable');
   }
 });

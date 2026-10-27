@@ -10,7 +10,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { CatalogError } from '@/lib/catalog';
 import {
   createMasterProduct,
@@ -33,7 +33,7 @@ function str(value: unknown): string | null {
 }
 
 export async function GET(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) return adminError(access);
 
   const params = new URL(request.url).searchParams;
@@ -63,7 +63,7 @@ interface MasterBody {
 }
 
 export async function POST(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) return adminError(access);
 
   const body = await readJsonBody<MasterBody>(request);
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) return adminError(access);
 
   const body = await readJsonBody<MasterBody & { id?: unknown; archived?: unknown; active?: unknown }>(request);

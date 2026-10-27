@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEnvDebugInfo } from '@/lib/env';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 
 /**
  * GET /api/debug/env
@@ -9,7 +9,7 @@ import { requireAdminToken } from '@/lib/admin.server';
  * All secrets and connection strings are masked.
  */
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

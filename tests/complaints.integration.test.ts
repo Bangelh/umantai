@@ -8,6 +8,7 @@
 
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { Client } from 'pg';
 
 import { closeDbPools } from '../lib/db-driver.server';
 import type { ComplaintInput } from '../lib/complaints';
@@ -19,12 +20,15 @@ type ListRoute = typeof import('../app/api/admin/complaints/route');
 type DetailRoute = typeof import('../app/api/admin/complaints/[id]/route');
 
 let database: EmbeddedTestDatabase;
+let db: Client;
 let complaints: ComplaintsServer;
 let platformAdmin: PlatformAdmin;
 let listRoute: ListRoute;
 let detailRoute: DetailRoute;
 
 const ADMIN_SECRET = 'integration-platform-admin-secret-0123456789';
+/** Cuenta con rol vigente: la cookie sola ya no alcanza (se revalida el grant). */
+const ADMIN_USER_ID = 'integration-admin-user';
 
 function input(overrides: Partial<ComplaintInput> = {}): ComplaintInput {
   return {
@@ -56,8 +60,8 @@ function adminRequest(method = 'GET', body?: unknown, token?: string): Request {
   });
 }
 
-function createToken(): string {
-  const token = platformAdmin.createPlatformAdminToken('user-integration');
+function createToken(userId: string = ADMIN_USER_ID): string {
+  const token = platformAdmin.createPlatformAdminToken(userId);
   assert.ok(token, 'no se pudo firmar la cookie de admin');
   return token;
 }
@@ -76,9 +80,20 @@ before(async () => {
   platformAdmin = await import('../lib/platform-admin.server');
   listRoute = await import('../app/api/admin/complaints/route');
   detailRoute = await import('../app/api/admin/complaints/[id]/route');
+
+  // La cookie de Platform Admin se revalida contra `platform_admins` en cada
+  // petición: para autorizar hace falta que la cuenta exista y tenga el rol.
+  db = new Client({ connectionString: database.url });
+  await db.connect();
+  await db.query(
+    'INSERT INTO users (id, name, email, "emailVerified") VALUES ($1, $2, $3, TRUE)',
+    [ADMIN_USER_ID, 'Integration Admin', 'admin-integration@example.test'],
+  );
+  await db.query('INSERT INTO platform_admins (user_id) VALUES ($1)', [ADMIN_USER_ID]);
 });
 
 after(async () => {
+  if (db) await db.end().catch(() => undefined);
   await closeDbPools();
   if (database) await database.stop();
 });

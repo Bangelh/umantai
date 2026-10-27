@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { setPromotionActive } from '@/lib/billing/promotions.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 
@@ -16,7 +16,7 @@ interface Body {
 
 /** PATCH /api/admin/promotions/:promotionId — activar/desactivar código. */
 export async function PATCH(request: Request, context: RouteContext) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

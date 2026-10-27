@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, hasDatabaseConnection, getDatabaseNotConfiguredError } from '@/lib/db';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 
 // PATCH /api/categories/[id] - Rename or move
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ success: false, error: access.message, code: access.code }, { status: access.status });
   }
@@ -68,7 +68,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ success: false, error: access.message, code: access.code }, { status: access.status });
   }

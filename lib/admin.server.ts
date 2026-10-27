@@ -26,7 +26,7 @@
  */
 
 import { getPrefixedEnv } from './env';
-import { getPlatformAdminSession } from './platform-admin.server';
+import { getPlatformAdminGrantState, getPlatformAdminSession } from './platform-admin.server';
 import { logSecurityEvent } from './observability.server';
 
 /** Header donde viaja el token de administración. */
@@ -95,19 +95,58 @@ export type AdminAccessCheck =
     };
 
 /**
- * Portero único de las rutas de administración.
+ * Portero único de las rutas de administración: sesión o token. SIEMPRE async.
  *
  * Devuelve datos, no una `NextResponse`, para no acoplar la librería a Next:
  * cada ruta traduce `ok: false` a su respuesta HTTP en dos líneas y con el
  * formato de error que ya usa esa ruta.
+ *
+ * La cookie de Platform Admin se revalida contra `platform_admins` en cada
+ * petición (`getPlatformAdminGrantState`): retirar el rol corta el acceso en el
+ * acto, aunque la cookie siga firmada y vigente. Es async justo por eso.
  */
-export function requireAdminToken(request: Request): AdminAccessCheck {
+export async function requireAdminAccess(request: Request): Promise<AdminAccessCheck> {
   // 1. Sesión real de Platform Admin (cookie firmada emitida tras login).
   const session = getPlatformAdminSession(request);
   if (session) {
-    return { ok: true, via: 'session', userId: session.userId };
+    const state = await getPlatformAdminGrantState(session.userId);
+    if (state === 'active') {
+      return { ok: true, via: 'session', userId: session.userId };
+    }
+
+    const requestId = request.headers.get('x-request-id');
+    if (state === 'unavailable') {
+      logSecurityEvent('admin_grant_check_failed', { requestId });
+      return {
+        ok: false,
+        status: 503,
+        code: 'admin_check_unavailable',
+        message: 'No pudimos verificar tu acceso de Platform Admin. Reintenta en unos segundos.',
+      };
+    }
+
+    // Rol revocado (o cuenta borrada): la cookie NO alcanza para operar.
+    logSecurityEvent('admin_grant_inactive', { userId: session.userId, requestId });
+    return {
+      ok: false,
+      status: 403,
+      code: 'admin_grant_inactive',
+      message: 'Tu acceso de Platform Admin ya no está activo.',
+    };
   }
 
+  // 2. Sin cookie de sesión: solo el token compartido (automatización).
+  return requireAdminToken(request);
+}
+
+/**
+ * Puerta del token compartido (`x-admin-token`).
+ *
+ * NO acepta la cookie de Platform Admin: esa pasa por `requireAdminAccess`, que
+ * sí revalida el rol contra la base. Así no existe un camino de autorización
+ * que se salte la revocación.
+ */
+export function requireAdminToken(request: Request): AdminAccessCheck {
   if (!isAdminApiConfigured()) {
     return {
       ok: false,

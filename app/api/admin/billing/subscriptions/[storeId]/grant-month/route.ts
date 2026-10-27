@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { grantFreeMonths } from '@/lib/billing/promotions.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 
@@ -17,7 +17,7 @@ interface Body {
 
 /** POST /api/admin/billing/subscriptions/:storeId/grant-month */
 export async function POST(request: Request, context: RouteContext) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

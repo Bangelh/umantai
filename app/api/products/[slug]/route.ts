@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { upsertOverride, getOverride } from '@/lib/db';
 import { baseProductsData as baseProducts } from '@/lib/products';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 
 interface UpdateProductBody {
   // Category tree selection (for DB tracking)
@@ -27,7 +27,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { success: false, error: access.message, code: access.code },

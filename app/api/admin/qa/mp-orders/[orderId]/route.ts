@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { isProductionRuntime } from '@/lib/runtime-environment.server';
 import {
   MpOrdersApiError,
@@ -78,7 +78,7 @@ export async function GET(
   }
 
   // ─── 2. Autenticación administrativa (401 / 503 sin ADMIN_API_SECRET) ───────
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) return fail(access.status, access.code, access.message);
 
   // ─── 3. Access token propio de la integración Orders (nunca el legacy) ──────

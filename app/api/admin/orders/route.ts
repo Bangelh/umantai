@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import {
   isCommerceDbConfigured,
   listOrdersWithActiveReservations,
@@ -49,7 +49,7 @@ function parseLimit(raw: string | null): { ok: true; limit: number | undefined }
 }
 
 export async function GET(request: NextRequest) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },

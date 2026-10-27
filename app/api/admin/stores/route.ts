@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { requirePlatformSql, toIsoString, toNumber } from '@/lib/platform-db.server';
 
@@ -19,7 +19,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }
@@ -73,7 +73,7 @@ interface PatchBody {
 }
 
 export async function PATCH(request: Request) {
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json({ error: access.message, code: access.code }, { status: access.status });
   }

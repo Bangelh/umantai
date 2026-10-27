@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminToken } from '@/lib/admin.server';
+import { requireAdminAccess } from '@/lib/admin.server';
 import {
   getMpOrdersBackUrlBase,
   isMpOrdersConfigured,
@@ -17,7 +17,7 @@ import {
  *
  * Candados (TODOS obligatorios; falla cerrado):
  *   1. `VERCEL_ENV === 'preview'` — Production y desarrollo local NUNCA lo habilitan.
- *   2. Token admin válido (`x-admin-token`) vía `requireAdminToken` (401/503).
+ *   2. Token admin válido (`x-admin-token`) vía `requireAdminAccess` (401/503).
  *
  * Es un endpoint de experimento: se puede ELIMINAR sin afectar nada más.
  *
@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const access = requireAdminToken(request);
+  const access = await requireAdminAccess(request);
   if (!access.ok) {
     return NextResponse.json(
       { ok: false, code: access.code, error: access.message },
