@@ -1,7 +1,12 @@
-# Correo real con Resend — preparación (sin ejecutar todavía)
+# Correo real con Resend — configuración y validación
 
-**Estado:** preparado, **no configurado**. No se creó ninguna cuenta, clave ni
-registro DNS: todo lo que sigue requiere acción del negocio/owner.
+**Estado (2026-10-27):** **configurado en staging y validado con envíos reales**.
+Railway `staging` → `web` tiene `RESEND_API_KEY` (permiso **solo envío**),
+`RESEND_FROM_EMAIL=Umantai <soporte@umantai.com>`, `CONTACT_TO_EMAIL` y
+`LEGAL_EMAIL`. La corrida real (§5.7) cerró registro + verificación,
+recuperación de contraseña, formulario de contacto y Libro de Reclamaciones con
+envíos aceptados por Resend. Los pendientes que quedan son de verificación
+externa (bandeja real, panel de Resend) y el cutover a Producción.
 
 **Objetivo:** que UMANTAI pueda enviar correo real antes de abrir al público:
 
@@ -189,8 +194,82 @@ en Producción después del cutover.
 - [ ] Cabeceras muestran `spf=pass`, `dkim=pass`, `dmarc=pass`.
 - [ ] Sin rebotes ni quejas en el panel de Resend.
 - [ ] Revisar los reportes DMARC a los 2–3 días.
-- [ ] Restaurar `AUTH_TEST_MODE=1` en staging si se sigue usando el E2E con
-      outbox (o actualizar el E2E si se deja el envío real).
+- [x] Restaurar `AUTH_TEST_MODE=1` en staging si se sigue usando el E2E con
+      outbox (o actualizar el E2E si se deja el envío real). → **restaurado**
+      tras la corrida del 2026-10-27; ver §5.8.
+
+### 5.7 Corrida real de validación (staging, 2026-10-27)
+
+Ejecutada contra `https://web-staging-6756.up.railway.app` con el candidato
+`557f85b`, `AUTH_TEST_MODE` **apagado** desde `web` (variable + redeploy, sin
+tocar Producción). Cuenta de prueba: `delivered@resend.dev` (destinatario de
+pruebas de Resend: simula entrega sin tocar un buzón ajeno); el aviso de
+contacto sí va al buzón real de `CONTACT_TO_EMAIL`.
+
+| Flujo | Resultado |
+|---|---|
+| Registro | `POST /api/auth/sign-up/email` 200, cookie `__Secure-better-auth.session_token` (HttpOnly, Secure, `SameSite=Lax`) |
+| Verificación | enlace `/api/auth/verify-email?token=…` (host de staging) → 302 y `users."emailVerified" = true`; reenvío 200 |
+| Recuperación | enlace `/api/auth/reset-password/<token>?callbackURL=%2Frestablecer` → 302 a `/restablecer?token=…`; cambio 200; **reuso 400 `INVALID_TOKEN`**; sesiones previas revocadas; login con la nueva 200 y con la vieja 401 |
+| Anti-enumeración | correo inexistente: misma respuesta 200 y **no** genera token |
+| Contacto | `POST /api/contact` 200 `delivery=stored`, fila en `contact_messages` con `email_status=sent`; honeypot neutro; payload inválido 400 |
+| Libro de Reclamaciones | reclamo 201 `emailStatus=sent`; seguimiento público 200 sin DNI/teléfono/correo y `noindex`; respuesta desde `/admin/reclamaciones` con `emailStatus=sent`; segunda respuesta 409 |
+| Logs | 0 apariciones de tokens, enlaces, correos o contenido de mensajes; **0** errores de Resend (`[email] Resend rechazó` / `falló el envío`) |
+| Rate limits | recuperación 429 tras 5/min; login 429 en el intento 18; contacto 429 (ver nota) |
+| Limpieza | cuenta QA, mensajes, reclamos y outbox de prueba borrados; conteos de staging idénticos a los previos |
+
+**Límites de esta corrida (por el alcance de la API key):**
+
+1. La key es **solo envío**: no se pueden leer `GET /domains` ni
+   `GET /emails` (401 `restricted_api_key`). Por eso **no** se pudo confirmar
+   `delivered`, rebotes, quejas ni el FROM contra la API: el código confirma
+   *envío aceptado* (sin error del proveedor y sin log de rechazo), y
+   `delivered`/rebotes hay que verlos en el panel de Resend o con una key de
+   lectura.
+2. El token de verificación es un **JWT firmado** que solo existe dentro del
+   correo (`createEmailVerificationToken`), así que con una key de solo envío no
+   se puede releer: el flujo se validó con un token equivalente firmado con el
+   mismo secreto y payload. El de recuperación **sí** se recupera de
+   `verifications` (`identifier = reset-password:<token>`) y se usó el token real.
+3. La recepción en un buzón real (bandeja de entrada, no spam, cabeceras
+   SPF/DKIM/DMARC) requiere abrir el buzón de `CONTACT_TO_EMAIL` o el panel.
+
+**Hallazgo operativo (no corregido, el candidato está congelado):**
+`app/api/contact/route.ts` llama a `rateLimitGate(..., 'contact', { limit: 5 })`
+**y** a `consumeRateLimit(rateLimitKeyFor(request, 'contact'), 5, …)`: las dos
+capas usan la misma clave (`contact:<hash(ip)>`) y ventana, así que cada envío
+cuenta **dos veces**. Medido en staging: el 3.º envío ya recibe 429 (cupo
+efectivo ≈ 2 cada 10 min en vez de 5). `/api/complaints` usa una sola capa y sí
+respeta el cupo anunciado. Corrección sugerida: quitar el bloque
+`consumeRateLimit` de esa ruta (basta con el `rateLimitGate`).
+
+### 5.8 Test mode (`AUTH_TEST_MODE`) vs. correo real
+
+Son **dos modos excluyentes**; el modo test gana siempre sobre la API key
+(`lib/email.server.ts`).
+
+| | `AUTH_TEST_MODE=1` (staging por defecto) | `AUTH_TEST_MODE=0` (correo real) |
+|---|---|---|
+| Proveedor de auth | `test`: escribe en `email_outbox` | `resend`: envía de verdad |
+| Cupos de auth | 120 login/min, 30 recuperación/min | 15 login/min, 5 recuperación/min |
+| `/api/auth/test/outbox` | 200 (lee el enlace) | **404** |
+| Suites que lo requieren | `e2e/auth.spec.ts` (`npm run e2e`) | — |
+| Suites que **no** lo requieren | `npm test`, `npm run test:integration`, `scripts/security-smoke.mjs`, y los smokes de contacto/reclamaciones | igual |
+
+El modo test se queda **encendido** en staging para que el E2E de auth siga
+verde: el smoke de correo real es una corrida **explícita y separada**, no el
+estado permanente. Procedimiento:
+
+1. `railway variables --set AUTH_TEST_MODE=0 -s web -e staging` (dispara
+   redeploy del último artefacto; confirmar `SUCCESS` y que
+   `/api/auth/test/outbox` responda 404).
+2. Correr el smoke real (§5.7) y revisar los logs de `web`.
+3. Volver a `AUTH_TEST_MODE=1` y redesplegar; confirmar el 200 del endpoint de
+   outbox.
+
+En **Producción** el modo test no puede activarse nunca (`isAuthTestMode()` lo
+bloquea fuera de Producción… es decir, con `APP_ENV=production` siempre devuelve
+`false`), así que allí el correo real es el único camino.
 
 ---
 

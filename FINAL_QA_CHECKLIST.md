@@ -25,8 +25,10 @@ unit 470/470, integración 103/103, i18n `--strict` sin hallazgos. También se
 cerraron hoy los drills de backup/restore, rollback (código y datos) y
 `security-smoke` 22/22. Lo que sigue abierto es **manual** (recorrido humano de
 UI/UX/accesibilidad) o **externo** (datos legales reales, revisión legal,
-ventana y responsables, backup fuera del volumen, Resend real,
-Producción/DNS, Mercado Pago congelado). Ver §28.
+ventana y responsables, backup fuera del volumen, Producción/DNS, Mercado Pago
+congelado). El **correo real con Resend ya está validado en staging**
+(§29, 2026-10-27); lo que falta allí es la confirmación de entrega/rebotes en el
+panel de Resend o con una key de lectura.
 
 ---
 
@@ -369,9 +371,10 @@ Implementado en `/libro-de-reclamaciones` (ver `LIBRO_RECLAMACIONES.md`).
 - [x] Incluye los campos del Anexo I (D.S. N.º 011-2011-PCM).
       (`tests/complaints.test.ts`)
 - [x] Entrega constancia imprimible. (E2E: botón “Imprimir o guardar PDF”)
-- [ ] Copia por correo cuando Resend está activo. — **externo**: staging no
-      envía correo real; el flujo queda en `not_configured` y la constancia se
-      muestra en pantalla.
+- [x] Copia por correo cuando Resend está activo. (2026-10-27: reclamo QA
+      RC-000003 con `emailStatus: sent` para la constancia **y** para la
+      respuesta; ver §29). Queda confirmar la recepción en el buzón y ausencia de
+      rebotes en el panel de Resend (key de solo envío → ver §29.3).
 - [x] Seguimiento con código aleatorio, sin PII y sin enumeración. (E2E:
       `/seguimiento/RC-000001` y código inventado → 404)
 - [x] Bandeja `/admin/reclamaciones` con plazo y respuesta única. (unit,
@@ -474,7 +477,70 @@ que volver a subir el árbol del candidato con `railway up` y confirmarlo con
 1. Datos del titular y revisión legal → `isLegalReadyForLaunch()` sigue `false`.
 2. Copia del backup fuera del volumen de Railway + retención ≥ 30 días.
 3. Ventana de convivencia y responsables de cutover/rollback.
-4. Resend real para la copia por correo de la constancia.
+4. Resend: confirmar en el panel `delivered`/rebotes y la recepción en el buzón
+   de `CONTACT_TO_EMAIL` (la key de staging es de solo envío); repetir la prueba
+   en Producción después del cutover. La copia por correo de la constancia ya se
+   verificó en staging (§29).
 5. `robots.txt` definitivo y `ALLOW_ADMIN_TOKEN_FALLBACK` en Producción.
 6. Recorrido manual de accesibilidad y de checkout.
 7. Migraciones 001–024 en Producción (no ejecutadas por instrucción).
+
+---
+
+## 29. Validación de correo real con Resend (2026-10-27, staging `557f85b`)
+
+> Corrida contra staging con `AUTH_TEST_MODE` **apagado** (variable + redeploy de
+> `web`, deployment `SUCCESS`). No se tocó Producción, DNS, Mercado Pago ni
+> ningún otro servicio externo. Detalle del procedimiento: `EMAIL_RESEND_SETUP.md`
+> §5.7 y §5.8.
+
+### 29.1 Evidencia
+
+| Verificación | Resultado |
+|---|---|
+| Precheck | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`, `LEGAL_EMAIL` presentes (sin exponer valores); `/api/health` 200 con `commit: 557f85b…` y `database.reachable: true` |
+| Remitente | `Umantai <soporte@umantai.com>` (dominio propio, no `resend.dev`) |
+| `AUTH_TEST_MODE` | apagado durante la corrida: `/api/auth/test/outbox` → 404 y **0** filas nuevas en `email_outbox` |
+| Registro + verificación | 200; enlace `/api/auth/verify-email` con host de staging → 302 y `emailVerified = true` |
+| Recuperación | enlace `/api/auth/reset-password/<token>` → 302 a `/restablecer?token=…`; cambio 200; **reuso 400 `INVALID_TOKEN`**; sesiones previas revocadas; login nueva 200 / vieja 401 |
+| Anti-enumeración | correo inexistente: misma respuesta 200 y sin token |
+| Contacto | 200 `delivery=stored` + fila `contact_messages` con `email_status=sent`; honeypot neutro; inválido 400 |
+| Libro de Reclamaciones | RC-000003 201 `sent`; seguimiento público 200 sin PII y `noindex`; respuesta desde `/admin/reclamaciones` `sent`; 2.ª respuesta 409 |
+| Cookies | `__Secure-better-auth.session_token` HttpOnly, Secure, `SameSite=Lax`; cookie de admin `SameSite=Strict` y `DELETE /api/admin/session` la revoca |
+| Logs de `web` | 0 apariciones de tokens, enlaces, correos o contenido; 0 errores de Resend |
+| Rate limits | recuperación 429 tras el 5.º/min; login 429 en el intento 18; `security-smoke` 22/22 |
+| `npx tsc --noEmit` / `npm test` / `npm run test:integration` | exit 0 / 470/470 / 103/103 |
+| Limpieza | cuenta QA, 1 mensaje de contacto, 2 reclamos QA (RC-000002, RC-000003) y outbox de prueba borrados → conteos idénticos a los previos (users 88, sessions 105, contact 0, reclamos 0, platform_admins 0, outbox 84) |
+
+### 29.2 Hallazgos (candidato congelado: no se corrigió código)
+
+1. **`/api/contact` cuenta doble.** `rateLimitGate('contact', limit 5)` y
+   `consumeRateLimit('contact:<ip>', 5)` comparten clave y ventana: el 3.er
+   envío ya recibe 429 (cupo efectivo ≈ 2 cada 10 min, no 5). `/api/complaints`
+   usa una sola capa y respeta el cupo. Corrección sugerida: quitar el bloque
+   `consumeRateLimit` de la ruta.
+2. **La revocación de Platform Admin no invalida cookies ya emitidas.**
+   `/api/admin/complaints` sigue respondiendo 200 con una cookie firmada aunque
+   se haya borrado la fila de `platform_admins`, hasta el TTL de 8 h. Sin cookie
+   → 401 (correcto). Decisión pendiente: aceptar el TTL o revalidar la fila.
+3. **Sin key de lectura de Resend** no se puede verificar `delivered`/rebotes por
+   API (`GET /domains`, `GET /emails` → 401 `restricted_api_key`).
+4. El token de verificación es un JWT firmado que solo vive en el correo: con una
+   key de solo envío, la verificación se validó con un token equivalente firmado
+   con el mismo secreto y payload (el de reset sí se recuperó de la base).
+
+### 29.3 Estado final de `AUTH_TEST_MODE`
+
+Se **restauró a `1`** con redeploy, para no romper la suite de staging
+(`e2e/auth.spec.ts` depende de `email_outbox` y de `/api/auth/test/outbox`). El
+smoke de correo real es una corrida explícita y separada (§5.8 de
+`EMAIL_RESEND_SETUP.md`, que incluye el procedimiento de ida y vuelta).
+
+### 29.4 Bloqueos externos que agrega esta corrida
+
+1. Confirmar en el panel de Resend `delivered`, ausencia de rebotes y el FROM
+   correcto, o entregar una key de **lectura** para automatizarlo.
+2. Confirmar la recepción del aviso de contacto en el buzón de
+   `CONTACT_TO_EMAIL` (bandeja de entrada, no spam, SPF/DKIM/DMARC `pass`).
+3. Decidir la corrección del cupo doble de `/api/contact` y de la revocación de
+   cookies de Platform Admin antes del cutover.
