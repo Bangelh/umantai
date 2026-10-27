@@ -62,12 +62,16 @@ test('en staging la bandera muestra los datos de demostración del titular', () 
       assert.equal(business.businessValue(field), LEGAL_DEMO_VALUES[field]);
     }
 
-    // El texto legal ya armado los usa y deja de mostrar el placeholder.
+    // El texto legal ya armado los usa y deja de mostrar el placeholder: los
+    // cuatro datos del titular (incluida la jurisdicción) se ven en las páginas.
     const documents = JSON.stringify(LEGAL_DOCUMENTS);
     assert.ok(documents.includes('UMANTAI DEMO S.A.C.'));
     assert.ok(documents.includes('00000000000'));
     assert.ok(documents.includes('Dirección de demostración — por confirmar'));
+    assert.ok(documents.includes('Perú — por confirmar'));
     assert.ok(!documents.includes('[PENDIENTE: definir razón social]'));
+    assert.ok(!documents.includes('[PENDIENTE: definir RUC]'));
+    assert.ok(!documents.includes('[PENDIENTE: definir jurisdicción]'));
   });
 });
 

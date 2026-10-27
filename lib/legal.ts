@@ -13,7 +13,7 @@
  *  `[PENDIENTE: …]`. Acá no se inventa ningún dato legal, plazo ni jurisdicción.
  */
 
-import { businessConfig, businessValue, legalContactEmail, pendingLabel } from '@/config/business';
+import { businessConfig, businessValue, legalContactEmail } from '@/config/business';
 
 export const LEGAL_DRAFT_NOTICE =
   'Borrador operativo pendiente de validación del negocio y revisión legal. No constituye asesoría jurídica.';
@@ -98,7 +98,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '6. Tus derechos',
         paragraphs: [
-          `Puedes solicitar acceso, rectificación, actualización o eliminación de tus datos escribiendo a ${legalContact}. El plazo de respuesta y el procedimiento formal se definirán con la validación legal (${pendingLabel('jurisdiction')}).`,
+          `Puedes solicitar acceso, rectificación, actualización o eliminación de tus datos escribiendo a ${legalContact}. El plazo de respuesta y el procedimiento formal se definirán con la validación legal (${businessValue('jurisdiction')}).`,
           'También puedes solicitar la eliminación de los datos asociados a un pedido, salvo los que deban conservarse por obligación legal o contable.',
         ],
       },
@@ -180,7 +180,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
       {
         heading: '8. Ley aplicable',
         paragraphs: [
-          `La jurisdicción aplicable está pendiente de definición por el negocio (${pendingLabel('jurisdiction')}). Mientras tanto, estos términos son un borrador operativo.`,
+          `La jurisdicción aplicable está pendiente de definición por el negocio (${businessValue('jurisdiction')}). Mientras tanto, estos términos son un borrador operativo.`,
         ],
       },
     ],
@@ -302,6 +302,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
         heading: '1. Titular del sitio',
         paragraphs: [
           `Titular: ${businessValue('legalName')}. RUC: ${businessValue('ruc')}. Domicilio: ${businessValue('address')}.`,
+          `Jurisdicción: ${businessValue('jurisdiction')}.`,
           `Contacto: ${legalContact}.`,
           'Los datos marcados como [PENDIENTE] todavía no fueron confirmados por el negocio y se muestran así a propósito: este aviso no es definitivo para lanzamiento público.'
         ],
