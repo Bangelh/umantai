@@ -630,3 +630,25 @@ petición contra la base.
   recepción en bandeja de entrada con SPF/DKIM/DMARC en `pass`). No se ejecutó el
   cutover.
 
+### 30.5 Cierre sobre el HEAD entregado
+
+El cierre documental (`8141ee6`) no toca código de runtime, así que se volvió a
+correr la verificación sobre el artefacto desplegado de ese commit.
+
+| Verificación | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 (mismo árbol de runtime que `65e3f39`) |
+| `npm test` | 475/475 · `npm run test:integration` 111/111 |
+| `tests/contact-rate-limit.test.ts` + `tests/contact.test.ts` + `tests/platform-admin.test.ts` | 19/19 |
+| `tests/platform-admin-revocation.integration.test.ts` | 8/8 sobre PostgreSQL efímero |
+| Playwright `e2e/admin.spec.ts` | 5 passed contra el deploy de `8141ee6` (cuenta QA con grant temporal, borrada al terminar) |
+| Deploy staging | `railway up` → deployment `ea8112f9` **SUCCESS** |
+| `/api/health` | 200 · `commit: 8141ee6a5737928afad99c5c40a0b7abee2636a5` · `database.reachable: true` |
+| Contacto en staging | `200 ×5 → 429` con `Retry-After: 600` (misma cookie/IP de la prueba) |
+| Admin en staging | grant → 200 · revocado → **403 `admin_grant_inactive`** con la **misma** cookie |
+| Limpieza | `platform_admins: 0`, cuentas/sesiones/grants y filas QA de la corrida borrados |
+
+- **HEAD final:** `8141ee6a5737928afad99c5c40a0b7abee2636a5` (local y
+  `origin/feat/railway-staging`).
+
+
