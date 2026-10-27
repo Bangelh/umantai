@@ -1,8 +1,8 @@
 # Prueba privada sobre `umantai.com` — Railway staging
 
-**Estado:** Railway **listo y verificado**. Falta **un único paso externo**: que el
-dueño aplique el cambio de DNS en Cloudflare (§6) y avise para validar (§9).
-Nada público cambió todavía.
+**Estado:** prueba privada **ejecutada y validada el 2026-10-27**. `umantai.com`
+sirve el candidato `8db205a` del entorno `staging` de Railway a través de
+Cloudflare; Vercel quedó intacto y el rollback está listo en §7. Resultados en §11.
 **Fecha:** 2026-10-27
 **Candidato:** `8db205a` (`feat/railway-staging`) — build
 `20261027231516-8db205a` del servicio `web` del entorno **staging** de Railway.
@@ -100,7 +100,7 @@ se requiere bajar TTL 24 h antes porque el registro ya está bajo.
 | `BETTER_AUTH_URL` | `https://web-staging-6756.up.railway.app` | `https://umantai.com` |
 | `NEXT_PUBLIC_SERVER_URL` | `https://web-staging-6756.up.railway.app` | `https://umantai.com` |
 | `NEXT_PUBLIC_SITE_URL` | *(no definida)* | `https://umantai.com` |
-| `AUTH_TEST_MODE` | `1` (correo de auth al `email_outbox`) | `0` **temporal**, para recibir verificación y recuperación reales por Resend |
+| `AUTH_TEST_MODE` | `1` (correo de auth al `email_outbox`) | `0` **temporal** durante la prueba, para recibir verificación y recuperación por correo real · **restaurado a `1`** al cerrar (§11) |
 
 Efecto verificado en el host staging: `<link rel="canonical">` y el `Host:` de
 `robots.txt` ya son `https://umantai.com`, y sigue `<meta name="robots"
@@ -257,9 +257,109 @@ verificado: el outbox responde 404), así que verificación y recuperación lleg
 (`https://umantai.com`). Resend está verificado en la zona: `resend._domainkey`
 (DKIM) y `send.umantai.com` (SPF + MX de rebotes) existen y no se tocan.
 
-**Al cerrar la prueba hay que volver `AUTH_TEST_MODE=1`** (§7.2) para conservar la
-suite E2E reproducible de staging, y confirmar `/api/health` después del redeploy.
+**Al cerrar la prueba se volvió `AUTH_TEST_MODE=1`** (§7.2) para conservar la
+suite E2E reproducible de staging, y se confirmó `/api/health` después del
+redeploy (§11).
 
 Contacto y Libro de Reclamaciones usan una ruta distinta (`lib/contact.server.ts`,
-`lib/complaints-email.server.ts`) que no depende de ese interruptor: ya envían
-por Resend de verdad.
+`lib/complaints-email.server.ts`) que no depende de ese interruptor: envían por
+Resend de verdad, y así se verificó (§11).
+
+---
+
+## 11. Resultado de la validación (2026-10-27)
+
+### 11.1 Dominio, TLS y plataforma
+
+| Comprobación | Resultado |
+|---|---|
+| Propagación DNS | `umantai.com` → **`69.46.46.35`** (Railway), TTL 60; `TXT _railway-verify` presente; CNAME de raíz aplanado por Cloudflare |
+| Dominio custom en Railway | `Verified: yes`, `Certificate status: VALID` |
+| TLS | `CN=umantai.com`, Let's Encrypt, 2026-10-27 → 2027-01-25, SAN `DNS:umantai.com` |
+| HTTP → HTTPS | `301` a `https://umantai.com/` |
+| Cabeceras | HSTS, CSP con nonce, `X-Frame-Options: DENY`, `nosniff`, `x-xss-protection` |
+| `/api/health` | `200`, `environment: staging`, `commit: 8db205a`, `database.reachable: true` (`pg`) |
+
+> Durante ~2,5 min el borde sirvió el certificado comodín `*.up.railway.app`
+mientras Let's Encrypt emitía el del dominio. Se resolvió solo: **no** fue P0.
+
+### 11.2 Páginas y comercio
+
+| Comprobación | Resultado |
+|---|---|
+| Home, `/contacto`, `/vender`, `/cart`, `/list`, `/ingresar`, `/recuperar`, legal (índice + 5 documentos), `/libro-de-reclamaciones` | `200` |
+| `/products` | `308` → `https://umantai.com/` (redirect documentado) |
+| Tienda y producto (`/telas-del-sur`, `/telas-del-sur/p/tela-algodon`) | `200`, canonical `https://umantai.com/telas-del-sur/p/tela-algodon` |
+| Imagen Open Graph | `200 image/png`; `og:url = https://umantai.com` |
+| Pedido real (`POST /api/orders`) | **201** · `UM-2026-001055` · `pending_payment` · PEN |
+| Página `/pedido/<token>` | `200` con «pago online no está disponible por ahora» y **sin** botón de Mercado Pago |
+| Cobro online | `POST /api/payments/preference` → **503** `online_payments_unavailable` (congelado) |
+| Carrito cross-store | `POST /api/orders` con dos tiendas → **409** `mixed_store_cart` |
+| CSRF | `POST /api/orders` con `Origin` ajeno → **403** |
+
+### 11.3 Autenticación y correo
+
+| Comprobación | Resultado |
+|---|---|
+| Registro | `200`; cookie `__Secure-better-auth.session_token` con **HttpOnly; Secure; SameSite=Lax** |
+| Sesión / logout | `get-session` devuelve la sesión; `sign-out` `200` y limpia las 3 cookies (`Max-Age=0`); después `get-session` → `null` |
+| Login | `200` con cookie nueva; `/cuenta` con sesión `200` y sin sesión `307` → `/ingresar?next=/cuenta` |
+| Verificación de email | Enlace real `https://umantai.com/api/auth/verify-email?token=…`; al abrirlo `302` → `https://umantai.com/` y `emailVerified=true` |
+| Password reset | Enlace real → `https://umantai.com/restablecer?token=…`; `POST /api/auth/reset-password` `200`; login con la clave nueva `200` y con la vieja **401** |
+| Enlaces de correo | `origin` = `https://umantai.com` en verificación y reset; **cero** menciones a `web-staging-6756` |
+| Entrega real por Resend | Contacto `delivery: stored` (= aviso **enviado**); Reclamaciones `emailStatus: sent`; sin errores de correo en los logs |
+| Contacto (`POST /api/contact`) | `200` |
+| Libro de Reclamaciones (`POST /api/complaints`) | **201** · `RC-000004` · `dueAt` 2026-11-18; seguimiento `200` con `noindex, nofollow, nocache`; código inexistente → `404` |
+
+### 11.4 Administración, i18n, tema y mobile
+
+| Comprobación | Resultado |
+|---|---|
+| `/api/admin/*` sin credencial | `401` (analytics, orders, complaints); `/admin` anónimo no filtra pedidos, reclamos ni correos |
+| Admin con `x-admin-token` | `200` en `/api/admin/analytics/summary` |
+| Merchant autenticado | `POST /api/merchant/stores` crea tienda; `/negocio` y `/negocio/<id>` `200`; anónimo `307` → `/ingresar?next=/negocio` |
+| Índice de sitemap | 34 URLs, todas `https://umantai.com`, cero del host de staging; la tienda de prueba (inactiva) **no** aparece |
+| robots.txt / meta | `Disallow: /` + `noindex, nofollow` en las páginas; sitemap **no** anunciado |
+| es / en | `lang="es"` con «Buscar/Carrito» y `lang="en"` con «Search/Cart» |
+| Tema | `data-theme="light"`/`"dark"` según cookie, `dark` por defecto; tema `system` lo resuelve el script de arranque con `prefers-color-scheme`; ambos temas compilados en el CSS |
+| Mobile | `viewport` correcto, nav inferior `lg:hidden fixed bottom-0 … pb-[env(safe-area-inset-bottom)]`, breakpoints `40/48/64/80rem` en el CSS |
+| Grep del host de staging | `0` apariciones en 11 páginas (incluye `robots.txt` y `sitemap.xml`), en redirecciones y en los enlaces de correo |
+
+### 11.5 Hallazgos
+
+- **P2 · i18n del footer (preexistente en `8db205a`, no lo causó el dominio):**
+  `app/components/SiteFooter.tsx` renderiza `link.label` tomado de
+  `lib/navigation.ts`, cuyas etiquetas están solo en español. En la página EN el
+  encabezado de cada bloque sale traducido («Shop», «Help», «Legal») pero los
+  enlaces quedan «Productos», «Lista de compras», «Carrito», «Privacidad», … El
+  escáner `check-i18n-strings.mjs` no lo detecta porque solo mira `app/` y
+  `components/`, no `lib/`. Arreglo propuesto (fuera de esta prueba): mover las
+  etiquetas a claves de diccionario y usar `t()` en el footer.
+- **Vigilar · `www.umantai.com` sigue en Vercel** (CNAME intacto): quien escriba
+  «www» ve el SSO de Vercel, no el sitio de staging. Fue el alcance acordado
+  (“cambiar únicamente lo necesario”) y es lo que hace corto el rollback; si la
+  prueba necesita también `www`, hay que agregar el dominio en Railway.
+- **Vigilar · `/sitemap.xml` responde `200`** aunque `robots.txt` bloquea todo y
+  no lo anuncia. No se sirve un sitemap “publicado”, pero es alcanzable con la URL
+  directa. Cerrarlo exigiría un commit nuevo (dejaría de ser `8db205a`).
+- **Por diseño · `/api/admin/session` responde `200` anónimo** con
+  `{authenticated:false}`: es la sonda que usa el panel para decidir si muestra el
+  acceso. No devuelve datos; los endpoints de datos sí responden `401`.
+
+### 11.6 Limitaciones de la verificación
+
+- **No hay navegador** en este entorno (ni Chrome ni Playwright instalados), así
+  que mobile, tema e i18n se verificaron sobre HTML/CSS y cabeceras, no con un
+  viewport real. El diálogo de «cambiar de tienda» del carrito (`e2e/commerce.spec.ts`)
+  se validó en su contrato de servidor (409 `mixed_store_cart`), no en la UI.
+- **La entrega al buzón de los correos de auth** solo puede confirmarla quien lee
+  la bandeja: la API key de Resend es de **solo envío**, así que no se puede
+  listar lo enviado. Queda evidencia fuerte — `200` en registro y reset, sin
+  errores en los logs, y el enlace con host correcto — pero la recepción real
+  (dos correos a `juancallerosales19+umantai-dns-test@gmail.com`: verificación y
+  reset) es la comprobación de la persona.
+- **Datos de prueba creados** en staging: pedido `UM-2026-001055`, reclamo
+  `RC-000004`, mensaje de contacto, cuenta
+  `juancallerosales19+umantai-dns-test@gmail.com` y la tienda inactiva
+  `prueba-dominio-e2e`. Se limpian con `scripts/cleanup-smoke-data.ts` /
+  `.tools/final-qa-cleanup.mjs` o se ignoran: staging no es Producción.
