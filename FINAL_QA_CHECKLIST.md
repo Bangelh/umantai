@@ -517,12 +517,11 @@ que volver a subir el árbol del candidato con `railway up` y confirmarlo con
 1. **`/api/contact` cuenta doble.** `rateLimitGate('contact', limit 5)` y
    `consumeRateLimit('contact:<ip>', 5)` comparten clave y ventana: el 3.er
    envío ya recibe 429 (cupo efectivo ≈ 2 cada 10 min, no 5). `/api/complaints`
-   usa una sola capa y respeta el cupo. Corrección sugerida: quitar el bloque
-   `consumeRateLimit` de la ruta.
+   usa una sola capa y respeta el cupo. → **corregido** (`e0df279`, ver §30).
 2. **La revocación de Platform Admin no invalida cookies ya emitidas.**
    `/api/admin/complaints` sigue respondiendo 200 con una cookie firmada aunque
    se haya borrado la fila de `platform_admins`, hasta el TTL de 8 h. Sin cookie
-   → 401 (correcto). Decisión pendiente: aceptar el TTL o revalidar la fila.
+   → 401 (correcto). → **corregido** (`47ccbca`, ver §30).
 3. **Sin key de lectura de Resend** no se puede verificar `delivered`/rebotes por
    API (`GET /domains`, `GET /emails` → 401 `restricted_api_key`).
 4. El token de verificación es un JWT firmado que solo vive en el correo: con una
@@ -542,5 +541,78 @@ smoke de correo real es una corrida explícita y separada (§5.8 de
    correcto, o entregar una key de **lectura** para automatizarlo.
 2. Confirmar la recepción del aviso de contacto en el buzón de
    `CONTACT_TO_EMAIL` (bandeja de entrada, no spam, SPF/DKIM/DMARC `pass`).
-3. Decidir la corrección del cupo doble de `/api/contact` y de la revocación de
-   cookies de Platform Admin antes del cutover.
+3. ~~Decidir la corrección del cupo doble de `/api/contact` y de la revocación de
+   cookies de Platform Admin~~ → **hecho** (§30).
+
+---
+
+## 30. Correcciones de los dos hallazgos (§29.2) — 2026-10-27
+
+> Desplegado en staging (`47ccbca`, deployment `de136c98` SUCCESS). No se tocó
+> Producción, DNS, Mercado Pago ni la configuración de Resend; ninguna feature
+> nueva.
+
+### 30.1 `/api/contact`: una sola barrera de rate limit (`e0df279`)
+
+La ruta llamaba a `rateLimitGate('contact', 5/10 min)` **y** a
+`consumeRateLimit('contact:<hash(ip)>', 5/10 min)`: misma clave, misma ventana,
+dos unidades gastadas por envío. Se eliminó la segunda capa y quedó el gate, que
+ya devuelve el 429 con `Retry-After`. Honeypot, validación y respuestas intactos;
+el cupo nominal sigue siendo 5 por 10 minutos.
+
+- `unit` `tests/contact-rate-limit.test.ts`: intentos 1–5 → 400 (payload
+  inválido, el rate limit corre antes de la validación) y el 6.º → 429 con
+  `Retry-After` entre 1 y 600 s; un caso explícito de «una unidad por envío»
+  (con el bug, el 3.er intento fallaba) y otro de cupo por cliente.
+- Regresión comprobada: reintroducido el doble consumo → 2 tests en rojo.
+
+### 30.2 Platform Admin: revocación efectiva (`47ccbca`)
+
+**Estrategia:** la cookie firmada prueba identidad; el rol se comprueba en cada
+petición contra la base.
+
+- `getPlatformAdminGrantState(userId)` (`lib/platform-admin.server.ts`) devuelve
+  `active` / `revoked` / `unavailable` con un `LEFT JOIN platform_admins` sobre
+  `users` (la allowlist `PLATFORM_ADMIN_EMAILS` sigue valiendo como bootstrap).
+  Fail-closed: si no hay base, `unavailable` → 503, nunca 200.
+- `requireAdminAccess()` (`lib/admin.server.ts`) es ahora **async** y es la única
+  puerta de las rutas `/api/admin/*` y afines: cookie → revalida el grant → si
+  fue revocado responde **403 `admin_grant_inactive`**; el token compartido queda
+  como camino de automatización y **ya no acepta la cookie**.
+- `requireActivePlatformAdminSession()` es la variante estricta del Libro de
+  Reclamaciones (sin token compartido) y también revalida.
+- `GET /api/admin/session` deja de reportarse autenticado tras la revocación y
+  descarta la cookie inservible.
+- Sin TTL nuevo ni caché: una consulta indexada por petición; se acaba la ventana
+  de hasta 8 h.
+
+**Tests**
+
+- `unit` `tests/platform-admin.test.ts`: `requireAdminToken` ya no acepta la
+  cookie; `requireAdminAccess` falla cerrado (503) sin base.
+- `int` `tests/platform-admin-revocation.integration.test.ts`: grant → 200 con
+  cookie; revocar → **403 con la MISMA cookie** en `/api/admin/complaints` y en
+  `/api/admin/inventory`; el estado deja de estar autenticado y limpia la cookie;
+  usuario sin rol → 403; cuenta borrada → 403; cookie falsificada → 401; sin
+  cookie → 401; el token compartido sigue sirviendo para automatización, pero no
+  para la bandeja de reclamaciones.
+- Regresión comprobada: anulada la revalidación → el test de revocación en rojo.
+- `int` `tests/complaints.integration.test.ts`: ahora crea la cuenta y el grant
+  reales (la cookie sola ya no autoriza).
+
+### 30.3 Verificación de la corrida
+
+| Verificación | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` | 475/475 |
+| `npm run test:integration` | 111/111 |
+| `npm run build` | exit 0 (con `PAYLOAD_SECRET` local; sin él el build local falla por diseño) |
+| `security-smoke` | 22/22, `failed: []` |
+| Playwright `e2e/admin.spec.ts` | 4 passed · 1 skipped (requiere `E2E_ADMIN_EMAIL`) |
+| Deploy staging | `railway up` → deployment `de136c98` **SUCCESS** |
+| `/api/health` | 200 · `commit: 47ccbca…` · `buildId 20261027155226-47ccbca` · `database.reachable: true` |
+| Contacto en staging | estados `200 → 200 → 200 → 200 → 200 → 429`, `delivery=stored` ×5, `email_status=sent` ×5, `Retry-After: 600`; filas de prueba borradas |
+| Admin en staging | sin rol → canje 403; grant → 200 en `/api/admin/complaints` e `/api/admin/inventory`; revocado → **403 `admin_grant_inactive`** con la misma cookie, estado `authenticated:false revoked:true` y cookie descartada |
+| Limpieza | cuentas/grants/filas QA de la corrida borrados → users 88, sessions 105, contact 0, reclamos 0, `platform_admins` 0, outbox 84 (igual que el estado previo) |
+
