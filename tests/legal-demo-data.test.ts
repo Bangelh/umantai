@@ -72,6 +72,11 @@ test('en staging la bandera muestra los datos de demostración del titular', () 
     assert.ok(!documents.includes('[PENDIENTE: definir razón social]'));
     assert.ok(!documents.includes('[PENDIENTE: definir RUC]'));
     assert.ok(!documents.includes('[PENDIENTE: definir jurisdicción]'));
+
+    // El aviso legal explica que son valores de demostración en vez de hablar de
+    // marcadores `[PENDIENTE]` que en esta página ya no existen.
+    assert.ok(documents.includes('son de DEMOSTRACIÓN'));
+    assert.ok(!documents.includes('Los datos marcados como [PENDIENTE]'));
   });
 });
 
