@@ -5,9 +5,11 @@ import { notFound } from 'next/navigation';
 import {
   businessConfig,
   businessValue,
+  isLegalDemoDataActive,
   isLegalReadyForLaunch,
   legalContactEmail,
 } from '@/config/business';
+import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import {
   isComplaintOverdue,
   isValidPublicCode,
@@ -98,6 +100,8 @@ export default async function ComplaintTrackingPage({ params }: TrackingPageProp
           {t(KIND_KEYS[complaint.kind])} · {t(STATUS_KEYS[complaint.status])}
         </p>
       </header>
+
+      {isLegalDemoDataActive() && <LegalDemoNotice />}
 
       {!legalReady && (
         <div

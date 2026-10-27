@@ -5,9 +5,11 @@ import { notFound } from 'next/navigation';
 import {
   PENDING_BUSINESS_FIELDS,
   businessConfig,
+  isLegalDemoDataActive,
   isLegalReadyForLaunch,
   pendingBusinessFields,
 } from '@/config/business';
+import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import {
   LEGAL_DRAFT_NOTICE,
   LEGAL_LAST_UPDATED,
@@ -81,6 +83,8 @@ export default async function LegalPage({ params }: LegalPageProps) {
           </p>
         )}
       </div>
+
+      {isLegalDemoDataActive() && <LegalDemoNotice />}
 
       <div className="mt-10 space-y-10">
         {document.sections.map((section) => (

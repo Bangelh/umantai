@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useI18n } from '@/components/i18n/I18nProvider';
+import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import {
   COMPLAINT_LIMITS,
   isValidPublicCode,
@@ -29,6 +30,8 @@ interface ProviderData {
 interface ComplaintPageProps {
   provider: ProviderData;
   legalReady: boolean;
+  /** Datos del titular de DEMOSTRACIÓN (solo staging): exige el aviso visible. */
+  demoData: boolean;
   pendingFields: PendingBusinessField[];
   pendingFieldNames: string[];
 }
@@ -126,6 +129,7 @@ const FIELD_INPUT_IDS: Record<ComplaintField, string> = {
 export function ComplaintPage({
   provider,
   legalReady,
+  demoData,
   pendingFieldNames,
 }: ComplaintPageProps) {
   const { t } = useI18n();
@@ -225,6 +229,8 @@ export function ComplaintPage({
         <p className="mt-3 text-sm text-secondary sm:text-base">{t('complaints.intro')}</p>
         <p className="mt-2 text-sm text-tertiary">{t('complaints.legalBasis')}</p>
       </header>
+
+      {demoData && <LegalDemoNotice />}
 
       {!legalReady && (
         <div

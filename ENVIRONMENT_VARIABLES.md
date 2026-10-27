@@ -310,6 +310,14 @@ CONTACT_TO_EMAIL=juancallerosales19@gmail.com
 # Correo legal mostrado en privacidad/términos/reembolsos y en el aviso legal. OPCIONAL:
 # sin esta variable se usa el correo confirmado en `config/business.ts`.
 LEGAL_EMAIL=juancallerosales19@gmail.com
+
+# Datos legales de DEMOSTRACIÓN (razón social, RUC, domicilio y jurisdicción) en las
+# páginas legales y el Libro de Reclamaciones, siempre con el aviso "DATOS DE
+# DEMOSTRACIÓN — NO VÁLIDOS PARA PRODUCCIÓN". SOLO para la revisión visual en staging.
+# Los valores son de ejemplo (RUC 00000000000) y NO reemplazan a los datos reales:
+# `isLegalReadyForLaunch()` sigue en `false` mientras estén activos. En Producción la
+# bandera se IGNORA (igual que con un `APP_ENV` desconocido). NO definir en Producción.
+# LEGAL_DEMO_DATA=1
 ```
 
 ```env

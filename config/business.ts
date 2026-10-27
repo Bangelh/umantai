@@ -25,7 +25,25 @@
  *  NEXT_PUBLIC_WHATSAPP_SALES_PHONE) sin cambiar código ni duplicar el dato en
  *  páginas. Son datos públicos de contacto: NO hay secretos en este archivo.
  * ─────────────────────────────────────────────────────────────────────────────
+ *  DATOS LEGALES DEMO (solo revisión visual en staging)
+ *
+ *  Con `LEGAL_DEMO_DATA=1` **y** un entorno no productivo, los campos todavía
+ *  pendientes se muestran con valores de ejemplo (`config/legal-demo.ts`) en vez
+ *  del placeholder, siempre acompañados del aviso visible “DATOS DE
+ *  DEMOSTRACIÓN — NO VÁLIDOS PARA PRODUCCIÓN”.
+ *
+ *  En Producción la bandera se IGNORA (ver `isLegalDemoDataActive`), los datos
+ *  demo nunca cuentan como reales y `isLegalReadyForLaunch()` sigue en `false`.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
+
+import { isProductionRuntime } from '@/lib/runtime-environment.server';
+
+import {
+  LEGAL_DEMO_DATA_FLAG,
+  LEGAL_DEMO_VALUES,
+  isLegalDemoFlagEnabled,
+} from './legal-demo';
 
 /**
  * Lee una variable pública con los prefijos de integración de Vercel.
@@ -143,9 +161,13 @@ export function pendingLabel(field: PendingBusinessField): string {
   return `[PENDIENTE: definir ${PENDING_BUSINESS_FIELDS[field]}]`;
 }
 
-/** Valor o placeholder. Nunca devuelve `null` hacia la UI. */
+/**
+ * Valor real, dato de DEMOSTRACIÓN (solo fuera de Producción) o placeholder.
+ * Nunca devuelve `null` hacia la UI, y un dato real siempre gana sobre el demo.
+ */
 export function businessValue(field: PendingBusinessField): string {
-  return isPendingBusinessField(field) ? pendingLabel(field) : String(businessConfig[field]);
+  if (!isPendingBusinessField(field)) return String(businessConfig[field]);
+  return isLegalDemoDataActive() ? LEGAL_DEMO_VALUES[field] : pendingLabel(field);
 }
 
 /** Lista de campos aún pendientes (vacía = listo para publicar legalmente). */
@@ -153,14 +175,50 @@ export function pendingBusinessFields(): PendingBusinessField[] {
   return (Object.keys(PENDING_BUSINESS_FIELDS) as PendingBusinessField[]).filter(isPendingBusinessField);
 }
 
+/** Se avisa UNA sola vez por proceso; nunca se imprime el valor de la variable. */
+let warnedAboutDemoInProduction = false;
+
+/**
+ * ¿Se están mostrando datos legales de DEMOSTRACIÓN?
+ *
+ * Hacen falta las dos condiciones, en este orden:
+ *
+ *   1. la bandera explícita `LEGAL_DEMO_DATA=1`;
+ *   2. un entorno NO productivo. Fuera de ahí —`APP_ENV=production`,
+ *      `VERCEL_ENV=production` o un `APP_ENV` desconocido, que
+ *      `resolveRuntimeEnvironment` trata como Producción (fail-closed)— la
+ *      bandera se ignora y se avisa una vez por proceso.
+ *
+ * Es decir: los datos demo no pueden llegar a Producción ni por error de
+ * configuración, y menos aún considerarse válidos para el cutover.
+ */
+export function isLegalDemoDataActive(): boolean {
+  if (!isLegalDemoFlagEnabled(readPublicEnv(LEGAL_DEMO_DATA_FLAG))) return false;
+
+  if (isProductionRuntime()) {
+    if (!warnedAboutDemoInProduction) {
+      warnedAboutDemoInProduction = true;
+      console.warn(
+        `[legal-demo] ${LEGAL_DEMO_DATA_FLAG} está presente en Producción: se ignora. ` +
+          'Los datos de demostración solo se muestran fuera de Producción.',
+      );
+    }
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * ¿Los documentos legales pueden considerarse definitivos para lanzamiento?
  *
- * `false` mientras falte cualquier dato del titular. Es un candado de lectura:
- * lo usan las páginas legales y los tests para que un placeholder no pase
- * inadvertido a Producción.
+ * `false` mientras falte cualquier dato del titular y `false` también mientras se
+ * estén mostrando datos de DEMOSTRACIÓN: son falsos por definición, así que no
+ * sirven para el cutover. Es un candado de lectura: lo usan las páginas legales y
+ * los tests para que un placeholder no pase inadvertido a Producción.
  */
 export function isLegalReadyForLaunch(): boolean {
+  if (isLegalDemoDataActive()) return false;
   return pendingBusinessFields().length === 0;
 }
 

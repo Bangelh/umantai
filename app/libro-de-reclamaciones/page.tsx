@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import {
   businessConfig,
   businessValue,
+  isLegalDemoDataActive,
   isLegalReadyForLaunch,
   legalContactEmail,
   pendingBusinessFields,
@@ -46,6 +47,7 @@ export default async function ComplaintsBookPage() {
         whatsapp: whatsappDisplay(),
       }}
       legalReady={isLegalReadyForLaunch()}
+      demoData={isLegalDemoDataActive()}
       pendingFields={pendingBusinessFields()}
       pendingFieldNames={pendingBusinessFields().map((field) => t(`complaints.field.${field}`))}
     />

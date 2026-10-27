@@ -403,7 +403,8 @@ mientras siga congelado):
 - Cualquier 500 nuevo en rutas públicas.
 - No hay ventana de rollback acordada.
 - `isLegalReadyForLaunch()` sigue en `false` (las páginas legales muestran
-  `[PENDIENTE: …]`).
+  `[PENDIENTE: …]`). Los datos DEMO de staging (`LEGAL_DEMO_DATA`) son valores de
+  ejemplo con aviso visible: no cuentan como datos reales ni habilitan el cutover.
 - El Libro de Reclamaciones no está accesible, no registra o no permite
       responder dentro del plazo.
 

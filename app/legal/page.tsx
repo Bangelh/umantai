@@ -4,8 +4,10 @@ import Link from 'next/link';
 import {
   PENDING_BUSINESS_FIELDS,
   businessConfig,
+  isLegalDemoDataActive,
   pendingBusinessFields,
 } from '@/config/business';
+import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import { LEGAL_DOCUMENTS, LEGAL_SLUGS } from '@/lib/legal';
 
 export const metadata: Metadata = {
@@ -34,6 +36,8 @@ export default function LegalIndexPage() {
         confirmó aparecen marcados como <span className="text-warning">pendientes</span>, nunca
         inventados.
       </p>
+
+      {isLegalDemoDataActive() && <LegalDemoNotice />}
 
       {pending.length > 0 && (
         <p className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
