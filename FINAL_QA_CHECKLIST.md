@@ -548,9 +548,9 @@ smoke de correo real es una corrida explícita y separada (§5.8 de
 
 ## 30. Correcciones de los dos hallazgos (§29.2) — 2026-10-27
 
-> Desplegado en staging (`47ccbca`, deployment `de136c98` SUCCESS). No se tocó
-> Producción, DNS, Mercado Pago ni la configuración de Resend; ninguna feature
-> nueva.
+> Desplegado en staging (`65e3f39` = HEAD, deployment `14f83e36` SUCCESS, sobre
+> `14b0e13` docs(resend) que queda como evidencia). No se tocó Producción, DNS,
+> Mercado Pago ni la configuración de Resend; ninguna feature nueva.
 
 ### 30.1 `/api/contact`: una sola barrera de rate limit (`e0df279`)
 
@@ -609,10 +609,24 @@ petición contra la base.
 | `npm run test:integration` | 111/111 |
 | `npm run build` | exit 0 (con `PAYLOAD_SECRET` local; sin él el build local falla por diseño) |
 | `security-smoke` | 22/22, `failed: []` |
-| Playwright `e2e/admin.spec.ts` | 4 passed · 1 skipped (requiere `E2E_ADMIN_EMAIL`) |
-| Deploy staging | `railway up` → deployment `de136c98` **SUCCESS** |
-| `/api/health` | 200 · `commit: 47ccbca…` · `buildId 20261027155226-47ccbca` · `database.reachable: true` |
+| Playwright `e2e/admin.spec.ts` | 5 passed (incluye el caso autorizado con una cuenta QA con grant temporal, borrada al terminar) |
+| Deploy staging | `railway up` → deployment `14f83e36` **SUCCESS** |
+| `/api/health` | 200 · `commit: 65e3f3965…` (HEAD) · `buildId 20261027160932-65e3f39` · `database.reachable: true` |
 | Contacto en staging | estados `200 → 200 → 200 → 200 → 200 → 429`, `delivery=stored` ×5, `email_status=sent` ×5, `Retry-After: 600`; filas de prueba borradas |
 | Admin en staging | sin rol → canje 403; grant → 200 en `/api/admin/complaints` e `/api/admin/inventory`; revocado → **403 `admin_grant_inactive`** con la misma cookie, estado `authenticated:false revoked:true` y cookie descartada |
-| Limpieza | cuentas/grants/filas QA de la corrida borrados → users 88, sessions 105, contact 0, reclamos 0, `platform_admins` 0, outbox 84 (igual que el estado previo) |
+| Push | `feat/railway-staging` → `874b7d6..65e3f39` (incluye `14b0e13`, `e0df279`, `47ccbca`) |
+| Limpieza | cuentas/grants/filas QA de la corrida borrados → users 88, sessions 105, contact 0, reclamos 0, `platform_admins` 0, outbox 84 (idéntico al estado previo) |
+
+### 30.4 Estado de entrega
+
+- **HEAD:** `65e3f3965e825eb032bfe386f3a4a9e20023b796` (local y remoto, ya en
+  `origin/feat/railway-staging`).
+- Secuencia sobre la evidencia de Resend: `14b0e13` (docs) → `e0df279` (cupo único
+  de contacto) → `47ccbca` (revocación de Platform Admin) → `65e3f39` (checklist).
+- **Bloqueos restantes para el cutover:** los dos hallazgos quedan corregidos y
+  verificados, y no hay bloqueo técnico pendiente de este lado. Solo siguen
+  abiertos los puntos de §29 que dependen del panel de Resend y del buzón de
+  `CONTACT_TO_EMAIL` (confirmar `delivered`/sin rebotes, FROM correcto y
+  recepción en bandeja de entrada con SPF/DKIM/DMARC en `pass`). No se ejecutó el
+  cutover.
 
