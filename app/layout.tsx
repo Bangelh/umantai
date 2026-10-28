@@ -160,7 +160,7 @@ export default async function RootLayout({
           */}
           <div aria-hidden="true" className="h-16 lg:hidden" />
 
-          <MobileBottomNav />
+          <MobileBottomNav whatsappPhone={whatsappNumber()} />
         </I18nProvider>
 
         {/*

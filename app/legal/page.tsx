@@ -11,7 +11,8 @@ import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import { LEGAL_DOCUMENTS, LEGAL_SLUGS } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: `Legal | ${businessConfig.name}`,
+  // Sin la marca acá: el template del layout raíz ya agrega "| Umantai".
+  title: 'Legal',
   description:
     'Política de privacidad, términos y condiciones, reembolsos, cookies y aviso legal de Umantai.',
   alternates: { canonical: `${businessConfig.siteUrl}/legal` },

@@ -14,7 +14,8 @@ import { ComplaintPage } from './ComplaintPage';
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getTranslator();
-  const title = `${t('complaints.metaTitle')} | ${businessConfig.name}`;
+  // El título lleva sólo el nombre de la página: el layout raíz agrega la marca.
+  const title = t('complaints.metaTitle');
   const description = t('complaints.metaDescription');
   const canonical = `${businessConfig.siteUrl}/libro-de-reclamaciones`;
 
@@ -24,7 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: { canonical },
     openGraph: {
       type: 'website',
-      title,
+      title: `${title} | ${businessConfig.name}`,
       description,
       url: canonical,
       siteName: businessConfig.name,

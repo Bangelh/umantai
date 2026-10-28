@@ -49,6 +49,22 @@ export function FloatingWhatsApp({
   // tablas y los botones del operador, y ese canal es de atención al comprador.
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk')) return null;
 
+  // En carrito y en el detalle del pedido tampoco: ahí los importes van
+  // alineados a la derecha y el botón flotante tapaba el Total (visto en un
+  // celular de 390 px). La acción principal de esas pantallas es pagar, no
+  // abrir un chat.
+  if (pathname === '/cart' || pathname?.startsWith('/pedido')) return null;
+
+  // Formularios de contacto y reclamos: el globo se montaba encima del campo de
+  // mensaje. En su lugar, la acción de WhatsApp ya está en el propio formulario.
+  if (
+    pathname === '/contacto' ||
+    pathname?.startsWith('/libro-de-reclamaciones') ||
+    pathname === '/ingresar'
+  ) {
+    return null;
+  }
+
   const sharedNumber = numbers.size === 1;
 
   // Generate contextual message based on current page
@@ -79,9 +95,10 @@ export function FloatingWhatsApp({
   const toggleMenu = () => setIsOpen(!isOpen);
 
   return (
-    // En móvil el botón sube por encima de la barra inferior (`MobileBottomNav`,
-    // 64 px): antes se montaba sobre la pestaña "Kiosco" y tapaba una acción real.
-    <div className="fixed bottom-24 right-4 z-40 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
+    // Sólo escritorio. En el celular el globo se montaba sobre los precios
+    // alineados a la derecha de las listas (y sobre el Total del pedido), así que
+    // ahí el canal vive como pestaña fija de `MobileBottomNav`.
+    <div className="fixed bottom-6 right-6 z-40 hidden flex-col items-end gap-2 lg:flex">
       {/* Options Menu: solo cuando ventas y atención son números distintos */}
       {!sharedNumber && isOpen && (
         <div className="flex flex-col gap-2 mb-2">

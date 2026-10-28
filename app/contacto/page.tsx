@@ -8,7 +8,8 @@ import { ContactForm } from './ContactForm';
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getTranslator();
   return {
-    title: `${t('contact.title')} | ${businessConfig.name}`,
+    // El layout raíz agrega "| Umantai": repetirlo acá daba "Contacto | Umantai | Umantai".
+    title: t('contact.title'),
     description: t('contact.metaDescription'),
     alternates: { canonical: `${businessConfig.siteUrl}/contacto` },
     openGraph: {

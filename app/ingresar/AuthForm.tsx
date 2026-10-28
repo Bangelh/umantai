@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useI18n } from '@/components/i18n/I18nProvider';
@@ -178,16 +179,15 @@ export function AuthForm({ next }: Props) {
 
       {mode === 'login' && (
         <p className="text-center text-xs">
-          <a
+          <Link
             href="/recuperar"
             className="text-tertiary underline-offset-2 hover:text-primary hover:underline"
           >
             {t('auth.forgot')}
-          </a>
+          </Link>
         </p>
       )}
 
-      <p className="text-center text-[11px] text-muted">{t('auth.guest')}</p>
     </form>
   );
 }

@@ -32,7 +32,8 @@ export async function generateMetadata({ params }: LegalPageProps): Promise<Meta
 
   const canonical = `${businessConfig.siteUrl}/legal/${document.slug}`;
   return {
-    title: `${document.title} | ${businessConfig.name}`,
+    // La marca la agrega el template del layout raíz (Open Graph sí la lleva).
+    title: document.title,
     description: document.description,
     alternates: { canonical },
     openGraph: {

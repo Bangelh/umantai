@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCartStore } from "@/lib/cartStore";
 import { useHydrated } from "@/lib/useHydrated";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -20,7 +21,12 @@ export function NavActions() {
   // hasta después del montaje (ver `lib/useHydrated.ts`).
   const hydrated = useHydrated();
   const { t } = useI18n();
+  const pathname = usePathname();
   const cartCount = useCartStore((state) => state.getTotalItems());
+
+  // En el panel no hay carrito del comprador: el botón era ruido al lado de
+  // las acciones reales (aprobar tiendas, responder reclamos).
+  if (pathname?.startsWith('/admin')) return null;
 
   return (
     <div className="flex items-center gap-2 sm:gap-4">

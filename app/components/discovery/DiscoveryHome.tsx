@@ -301,15 +301,23 @@ export function DiscoveryHome({ initial }: Props) {
           <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label={t('search.locationSection')}>
-          <span className="mr-1 text-xs uppercase tracking-[1.5px] text-muted">{t('geo.radius')}</span>
+        {/* Los radios van en UNA línea con scroll horizontal: al envolver, en un
+            celular de 390 px el 20 km quedaba solo en una segunda fila. */}
+        <div
+          className="mt-3 -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
+          role="group"
+          aria-label={t('search.locationSection')}
+        >
+          <span className="mr-1 shrink-0 text-xs uppercase tracking-[1.5px] text-muted">
+            {t('geo.radius')}
+          </span>
           {RADIUS_OPTIONS_KM.map((option) => (
             <button
               key={option}
               type="button"
               onClick={() => setRadiusKm(option)}
               aria-pressed={radiusKm === option}
-              className={`rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
+              className={`shrink-0 rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
                 radiusKm === option
                   ? 'border-brand bg-brand text-background'
                   : 'border-border text-secondary hover:border-border-strong'

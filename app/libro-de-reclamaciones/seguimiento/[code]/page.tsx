@@ -50,7 +50,7 @@ function formatDateTime(value: string, locale: 'es' | 'en'): string {
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getTranslator();
   return {
-    title: `${t('complaints.tracking.metaTitle')} | ${businessConfig.name}`,
+    title: t('complaints.tracking.metaTitle'),
     // La constancia es personal: nunca se indexa ni se comparte.
     robots: { index: false, follow: false, nocache: true },
     alternates: { canonical: `${businessConfig.siteUrl}/libro-de-reclamaciones` },
