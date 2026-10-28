@@ -159,21 +159,30 @@ export default function AdminHomePage() {
       ? {
           key: 'stores',
           href: '/admin/tiendas',
-          text: t('adminHome.storesItem', { count: data.storesPending }),
+          text:
+            data.storesPending === 1
+              ? t('adminHome.storesItemOne')
+              : t('adminHome.storesItem', { count: data.storesPending }),
         }
       : null,
     data.complaintsPending > 0
       ? {
           key: 'complaints',
           href: '/admin/reclamaciones',
-          text: t('adminHome.complaintsItem', { count: data.complaintsPending }),
+          text:
+            data.complaintsPending === 1
+              ? t('adminHome.complaintsItemOne')
+              : t('adminHome.complaintsItem', { count: data.complaintsPending }),
         }
       : null,
     data.ordersOperational > 0
       ? {
           key: 'orders',
           href: '/admin/kiosco',
-          text: t('adminHome.ordersItem', { count: data.ordersOperational }),
+          text:
+            data.ordersOperational === 1
+              ? t('adminHome.ordersItemOne')
+              : t('adminHome.ordersItem', { count: data.ordersOperational }),
         }
       : null,
   ].filter((item): item is { key: string; href: string; text: string } => item !== null);
