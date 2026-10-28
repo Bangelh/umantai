@@ -74,7 +74,7 @@ export default async function StorePage({ params, searchParams }: PageProps) {
 
   return (
     <main className="mx-auto max-w-5xl px-4 pb-10 sm:px-6">
-      <nav aria-label={t('store.breadcrumb')} className="pt-4 text-xs text-muted">
+      <nav aria-label={t('store.breadcrumb')} className="pt-4 text-sm text-tertiary">
         <Link href="/" className="hover:text-primary">
           UMANTAI
         </Link>
@@ -94,11 +94,11 @@ export default async function StorePage({ params, searchParams }: PageProps) {
 
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{store.name}</h1>
-          <p className="mt-0.5 text-sm text-tertiary">
+          <p className="mt-1 text-body text-secondary">
             {[store.category, store.district, store.city].filter(Boolean).join(' · ') || t('store.commerce')}
           </p>
-          {store.address && <p className="mt-1 text-xs text-muted">{store.address}</p>}
-          {store.description && <p className="mt-2 max-w-2xl text-sm text-secondary">{store.description}</p>}
+          {store.address && <p className="mt-1 text-sm text-tertiary">{store.address}</p>}
+          {store.description && <p className="mt-2 max-w-2xl text-body text-secondary">{store.description}</p>}
         </div>
 
         <div className="hidden shrink-0 text-right sm:block">
@@ -122,18 +122,18 @@ export default async function StorePage({ params, searchParams }: PageProps) {
             defaultValue={rawQuery && !Array.isArray(rawQuery) ? rawQuery : ''}
             placeholder={t('store.searchPlaceholder', { store: store.name })}
             maxLength={80}
-            className="h-10 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
+            className="h-12 min-w-0 flex-1 rounded-xl border border-border-strong bg-background px-3 text-body"
           />
           <button
             type="submit"
-            className="h-10 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
+            className="h-12 rounded-xl border border-border-strong px-4 text-base font-medium hover:bg-surface-raised"
           >
             {t('store.search')}
           </button>
           {query && (
             <Link
               href={`/${store.slug}`}
-              className="inline-flex h-10 items-center rounded-xl px-2 text-xs text-tertiary hover:text-primary"
+              className="inline-flex h-12 items-center rounded-xl px-2 text-sm text-tertiary hover:text-primary"
             >
               {t('store.clear')}
             </Link>
@@ -141,24 +141,24 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         </form>
 
         <div className="flex items-baseline justify-between border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+          <h2 className="text-base font-semibold text-secondary">
             {t('store.products')}
           </h2>
-          <span className="text-xs text-muted sm:hidden">
+          <span className="text-sm text-tertiary sm:hidden">
             {products.length} · {t('store.available', { count: availableCount })}
           </span>
         </div>
 
         {products.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-sm text-tertiary">
+            <p className="text-body text-secondary">
               {query
                 ? t('store.noResults', { query })
                 : t('store.empty')}
             </p>
             <Link
               href={query ? `/${store.slug}` : '/'}
-              className="mt-4 inline-block text-sm text-primary underline underline-offset-4"
+              className="mt-4 inline-flex min-h-11 items-center text-base text-primary underline underline-offset-4"
             >
               {query ? t('store.viewAll') : t('store.backToSearch')}
             </Link>
@@ -169,11 +169,11 @@ export default async function StorePage({ params, searchParams }: PageProps) {
               <li key={product.id}>
                 <Link
                   href={`/${store.slug}/p/${product.slug}`}
-                  className="flex items-center justify-between gap-3 py-2.5 transition-colors hover:bg-surface-raised/60"
+                  className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-surface-raised/60"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium leading-tight">{product.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-tertiary">
+                    <span className="block truncate text-[17px] font-medium leading-snug">{product.name}</span>
+                    <span className="mt-0.5 block truncate text-sm text-tertiary">
                       {[product.brand, product.category].filter(Boolean).join(' · ') || t('store.noBrand')}
                       {product.unit !== 'unidad' && ` · ${t('store.perUnit', { unit: product.unit })}`}
                       {product.variants.length > 0 &&
@@ -181,7 +181,7 @@ export default async function StorePage({ params, searchParams }: PageProps) {
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-mono text-[15px] font-semibold tabular-nums">
+                    <span className="block font-mono text-[17px] font-semibold tabular-nums">
                       {product.variants.length > 0 && (
                         <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
                       )}
@@ -194,7 +194,7 @@ export default async function StorePage({ params, searchParams }: PageProps) {
                       )}
                     </span>
                     <span
-                      className={`mt-0.5 block text-[11px] font-medium ${
+                      className={`mt-0.5 block text-[13px] font-medium ${
                         product.inStock ? 'text-success' : 'text-destructive'
                       }`}
                     >
@@ -210,7 +210,7 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         )}
       </section>
 
-      <footer className="mt-10 border-t border-border pt-5 text-xs text-muted">
+      <footer className="mt-10 border-t border-border pt-5 text-sm text-tertiary">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span>{t('store.soldBy', { store: store.name })}</span>
           <Link href="/vender" className="hover:text-primary">
