@@ -30,6 +30,10 @@ congelado). El **correo real con Resend ya está validado en staging**
 (§29, 2026-10-27); lo que falta allí es la confirmación de entrega/rebotes en el
 panel de Resend o con una key de lectura.
 
+**Actualización 2026-10-28:** el marco público se recorrió pantalla por pantalla en
+el artefacto desplegado y se corrigieron siete detalles de UI (§31). Artefacto
+vigente: deployment `ebcfdd7f`.
+
 ---
 
 ## 0. Preparación
@@ -650,5 +654,48 @@ correr la verificación sobre el artefacto desplegado de ese commit.
 
 - **HEAD final:** `8141ee6a5737928afad99c5c40a0b7abee2636a5` (local y
   `origin/feat/railway-staging`).
+
+---
+
+## 31. Recorrido de UI en el artefacto desplegado (2026-10-28)
+
+**Método:** Playwright sobre `https://umantai.com` (el dominio apunta hoy al
+servicio `web` de staging), con viewports de 390×844 y 1280×900, más un barrido
+de las 20 rutas públicas. Nada de lo de abajo cambia reglas de negocio: es
+marco, navegación y metadatos.
+
+### 31.1 Hallazgos y correcciones (`3e41cb0`)
+
+| # | Hallazgo | Corrección |
+|---|---|---|
+| 1 | El globo de WhatsApp se montaba sobre los precios alineados a la derecha de las listas y sobre el Total del pedido en 390 px. | En el celular el canal pasa a ser la pestaña **Ayuda** de `MobileBottomNav` (número desde el layout, mensaje `nav.helpMessage` en es/en); en escritorio el globo se mantiene, pero se oculta en `/cart`, `/pedido/*`, `/contacto`, `/libro-de-reclamaciones*` e `/ingresar`. |
+| 2 | El footer comercial (tienda / ayuda / legales) se renderizaba en `/admin/*`: en móvil empujaba el panel cientos de píxeles con enlaces del comprador. | `RouteChrome` no lo renderiza en el panel; el encabezado con el logo se conserva. |
+| 3 | El botón de carrito del comprador aparecía en el encabezado del panel, junto a las acciones de operador. | `NavActions` se anula en `/admin/*`. |
+| 4 | Títulos con la marca duplicada: «Contacto \| Umantai \| Umantai», «Legal \| …», «Política de Privacidad \| …», «Libro de Reclamaciones \| …». | Las páginas ya no agregan `\| Umantai`: el `template` del layout raíz la agrega una sola vez. Open Graph sí conserva la marca completa. |
+| 5 | Los radios de búsqueda se partían en dos filas y el «20 km» quedaba solo en la segunda. | Una sola línea con scroll horizontal, sin barra visible y sin encoger los botones. |
+| 6 | En `/ingresar` la frase «También puedes comprar como invitado, sin crear cuenta» salía dos veces: subtítulo de la página y pie del formulario. | Se quitó la copia del formulario; el subtítulo la sigue diciendo. La compra como invitado no cambió. |
+| 7 | El enlace de «olvidé mi contraseña» era un `<a>` y recargaba la aplicación entera. | `Link` de Next: navegación de cliente. |
+
+### 31.2 Verificación
+
+| Verificación | Resultado |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` | 516/516 |
+| `node scripts/check-i18n-strings.mjs --strict` | 1027 usos de claves presentes en es/en, 0 strings hardcodeados |
+| Deploy staging | `railway up` → deployment `ebcfdd7f` **SUCCESS** (el anterior `4b7fafe1` ya traía los cambios; se redesplegó para que el artefacto quede sobre el commit) |
+| `/api/health` | 200 · `environment: staging` · `database.reachable: true` · `buildId 20261028231007` · `deploymentId ebcfdd7f` |
+| Barrido de rutas públicas | 20 rutas: `/`, `/products`, `/cart`, `/contacto`, `/ingresar`, `/recuperar`, `/restablecer`, `/legal` + 5 documentos, `/libro-de-reclamaciones`, `/vender`, `/cuenta`, `/negocio`, `/admin`, `/kiosk` → 200 sin errores de consola (sólo prefetch `_rsc` abortados por el propio navegador); `/debug/env` → **404**; `/list` → 404 (ruta retirada, sigue en `robots.txt`) |
+| Títulos | `/` «UMANTAI \| Encuentra productos y comercios cerca de ti», `/contacto` «Contacto \| Umantai», `/legal` «Legal \| Umantai», `/legal/privacidad` «Política de Privacidad \| Umantai», `/libro-de-reclamaciones` «Libro de Reclamaciones \| Umantai», `/ingresar` «Ingresar \| Umantai» |
+| Navegación móvil (390 px) | Barra inferior con `Inicio · Tienda · Carrito · Ayuda`; `Ayuda` abre `https://wa.me/51979363149?text=…` en otra pestaña; globo flotante **oculto** en `/`, `/cart`, `/contacto`, `/ingresar`. En inglés: `Home · Shop · Cart · Help` con `lang=en` |
+| Navegación escritorio (1280 px) | Globo visible en `/`; oculto en `/contacto` y `/cart` |
+| Playwright `e2e/public.spec.ts` + `e2e/auth.spec.ts` | 16/16 passed contra el artefacto (headers/CSP, tema, inglés, vitrina, contacto, legales, Libro de Reclamaciones con XSS, CSRF, `/admin/planes`; ciclo completo de cuenta) |
+| Limpieza de la corrida | Cuenta QA del E2E de Platform Admin y su grant borrados (`platform_admins: 0`), cuenta sonda borrada, 3 reclamos de `e2e-complaints@example.invalid` y 84 filas de outbox de correos `@umantai.test` borradas. Se conservaron el reclamo y el mensaje de contacto reales de `juancallerosales19@gmail.com` y las cuentas `@umantai.test` del dataset histórico del 2026-10-24 (users 90) |
+
+- **Commit:** `3e41cb0` (13 archivos, sólo `app/` y `lib/`). Sin push: la rama
+  `feat/railway-staging` sigue igual en el remoto hasta que se autorice.
+- **Pendiente de este recorrido:** nada técnico. Lo que queda del checklist sigue
+  siendo **manual** (recorrido humano de accesibilidad y copy) o **externo**
+  (datos legales, ventana de cutover, panel de Resend).
 
 
