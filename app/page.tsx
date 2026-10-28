@@ -10,7 +10,6 @@
  */
 
 import type { Metadata } from 'next';
-import { BrandLogo } from '@/components/brand/BrandLogo';
 import { DiscoveryHome } from '@/app/components/discovery/DiscoveryHome';
 import type { DiscoveryResponse } from '@/lib/discovery';
 import { DEFAULT_RADIUS_KM } from '@/lib/geo';
@@ -86,12 +85,13 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen">
-      <section className="mx-auto max-w-5xl px-5 pt-8 sm:pt-12">
-        <BrandLogo size="lg" className="mb-5 block" />
-        <h1 className="max-w-2xl text-3xl font-semibold leading-[1.1] tracking-[-1px] sm:text-5xl">
+      {/* El logo ya está en el header: repetirlo en grande acá dejaba dos marcas
+          compitiendo antes de la pregunta que el comprador tiene que responder. */}
+      <section className="mx-auto max-w-5xl px-5 pt-6 sm:pt-10">
+        <h1 className="max-w-2xl text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.5px] sm:text-5xl">
           {t('home.title')}
         </h1>
-        <p className="mt-2 max-w-xl text-sm text-secondary sm:text-base">{t('home.subtitle')}</p>
+        <p className="mt-2 max-w-xl text-body text-secondary">{t('home.subtitle')}</p>
       </section>
 
       <DiscoveryHome initial={initial} />

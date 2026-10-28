@@ -34,9 +34,33 @@ interface Props {
   };
 }
 
-/** El eje llega en minúsculas desde el catálogo (`presentacion`, `talla`). */
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+/**
+ * Nombre visible de un eje de variación.
+ *
+ * El eje lo escribe el comerciante en minúsculas y sin tilde (`presentacion`,
+ * `talla`). Los ejes conocidos tienen etiqueta propia —con tilde y en el idioma
+ * de la página—; uno nuevo cae al nombre capitalizado, que es lo único honesto
+ * que se puede hacer sin inventar datos.
+ */
+const AXIS_LABELS: Record<string, { es: string; en: string }> = {
+  presentacion: { es: 'Presentación', en: 'Pack size' },
+  presentación: { es: 'Presentación', en: 'Pack size' },
+  tamano: { es: 'Tamaño', en: 'Size' },
+  tamaño: { es: 'Tamaño', en: 'Size' },
+  talla: { es: 'Talla', en: 'Size' },
+  color: { es: 'Color', en: 'Color' },
+  peso: { es: 'Peso', en: 'Weight' },
+  capacidad: { es: 'Capacidad', en: 'Capacity' },
+  medida: { es: 'Medida', en: 'Measurement' },
+  sabor: { es: 'Sabor', en: 'Flavor' },
+  material: { es: 'Material', en: 'Material' },
+};
+
+function axisLabel(name: string, locale: 'es' | 'en'): string {
+  const known = AXIS_LABELS[name.trim().toLowerCase()];
+  if (known) return known[locale];
+  const capitalized = name.trim();
+  return capitalized.charAt(0).toUpperCase() + capitalized.slice(1);
 }
 
 /**
@@ -185,7 +209,7 @@ export function StoreProductActions({ product }: Props) {
           product.optionSchema.map((axis) => (
             <fieldset key={axis.name} className="min-w-0">
               <legend className="mb-2 text-body font-semibold text-primary">
-                {t('product.chooseAxis', { axis: capitalize(axis.name) })}
+                {t('product.chooseAxis', { axis: axisLabel(axis.name, locale) })}
               </legend>
               <div className="flex flex-wrap gap-2">
                 {axis.values.map((value) => {

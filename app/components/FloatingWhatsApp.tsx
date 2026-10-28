@@ -75,7 +75,9 @@ export function FloatingWhatsApp({
   const toggleMenu = () => setIsOpen(!isOpen);
 
   return (
-    <div className="fixed bottom-6 right-6 z-[999999] flex flex-col items-end gap-2">
+    // En móvil el botón sube por encima de la barra inferior (`MobileBottomNav`,
+    // 64 px): antes se montaba sobre la pestaña "Kiosco" y tapaba una acción real.
+    <div className="fixed bottom-24 right-4 z-40 flex flex-col items-end gap-2 lg:bottom-6 lg:right-6">
       {/* Options Menu: solo cuando ventas y atención son números distintos */}
       {!sharedNumber && isOpen && (
         <div className="flex flex-col gap-2 mb-2">

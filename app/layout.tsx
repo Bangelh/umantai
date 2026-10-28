@@ -142,11 +142,19 @@ export default async function RootLayout({
           </nav>
 
           {/* tabIndex -1: el enlace "Saltar al contenido" mueve el foco acá. */}
-          <div id="contenido" tabIndex={-1} className="flex-1 pb-16 lg:pb-0 outline-none">
+          <div id="contenido" tabIndex={-1} className="flex-1 outline-none">
             {children}
           </div>
 
           <SiteFooter />
+
+          {/*
+            La barra inferior es `fixed`: sin este espaciador se come el final del
+            footer (los enlaces legales quedaban tapados en un celular). Va AL
+            FINAL del documento, no como padding del contenido, para no abrir un
+            hueco entre el contenido y el footer.
+          */}
+          <div aria-hidden="true" className="h-16 lg:hidden" />
 
           <MobileBottomNav />
         </I18nProvider>

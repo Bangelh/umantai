@@ -90,15 +90,6 @@ export default async function StoreProductPage({ params }: PageProps) {
         </div>
       </header>
 
-      {product.description && (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold text-primary">{t('product.description')}</h2>
-          <p className="mt-2 whitespace-pre-line text-body leading-relaxed text-secondary">
-            {product.description}
-          </p>
-        </section>
-      )}
-
       <StoreProductActions
         product={{
           storeId: shop.id,
@@ -122,6 +113,17 @@ export default async function StoreProductPage({ params }: PageProps) {
           variants: product.variants,
         }}
       />
+
+      {/* La descripción va DESPUÉS del bloque de compra: antes empujaba el precio
+          y las variantes fuera de la primera pantalla del celular. */}
+      {product.description && (
+        <section className="mt-8">
+          <h2 className="text-body-lg font-semibold text-primary">{t('product.description')}</h2>
+          <p className="mt-2 whitespace-pre-line text-body leading-relaxed text-secondary">
+            {product.description}
+          </p>
+        </section>
+      )}
 
       <section className="mt-8 rounded-2xl border border-border bg-surface p-4">
         <h2 className="text-body font-semibold">{t('product.pickup')}</h2>
