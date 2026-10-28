@@ -8,7 +8,7 @@
  *
  * Precedencia:
  *   1. `BUILD_COMMIT`  → override explícito de runtime (útil para corregir un build).
- *   2. manifiesto      → lo resuelto al compilar (git / Vercel / Railway / sello).
+ *   2. manifiesto      → lo resuelto al compilar (git / Vercel / Railway).
  *   3. variables de plataforma en runtime → solo si el manifiesto es de desarrollo.
  *
  * Nunca se inventa un SHA: si no hay dato, `commit` es `null`.

@@ -10,7 +10,7 @@
  *      version            versión de la app (package.json)
  *      commit             SHA del build realmente desplegado (null si no hay)
  *      build.buildId      id único del build (se sella al compilar)
- *      build.commitSource de dónde salió el SHA (`deploy_stamp`, `git`…)
+ *      build.commitSource de dónde salió el SHA (`git`, `BUILD_COMMIT`…)
  *      build.builtAt      ISO 8601 del build
  *      build.deploymentId id del deployment de Railway (mismo del dashboard)
  *      build.snapshotId   snapshot de build de Railway, si existe

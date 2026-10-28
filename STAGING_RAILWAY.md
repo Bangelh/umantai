@@ -8,12 +8,16 @@
 `build { buildId, commitSource, builtAt, deploymentId }`.
 
 El deploy se hace con **`npm run deploy:staging`** (`scripts/deploy-staging.mjs`):
-antes de `railway up` escribe `.deploy-commit.json` con el HEAD local, que
-`scripts/write-build-info.mjs` sella en el bundle; al terminar verifica que el
-health reporte ese commit. La variable manual `GIT_COMMIT_SHA` se **eliminó** de
-staging: era la que quedaba vieja y hacía que el health mintiera. Si no hay commit
-(por ejemplo un `railway up` suelto), el artefacto se identifica por
-`build.deploymentId`, el id nativo del deployment.
+corre `railway up` y verifica que el health reporte un `deploymentId` distinto al
+anterior. La variable manual `GIT_COMMIT_SHA` se **eliminó** de staging: era la que
+quedaba vieja y hacía que el health mintiera.
+
+Con `railway up` sin GitHub **no hay SHA disponible**: el contenedor no tiene
+`.git`, Railway no define `RAILWAY_GIT_COMMIT_SHA` y no sube archivos sin
+trackear (un sello en archivo no llega al build, verificado). Por eso el health
+reporta `commit: null` y la identidad es `build.deploymentId` (nativo, único, el
+mismo del dashboard) + `build.buildId`. Si el servicio se conecta a GitHub, el SHA
+aparece solo y el `deploymentId` sigue como respaldo.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 

@@ -349,8 +349,7 @@ LEGAL_EMAIL=juancallerosales19@gmail.com
 ```env
 # Sellado del build (/api/health). NO son secretos.
 # `scripts/write-build-info.mjs` (prebuild) resuelve el commit en este orden:
-#   BUILD_COMMIT > RAILWAY_GIT_COMMIT_SHA > VERCEL_GIT_COMMIT_SHA >
-#   .deploy-commit.json (lo escribe `npm run deploy:staging`) > `git rev-parse HEAD`
+#   BUILD_COMMIT > RAILWAY_GIT_COMMIT_SHA > VERCEL_GIT_COMMIT_SHA > `git rev-parse HEAD`
 #
 # `GIT_COMMIT_SHA` / `GIT_COMMIT` YA NO SE LEEN: eran variables manuales que quedaban
 # viejas y hacían que el health reportara un commit que no era el desplegado.
@@ -358,15 +357,17 @@ BUILD_COMMIT=
 BUILD_ID=
 ```
 
-> **Deploy de staging:** `npm run deploy:staging`. El script sella el HEAD local en
-> `.deploy-commit.json`, corre `railway up` y verifica que `/api/health` reporte ese
-> mismo commit. `npm run health:staging` consulta sin desplegar.
+> **Deploy de staging:** `npm run deploy:staging`. El script corre `railway up` y
+> espera a que `/api/health` reporte un `deploymentId` nuevo (el anterior se lee antes
+> de desplegar). `npm run health:staging` consulta sin desplegar.
 >
 > `/api/health` devuelve `commit` + `build { buildId, commitSource, builtAt,
 > deploymentId, snapshotId }`. `deploymentId` es el `RAILWAY_DEPLOYMENT_ID` nativo
-> (el mismo id del dashboard): identifica el artefacto aunque no haya commit —por
-> ejemplo un `railway up` sin el script—, en lugar de heredar un SHA viejo. Si Railway
-> se conecta a GitHub, `RAILWAY_GIT_COMMIT_SHA` llega solo y gana sobre el sello.
+> (el mismo id del dashboard): identifica el artefacto aunque no haya commit, en
+> lugar de heredar un SHA viejo. Railway no sube archivos sin trackear y no define
+> el deployment id en tiempo de build, por eso el id se resuelve en runtime. Si el
+> servicio se conecta a GitHub, `RAILWAY_GIT_COMMIT_SHA` llega solo y aparece
+> también el SHA.
 
 ### Additional / Recommended
 ```env
@@ -504,7 +505,7 @@ Healthcheck para Railway (y cualquier hosting). Devuelve sólo:
   "commit": "<sha o null>",
   "build": {
     "buildId": "20261028153508-abc1234",
-    "commitSource": "deploy_stamp",
+    "commitSource": "none",
     "builtAt": "2026-10-28T15:35:08.000Z",
     "deploymentId": "<uuid del deployment de Railway>",
     "snapshotId": "<uuid o null>"

@@ -255,13 +255,14 @@ Verificación mínima:
 ## 6. Deploy
 
 ```bash
-npm run deploy:staging   # sella el HEAD, hace railway up y verifica el health
+npm run deploy:staging   # railway up + verifica que el deploymentId cambió
 railway logs --service web --environment staging
 curl -sS https://<host>/api/health | jq '{ok, environment, commit, build, database}'
 ```
 
-- [ ] `commit` del health = `git rev-parse HEAD` (lo hace cumplir el script).
-  `GIT_COMMIT_SHA` ya no se usa: se eliminó de staging porque quedaba vieja.
+- [ ] `build.deploymentId` distinto al del deploy anterior (lo verifica el script).
+  `GIT_COMMIT_SHA` ya no se usa: se eliminó de staging porque quedaba vieja. Con
+  `railway up` sin GitHub, `commit` es `null` a propósito (nunca un SHA viejo).
 - [ ] Build `SUCCESS`.
 - [ ] `/api/health` → 200, `commit` = HEAD, `database.reachable=true`,
       `database.type=pg`.
