@@ -22,7 +22,7 @@ import { getPrefixedEnv } from './env';
 import { getPlatformSql } from './platform-db.server';
 import { isProductionRuntime } from './runtime-environment.server';
 
-export type EmailPurpose = 'verify_email' | 'reset_password';
+export type EmailPurpose = 'verify_email' | 'reset_password' | 'store_created';
 
 export interface TransactionalEmail {
   to: string;
@@ -219,6 +219,65 @@ export function buildVerifyEmail(to: string, url: string, expiresInSeconds = 86_
     purpose: 'verify_email',
     actionUrl: url,
     expiresInSeconds,
+  };
+}
+
+/**
+ * Aviso de "tu tienda quedó creada". No lleva token ni credenciales: solo
+ * confirma el alta y dice cuál es el siguiente paso, para que el comerciante no
+ * se quede con la duda de si el registro funcionó.
+ */
+export function buildStoreCreatedEmail(
+  to: string,
+  options: { storeName: string; slug: string; panelUrl: string; requiresVerification: boolean },
+): TransactionalEmail {
+  const { storeName, slug, panelUrl, requiresVerification } = options;
+
+  const nextSteps = [
+    '1. Entra a tu panel y carga tus primeros productos (nombre, precio y stock).',
+    '2. Un administrador de UMANTAI revisa y activa la tienda.',
+    `3. Cuando esté activa, tu vitrina pública será umantai.com/${slug}.`,
+  ];
+  if (requiresVerification) {
+    nextSteps.unshift(
+      '0. Verifica tu correo con el enlace que te enviamos al registrarte: sin eso no podrás recuperar tu contraseña.',
+    );
+  }
+
+  const text = [
+    `Tu tienda ${storeName} ya existe en UMANTAI`,
+    '',
+    'La creamos y quedó PENDIENTE DE APROBACIÓN: todavía no aparece en el buscador.',
+    '',
+    'Qué sigue:',
+    ...nextSteps,
+    '',
+    `Abrir mi panel: ${panelUrl}`,
+    '',
+    'Si no creaste esta tienda, responde a este correo y la revisamos.',
+  ].join('\n');
+
+  return {
+    to,
+    subject: `Tu tienda ${storeName} ya existe · UMANTAI`,
+    text,
+    html: layout(
+      `Tu tienda ${storeName} ya existe`,
+      [
+        '<p style="margin:0 0 12px;font-size:15px;color:#444444;">La creamos y quedó <strong>pendiente de aprobación</strong>: todavía no aparece en el buscador.</p>',
+        '<p style="margin:0 0 6px;font-size:15px;color:#444444;">Qué sigue:</p>',
+        `<ul style="margin:0 0 4px;padding-left:20px;font-size:15px;color:#444444;">${nextSteps
+          .map((step) => `<li style="margin-bottom:4px">${escapeHtml(step.replace(/^\d+\.\s*/, ''))}</li>`)
+          .join('')}</ul>`,
+      ].join(''),
+      'Abrir mi panel',
+      panelUrl,
+    ),
+    purpose: 'store_created',
+    actionUrl: panelUrl,
+    // Sin token: el "vencimiento" solo controla cuánto vive la fila del outbox
+    // de test. Una semana es suficiente para inspeccionarla.
+    expiresInSeconds: 7 * 24 * 3_600,
   };
 }
 

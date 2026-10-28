@@ -29,6 +29,7 @@ import {
   peruHolidayCalendarStatus,
   type PeruHolidayCalendarStatus,
 } from './peru-holidays';
+import { unitsToCents } from './format';
 
 export const COMPLAINT_KINDS = ['reclamo', 'queja'] as const;
 export type ComplaintKind = (typeof COMPLAINT_KINDS)[number];
@@ -195,7 +196,7 @@ function parseAmountCents(value: unknown): { ok: true; value: number | null } | 
     return { ok: false };
   }
 
-  const cents = Math.round(units * 100);
+  const cents = unitsToCents(units);
   if (!Number.isSafeInteger(cents) || cents < 0 || cents > COMPLAINT_LIMITS.amountCentsMax) {
     return { ok: false };
   }

@@ -15,7 +15,7 @@ const getServerSnapshot = () => false;
  * termina de hidratar.
  *
  * ─── POR QUÉ HACE FALTA ──────────────────────────────────────────────────────
- * Los carritos (`lib/cartStore.ts`, `lib/shoppingListStore.ts`) se persisten en
+ * El carrito (`lib/cartStore.ts`) se persiste en
  * `localStorage` con `zustand/persist`. En el servidor no hay `localStorage`, así que
  * el store rinde vacío; en el cliente zustand REHIDRATA de forma síncrona al crear el
  * store, es decir, antes de que React hidrate el HTML.

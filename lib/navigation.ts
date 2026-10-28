@@ -19,8 +19,9 @@ export interface NavLink {
 }
 
 export const SHOP_NAV_LINKS: readonly NavLink[] = [
-  { href: '/products', labelKey: 'navLink.products' },
-  { href: '/list', labelKey: 'nav.shoppingList' },
+  // `/products` y `/list` eran del template: `/products` redirige a `/` y la
+  // lista de compras no tenía forma de llenarse. Nada en la UI las enlaza.
+  { href: '/', labelKey: 'navLink.products' },
   { href: '/cart', labelKey: 'nav.cart' },
   { href: '/kiosk', labelKey: 'navLink.storePickup' },
 ];

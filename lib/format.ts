@@ -23,6 +23,62 @@ export function intlLocale(locale: Locale): string {
 }
 
 /**
+ * ── CONTRATO MONETARIO DE UMANTAI ───────────────────────────────────────────
+ *
+ * Hay EXACTAMENTE dos representaciones y una sola frontera entre ellas:
+ *
+ *   1. CENTAVOS (`*_cents`)  · entero, unidad canónica de PERSISTENCIA.
+ *      `store_products.price_cents`, `store_product_variants.price_cents`,
+ *      `complaints.amount_cents`, analytics. Nunca un float.
+ *
+ *   2. UNIDADES (`unitPrice`, `total`) · decimal con 2 decimales, unidad del
+ *      DOMINIO DE PEDIDOS y del carrito. `orders.unit_price`, `orders.total`,
+ *      `order_items.line_total` (NUMERIC(10,2) con CHECK de cuadre).
+ *
+ * La conversión SOLO ocurre en el borde, con `centsToUnits` / `unitsToCents`
+ * (o `formatMoney` / `formatMoneyUnits` cuando además se va a mostrar).
+ * PROHIBIDO escribir `/ 100` o `* 100` sueltos sobre un precio en la UI o en
+ * un componente: si aparece uno, es un bug esperando a ocurrir (fue justo el
+ * origen del carrito que mostraba S/ 1200,00).
+ *
+ * `Product.price` (carrito) está en UNIDADES. `priceCents` (catálogo, API)
+ * está en CENTAVOS. Un componente que mezcla ambos campos tiene que convertir
+ * explícitamente al armar la línea del carrito.
+ * ────────────────────────────────────────────────────────────────────────────
+ */
+
+/** Centavos enteros → unidades decimales. Redondea a 2 decimales. */
+export function centsToUnits(cents: number): number {
+  const safe = Number.isFinite(cents) ? Math.round(cents) : 0;
+  return safe / 100;
+}
+
+/** Unidades decimales → centavos enteros. Redondea al centavo más cercano. */
+export function unitsToCents(units: number): number {
+  const safe = Number.isFinite(units) ? units : 0;
+  return Math.round(safe * 100);
+}
+
+/**
+ * Texto de un input de precio (`"12,50"` o `"12.50"`) → centavos.
+ * `null` cuando el campo está vacío o no es un número válido: nunca NaN.
+ * Sirve para los formularios del comercio, no para mostrar dinero.
+ */
+export function parseMoneyInputToCents(value: string | null | undefined): number | null {
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw) return null;
+  const units = Number(raw);
+  if (!Number.isFinite(units) || units < 0) return null;
+  return unitsToCents(units);
+}
+
+/** Centavos → texto editable con 2 decimales (`"12.50"`). Solo para inputs. */
+export function centsToInput(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined || !Number.isFinite(cents)) return '';
+  return centsToUnits(cents).toFixed(2);
+}
+
+/**
  * Dinero en centavos enteros. `S/ 12,50` en español y `S/ 12.50` en inglés.
  * Se usa un separador manual (no Intl.NumberFormat) para que el símbolo quede
  * pegado al monto y el resultado sea estable entre Node y el navegador.
@@ -46,7 +102,7 @@ export function formatMoneyUnits(
   currency: string = DEFAULT_CURRENCY,
   locale: Locale = 'es',
 ): string {
-  return formatMoney(Math.round((Number.isFinite(value) ? value : 0) * 100), currency, locale);
+  return formatMoney(unitsToCents(value), currency, locale);
 }
 
 /** Número entero/decimal con separadores del locale. */

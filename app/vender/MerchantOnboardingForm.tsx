@@ -13,6 +13,11 @@ interface CreatedStore {
   slug: string;
 }
 
+/** Resultado del aviso por correo que devuelve el alta de tienda. */
+type CreatedEmail =
+  | { status: 'sent' | 'stored' | 'disabled' | 'failed'; to?: string }
+  | null;
+
 export function MerchantOnboardingForm() {
   const { t } = useI18n();
   const [name, setName] = useState('');
@@ -27,6 +32,7 @@ export function MerchantOnboardingForm() {
   const [contactPhone, setContactPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedStore | null>(null);
+  const [createdEmail, setCreatedEmail] = useState<CreatedEmail>(null);
 
   const effectiveSlug = slugTouched ? slug : normalizeStoreSlug(name);
   const slugValidation = useMemo(() => validateStoreSlug(effectiveSlug || name), [effectiveSlug, name]);
@@ -66,7 +72,7 @@ export function MerchantOnboardingForm() {
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | { store?: CreatedStore; error?: string }
+        | { store?: CreatedStore; error?: string; email?: CreatedEmail }
         | null;
 
       if (!response.ok || !payload?.store) {
@@ -74,6 +80,7 @@ export function MerchantOnboardingForm() {
       }
 
       setCreated(payload.store);
+      setCreatedEmail(payload.email ?? null);
       toast.success(t('onboarding.created'));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('onboarding.createFailed'));
@@ -83,20 +90,43 @@ export function MerchantOnboardingForm() {
   };
 
   if (created) {
+    // La tarjeta de éxito responde las tres preguntas del usuario: qué pasó,
+    // qué sigue y si el correo salió. Nunca deja "¿funcionó o no?".
+    const emailSent = createdEmail?.status === 'sent';
+    const emailPending = createdEmail?.status === 'stored';
+
     return (
-      <div className="mt-4 rounded-2xl border border-success/40 bg-success/10 p-5">
-        <h3 className="text-lg font-semibold text-success">{t('onboarding.created')}</h3>
-        <p className="mt-1 text-sm text-secondary">
+      <div className="mt-4 rounded-2xl border-2 border-success/50 bg-success/10 p-5">
+        <h3 className="text-xl font-semibold text-success">✓ {t('onboarding.created')}</h3>
+        <p className="mt-2 text-base text-secondary">
           <strong>{created.name}</strong> {t('onboarding.createdBody')}
         </p>
+
+        <h4 className="mt-5 text-sm font-semibold uppercase tracking-[1.5px] text-secondary">
+          {t('onboarding.nextStepsTitle')}
+        </h4>
+        <ol className="mt-2 space-y-1.5 text-base text-secondary">
+          <li>{t('onboarding.nextStepCatalog')}</li>
+          <li>{t('onboarding.nextStepReview')}</li>
+          <li>{t('onboarding.nextStepStorefront', { slug: created.slug })}</li>
+        </ol>
+
+        <p className="mt-4 rounded-xl bg-background/60 p-3 text-sm text-tertiary" role="status">
+          {emailSent
+            ? t('onboarding.emailSent', { email: createdEmail?.to ?? '' })
+            : emailPending
+              ? t('onboarding.emailTestMode')
+              : t('onboarding.emailNotSent')}
+        </p>
+
         <div className="mt-4 flex flex-wrap gap-2">
           <Link
             href={`/negocio/${created.id}`}
-            className="inline-flex h-10 items-center rounded-xl bg-brand px-4 text-sm font-semibold text-background"
+            className="inline-flex h-12 items-center rounded-xl bg-brand px-5 text-base font-semibold text-background"
           >
             {t('onboarding.goPanel')}
           </Link>
-          <span className="inline-flex h-10 items-center rounded-xl border border-border px-4 text-sm text-tertiary">
+          <span className="inline-flex min-h-12 items-center rounded-xl border border-border px-4 text-sm text-tertiary">
             {t('onboarding.storefrontPending', { slug: created.slug })}
           </span>
         </div>

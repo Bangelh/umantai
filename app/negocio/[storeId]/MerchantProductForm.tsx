@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useI18n } from '@/components/i18n/I18nProvider';
+import { unitsToCents } from '@/lib/format';
 
 export function MerchantProductForm({ storeId }: { storeId: string }) {
   const router = useRouter();
@@ -38,7 +39,7 @@ export function MerchantProductForm({ storeId }: { storeId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          priceCents: Math.round(priceValue * 100),
+          priceCents: unitsToCents(priceValue),
           category: category.trim() || null,
           brand: brand.trim() || null,
           unit: unit.trim() || 'unidad',

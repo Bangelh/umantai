@@ -17,14 +17,36 @@ async function discoverProducts(request: APIRequestContext): Promise<DiscoveryPr
   return payload.products ?? [];
 }
 
+/**
+ * Elige la primera opción CON STOCK de cada eje de variación.
+ *
+ * Desde la pasada de UX las variantes son botones con `aria-pressed` (antes era
+ * un `<select>` por eje, que el comprador no asociaba con el precio). Se elige la
+ * primera opción cuya etiqueta no diga "Sin stock"; si todas lo dicen, se toma la
+ * primera y el test verá el botón deshabilitado.
+ */
 async function addFirstProductToCart(page: import('@playwright/test').Page, href: string) {
   await page.goto(href);
-  const selects = page.locator('section select');
-  for (let index = 0; index < (await selects.count()); index += 1) {
-    const select = selects.nth(index);
-    const options = await select.locator('option').all();
-    if (options.length > 1) await select.selectOption({ index: 1 });
+
+  const groups = page.locator('section fieldset');
+  const groupCount = await groups.count();
+
+  for (let index = 0; index < groupCount; index += 1) {
+    const options = groups.nth(index).locator('button[aria-pressed]');
+    const total = await options.count();
+    if (total === 0) continue;
+
+    let target = options.first();
+    for (let option = 0; option < total; option += 1) {
+      const candidate = options.nth(option);
+      if (!/Sin stock|Out of stock/i.test((await candidate.textContent()) ?? '')) {
+        target = candidate;
+        break;
+      }
+    }
+    await target.click();
   }
+
   await page.getByRole('button', { name: /Agregar al carrito|No disponible/ }).click();
 }
 

@@ -18,7 +18,7 @@ import { orderStatusLabel } from '@/lib/i18n/status';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { getCustomerProfile, listCustomerOrders, listStoresForUser } from '@/lib/stores.server';
 import { getTranslator } from '@/lib/i18n/server';
-import { formatDate as formatDateLocale, formatMoney } from '@/lib/format';
+import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -166,7 +166,7 @@ export default async function AccountPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="font-mono text-sm font-semibold tabular-nums">
-                      {formatMoney(Math.round(order.total * 100), order.currency, locale)}
+                      {formatMoney(unitsToCents(order.total), order.currency, locale)}
                     </div>
                     {order.publicToken && (
                       <Link

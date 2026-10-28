@@ -194,6 +194,31 @@ body {
   --color-warning: var(--um-warning);
   --color-destructive: var(--um-destructive);
   --color-info: var(--um-info);
+
+  /*
+   * ESCALA TIPOGRÁFICA (base del cliente y del comercio).
+   *
+   * El público de UMANTAI incluye personas con poca experiencia en sistemas:
+   * el texto funcional NO baja de 16 px y lo normal es 17–18 px. `text-meta`
+   * (15 px) queda para metadata secundaria (marca, categoría, "precio por
+   * unidad"); nunca para una instrucción ni para un importe.
+   *
+   *   text-meta    15 px  metadata
+   *   text-body    17 px  texto e importes
+   *   text-body-lg 18 px  nombres de producto, subtotales
+   *   text-title   28 px  título de página
+   *   text-display 36 px  título de página en desktop
+   */
+  --text-meta: 0.9375rem;
+  --text-meta--line-height: 1.45;
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.6;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.55;
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.25;
+  --text-display: 2.25rem;
+  --text-display--line-height: 1.15;
 }
 
 /* Foco visible y consistente en teclado (accesibilidad). */
@@ -329,17 +354,7 @@ body {
   border-color: var(--um-border);
 }
 
-/* Custom styles for Umantai */
-.product-card {
-  transition: transform 0.2s cubic-bezier(0.23, 1, 0.32, 1), 
-              box-shadow 0.2s cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-}
-
+/* Controles nativos alineados con la marca. */
 .filter-checkbox {
   accent-color: var(--um-brand);
 }
@@ -347,131 +362,6 @@ body {
 .kiosk-screen {
   font-family: var(--font-geist-mono);
   letter-spacing: -0.02em;
-}
-
-/* Shopping List Print Styles */
-@media print {
-  /* Extremely compact print mode for 30+ items per page */
-  .print\:hidden {
-    display: none !important;
-  }
-
-  @page {
-    size: A4;
-    margin: 0.5in 0.6in;
-    
-    @bottom-center {
-      content: "Page " counter(page) " of " counter(pages);
-      font-size: 8pt;
-      color: #555;
-    }
-  }
-
-  body {
-    background: white !important;
-    color: #000 !important;
-    font-size: 9pt !important;
-    line-height: 1.15 !important;
-    margin: 0 !important;
-  }
-
-  /* Hide the normal interactive list entirely during print */
-  .max-w-4xl.mx-auto.px-8.py-12 {
-    padding: 0 !important;
-  }
-
-  /* Hide the main visual list (the one with cards and inputs) */
-  .space-y-8 {
-    display: none !important;
-  }
-
-  /* Also hide the on-screen totals and header for the normal view */
-  .flex.items-center.justify-between.mb-8,
-  .mt-8.pt-6.border-t {
-    display: none !important;
-  }
-
-  /* Category headers - very small and tight */
-  h3 {
-    font-size: 10pt !important;
-    font-weight: 600 !important;
-    margin: 6px 0 2px 0 !important;
-    padding-bottom: 1px !important;
-    border-bottom: 0.5px solid #333 !important;
-    color: #000 !important;
-  }
-
-  /* Each item - ultra dense single or two line format */
-  .flex.items-start.gap-4.p-4 {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    padding: 1px 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    font-size: 8.5pt !important;
-    line-height: 1.1 !important;
-    page-break-inside: avoid;
-  }
-
-  /* Brand + Name */
-  .font-medium {
-    font-size: 8.5pt !important;
-    font-weight: 500 !important;
-    margin-right: 4px;
-  }
-
-  .text-sm.text-white\/60 {
-    font-size: 7.5pt !important;
-    color: #444 !important;
-    margin-right: 6px;
-  }
-
-  /* Price and quantity - compact */
-  .font-mono {
-    font-size: 8pt !important;
-    white-space: nowrap;
-  }
-
-  /* Hide all inputs and interactive stuff in print */
-  input,
-  button:not(.print\:visible) {
-    display: none !important;
-  }
-
-  /* Compact header for print */
-  .text-5xl {
-    font-size: 14pt !important;
-    margin-bottom: 2px !important;
-  }
-
-  .uppercase.tracking-\[3px\] {
-    font-size: 7pt !important;
-  }
-
-  /* Totals at bottom */
-  .text-lg,
-  .text-xl {
-    font-size: 9pt !important;
-    margin-top: 4px !important;
-  }
-
-  /* Remove big spacing */
-  .space-y-8 > * + * {
-    margin-top: 4px !important;
-  }
-
-  .mt-8,
-  .pt-6 {
-    margin-top: 6px !important;
-    padding-top: 4px !important;
-  }
-
-  /* Final footer */
-  .hidden.print\:block {
-    font-size: 7pt !important;
-    margin-top: 8px !important;
-  }
 }
 
 /* Floating WhatsApp Button (styles now primarily in component via Tailwind for consistency) */

@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useI18n } from '@/components/i18n/I18nProvider';
-import { formatMoney } from '@/lib/format';
+import { centsToInput, formatMoney, parseMoneyInputToCents, unitsToCents } from '@/lib/format';
 import {
   cartesianVariants,
   parseVariantAxesInput,
@@ -200,7 +200,7 @@ export function MerchantCatalog({
     const variants = variantDrafts.map((draft) => ({
       optionValues: draft.optionValues,
       sku: draft.sku.trim() || null,
-      priceCents: draft.price.trim() ? Math.round(Number(draft.price.replace(',', '.')) * 100) : null,
+      priceCents: parseMoneyInputToCents(draft.price),
       initialStock: Math.max(0, Math.floor(Number(draft.stock) || 0)),
     }));
 
@@ -215,7 +215,7 @@ export function MerchantCatalog({
           category: category.trim() || null,
           brand: brand.trim() || null,
           description: description.trim() || null,
-          priceCents: Math.round(priceValue * 100),
+          priceCents: unitsToCents(priceValue),
           unit: unit || 'unidad',
           initialStock: variants.length === 0 ? Math.max(0, Math.floor(Number(stock) || 0)) : 0,
           variants,
@@ -392,7 +392,7 @@ export function MerchantCatalog({
           body: JSON.stringify({
             optionValues,
             sku: variantSku || null,
-            priceCents: variantPrice ? Math.round(Number(variantPrice.replace(',', '.')) * 100) : null,
+            priceCents: parseMoneyInputToCents(variantPrice),
             initialStock: Math.max(0, Math.floor(Number(variantStock) || 0)),
           }),
         },
@@ -674,7 +674,7 @@ export function MerchantCatalog({
                                 setVariantEdit({
                                   variantId: variant.id,
                                   sku: variant.sku,
-                                  price: variant.priceCents === null ? '' : (variant.priceCents / 100).toFixed(2),
+                                  price: centsToInput(variant.priceCents),
                                 })
                               }
                               className="text-[10px] text-secondary underline underline-offset-2"
@@ -700,7 +700,7 @@ export function MerchantCatalog({
                       onClick={() => {
                         setEditingId(isEditing ? null : product.id);
                         setEditName(product.name);
-                        setEditPrice((product.priceCents / 100).toFixed(2));
+                        setEditPrice(centsToInput(product.priceCents));
                       }}
                       className="text-xs text-secondary hover:text-primary"
                     >
@@ -739,7 +739,7 @@ export function MerchantCatalog({
                             product.id,
                             {
                               name: editName.trim() || undefined,
-                              priceCents: Math.round(Number(editPrice.replace(',', '.')) * 100),
+                              priceCents: parseMoneyInputToCents(editPrice) ?? 0,
                             },
                             t('merchant.productUpdated'),
                           )
@@ -838,9 +838,7 @@ export function MerchantCatalog({
                             onClick={() =>
                               void patchVariant(product, variantEdit.variantId, {
                                 sku: variantEdit.sku.trim(),
-                                priceCents: variantEdit.price.trim()
-                                  ? Math.round(Number(variantEdit.price.replace(',', '.')) * 100)
-                                  : null,
+                                priceCents: parseMoneyInputToCents(variantEdit.price),
                               })
                             }
                             className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background"

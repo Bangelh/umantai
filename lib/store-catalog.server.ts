@@ -22,6 +22,7 @@ import {
 } from './catalog';
 import type { CreateOrderLineInput, ProductVariant } from './commerce';
 import { normalizeVariantSelection } from './commerce';
+import { centsToUnits } from './format';
 import {
   getPlatformSql,
   requirePlatformSql,
@@ -702,7 +703,7 @@ export async function resolveStoreCheckout(
       variantKey,
       variantSku: variant ? String(variant.sku) : null,
       quantity,
-      unitPrice: unitPriceCents / 100,
+      unitPrice: centsToUnits(unitPriceCents),
     });
   }
 

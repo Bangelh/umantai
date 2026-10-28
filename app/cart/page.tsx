@@ -223,11 +223,8 @@ export default function CartPage() {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center" role="status" aria-live="polite">
-          <div className="mb-4 text-5xl" aria-hidden="true">
-            🛍️
-          </div>
           <h1 className="text-3xl font-semibold tracking-tight">{t("cart.title")}</h1>
-          <p className="mt-2 text-sm text-tertiary">{t("cart.loading")}</p>
+          <p className="mt-2 text-body text-tertiary">{t("cart.loading")}</p>
         </div>
       </main>
     );
@@ -237,14 +234,11 @@ export default function CartPage() {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="text-center">
-          <div className="mb-4 text-5xl" aria-hidden="true">
-            🛍️
-          </div>
           <h1 className="text-3xl font-semibold tracking-tight">{t("cart.emptyTitle")}</h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-tertiary">{t("cart.emptyBody")}</p>
+          <p className="mx-auto mt-2 max-w-sm text-body text-secondary">{t("cart.emptyBody")}</p>
           <Link
             href="/"
-            className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-brand px-6 text-sm font-semibold text-background hover:opacity-90"
+            className="mt-6 inline-flex h-12 items-center justify-center rounded-xl bg-brand px-6 text-body font-semibold text-background hover:opacity-90"
           >
             {t("cart.browse")}
           </Link>
@@ -256,7 +250,7 @@ export default function CartPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 pb-16 pt-6 sm:px-6">
       <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{t("cart.title")}</h1>
-      <p className="mb-6 mt-1 text-sm text-tertiary">
+      <p className="mb-6 mt-1 text-body text-secondary">
         {t("cart.store", {
           store: items[0]?.storeName ?? items[0]?.storeSlug ?? "UMANTAI",
         })}
@@ -279,60 +273,58 @@ export default function CartPage() {
       )}
 
       <ul className="space-y-3">
-        {items.map((item) => (
-          <li
-            key={cartLineKey(item)}
-            className="flex gap-4 rounded-2xl border border-border bg-surface p-4 sm:p-5"
-          >
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised text-2xl sm:h-20 sm:w-20 sm:text-3xl">
-              {item.brand === "Apple" && "📱"}
-              {item.brand === "Dyson" && "🌀"}
-              {item.brand === "Oura" && "💍"}
-              {item.brand === "Peak Design" && "🎒"}
-              {item.brand === "Bose" && "🎧"}
-              {item.brand === "Samsung" && "📱"}
-              {item.brand === "Whoop" && "⌚"}
-              {item.brand === "Sonos" && "🔊"}
-              {item.brand === "Anker" && "🔋"}
-              {item.brand === "Blue Bottle" && "☕"}
-              {item.brand === "Patagonia" && "🐟"}
-              {item.brand === "Google" && "📱"}
-            </div>
+        {items.map((item) => {
+          const variantLabel = Object.values(cartItemVariant(item)).filter(Boolean).join(" · ");
 
-            <div className="min-w-0 flex-1">
+          return (
+            <li
+              key={cartLineKey(item)}
+              className="rounded-2xl border border-border bg-surface p-4 sm:p-5"
+            >
               <div className="flex justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs text-tertiary">{item.brand}</div>
-                  <div className="truncate text-base font-semibold tracking-tight">{item.name}</div>
-                  {Object.values(cartItemVariant(item)).filter(Boolean).length > 0 && (
-                    <div className="mt-1 text-xs text-tertiary">
-                      {Object.values(cartItemVariant(item)).filter(Boolean).join(" · ")}
-                    </div>
+                  <div className="text-lg font-semibold leading-snug tracking-tight">
+                    {item.name}
+                  </div>
+                  {variantLabel && (
+                    <div className="mt-0.5 text-body text-secondary">{variantLabel}</div>
                   )}
+                  {/* Precio unitario explícito: sin esto el comprador solo ve el
+                      subtotal de la línea y no puede verificarlo. */}
+                  <div className="mt-1 text-sm text-tertiary">
+                    {t("cart.unitPrice")}: {money(item.price)}
+                  </div>
                 </div>
-                <div className="shrink-0 text-right font-mono text-base font-semibold tabular-nums">
-                  {money(item.price * item.quantity)}
+                <div className="shrink-0 text-right">
+                  <div className="font-monotext-body-lg font-semibold tabular-nums">
+                    {money(item.price * item.quantity)}
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex items-center rounded-full border border-border-strong">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center rounded-xl border border-border-strong">
                   <button
                     type="button"
                     aria-label={t("cart.decrease", { name: item.name })}
                     onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
-                    disabled={isSubmitting}
-                    className="rounded-l-full px-3 py-1 hover:bg-surface-raised disabled:opacity-40"
+                    disabled={isSubmitting || item.quantity <= 1}
+                    className="h-12 w-12 rounded-l-xl text-2xl leading-none hover:bg-surface-raised disabled:opacity-40"
                   >
                     −
                   </button>
-                  <div className="px-3 font-mono tabular-nums">{item.quantity}</div>
+                  <div
+                    aria-live="polite"
+                    className="w-12 text-center font-monotext-body-lg tabular-nums"
+                  >
+                    {item.quantity}
+                  </div>
                   <button
                     type="button"
                     aria-label={t("cart.increase", { name: item.name })}
                     onClick={() => updateQuantity(cartLineKey(item), item.quantity + 1)}
                     disabled={isSubmitting}
-                    className="rounded-r-full px-3 py-1 hover:bg-surface-raised disabled:opacity-40"
+                    className="h-12 w-12 rounded-r-xl text-2xl leading-none hover:bg-surface-raised disabled:opacity-40"
                   >
                     +
                   </button>
@@ -342,57 +334,72 @@ export default function CartPage() {
                   type="button"
                   onClick={() => removeItem(cartLineKey(item))}
                   disabled={isSubmitting}
-                  className="text-sm text-tertiary hover:text-primary disabled:opacity-40"
+                  className="min-h-11 rounded-lg px-2 text-body text-tertiary underline-offset-4 hover:text-destructive hover:underline disabled:opacity-40"
                 >
                   {t("cart.remove")}
                 </button>
               </div>
-            </div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
 
-      <div className="mt-8 flex items-center justify-between border-t border-border pt-5 text-lg">
-        <div>{t("cart.total")}</div>
-        <div className="font-mono font-semibold tabular-nums">{money(total)}</div>
+      <div className="mt-8 flex items-baseline justify-between border-t border-border pt-5">
+        <div className="text-lg font-medium">{t("cart.total")}</div>
+        <div className="font-mono text-2xl font-semibold tabular-nums">{money(total)}</div>
       </div>
 
-      {/* Datos de contacto: `POST /api/orders` exige `contactEmail`. */}
+      {/* Datos de contacto: `POST /api/orders` exige `contactEmail`.
+          Las etiquetas son visibles y permanentes: el placeholder no reemplaza a
+          un label (desaparece al escribir y el campo deja de tener nombre). */}
       <div className="mt-8 border-t border-border pt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[2px] text-secondary">
-          {t("cart.contact")}
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input
-            type="email"
-            required
-            aria-label={t("cart.email")}
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder={t("cart.email")}
-            autoComplete="email"
-            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none sm:col-span-2"
-          />
-          <input
-            type="text"
-            aria-label={t("cart.fullName")}
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            placeholder={t("cart.fullName")}
-            autoComplete="name"
-            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none"
-          />
-          <input
-            type="text"
-            inputMode="numeric"
-            aria-label={t("cart.doc")}
-            value={docNumber}
-            onChange={(event) => setDocNumber(event.target.value)}
-            placeholder={t("cart.doc")}
-            className="h-11 rounded-xl border border-border-strong bg-background px-3 text-sm text-primary placeholder:text-muted focus:border-primary focus:outline-none"
-          />
+        <h2 className="mb-3text-body-lg font-semibold">{t("cart.contact")}</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="block sm:col-span-2">
+            <label htmlFor="cart-email" className="mb-1 block text-body font-medium text-primary">
+              {t("cart.email")}
+            </label>
+            <input
+              id="cart-email"
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder={t("cart.emailPlaceholder")}
+              autoComplete="email"
+              aria-describedby="cart-email-help"
+              className="h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-body text-primary placeholder:text-muted focus:border-primary focus:outline-2 focus:outline-offset-1 focus:outline-[var(--um-brand)]"
+            />
+            <span id="cart-email-help" className="mt-1 block text-sm text-tertiary">
+              {t("cart.emailHelp")}
+            </span>
+          </div>
+          <label htmlFor="cart-name" className="block">
+            <span className="mb-1 block text-body font-medium text-primary">{t("cart.fullName")}</span>
+            <input
+              id="cart-name"
+              type="text"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder={t("cart.namePlaceholder")}
+              autoComplete="name"
+              className="h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-body text-primary placeholder:text-muted focus:border-primary focus:outline-2 focus:outline-offset-1 focus:outline-[var(--um-brand)]"
+            />
+          </label>
+          <label htmlFor="cart-doc" className="block">
+            <span className="mb-1 block text-body font-medium text-primary">{t("cart.doc")}</span>
+            <input
+              id="cart-doc"
+              type="text"
+              inputMode="numeric"
+              value={docNumber}
+              onChange={(event) => setDocNumber(event.target.value)}
+              placeholder={t("cart.docPlaceholder")}
+              className="h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-body text-primary placeholder:text-muted focus:border-primary focus:outline-2 focus:outline-offset-1 focus:outline-[var(--um-brand)]"
+            />
+          </label>
         </div>
-        <p className="mt-2 text-xs text-muted">{t("cart.holdNote")}</p>
+        <p className="mt-2 text-sm text-tertiary">{t("cart.holdNote")}</p>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -400,13 +407,13 @@ export default function CartPage() {
           type="button"
           onClick={handleOpenConfirmation}
           disabled={isSubmitting}
-          className="h-12 flex-1 rounded-xl bg-brand text-sm font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-14 flex-1 rounded-xl bg-brandtext-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {t("cart.review")}
         </button>
         <Link
           href="/"
-          className="flex h-12 flex-1 items-center justify-center rounded-xl border border-border-strong text-sm font-medium hover:bg-surface-raised"
+          className="flex h-14 flex-1 items-center justify-center rounded-xl border border-border-strong text-body font-medium hover:bg-surface-raised"
         >
           {t("cart.continue")}
         </Link>
@@ -419,12 +426,12 @@ export default function CartPage() {
           toast.info(t("cart.cleared"));
         }}
         disabled={isSubmitting}
-        className="mt-5 text-xs text-muted hover:text-secondary disabled:opacity-40"
+        className="mt-5 min-h-11 text-sm text-tertiary underline-offset-4 hover:text-destructive hover:underline disabled:opacity-40"
       >
         {t("cart.clear")}
       </button>
 
-      <p className="mt-4 text-xs text-tertiary">
+      <p className="mt-4 text-sm text-tertiary">
         <Link
           href="/libro-de-reclamaciones"
           className="underline underline-offset-4 hover:text-primary"
@@ -490,7 +497,7 @@ export default function CartPage() {
               <span>{t("cart.subtotal")}</span>
               <span className="font-mono tabular-nums">{money(summary.subtotal)}</span>
             </div>
-            <div className="mt-2 flex justify-between text-lg font-medium">
+            <div className="mt-2 flex justify-betweentext-body-lg font-medium">
               <span>{t("cart.total")}</span>
               <span className="font-mono tabular-nums tracking-tight">{money(summary.total)}</span>
             </div>

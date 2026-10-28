@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useI18n } from '@/components/i18n/I18nProvider';
+import { centsToUnits } from '@/lib/format';
 import { LegalDemoNotice } from '@/components/legal/LegalDemoNotice';
 import {
   COMPLAINT_LIMITS,
@@ -568,7 +569,7 @@ export function ComplaintPage({
               inputMode="decimal"
               step="0.01"
               min="0"
-              max={COMPLAINT_LIMITS.amountCentsMax / 100}
+              max={centsToUnits(COMPLAINT_LIMITS.amountCentsMax)}
               value={form.amount}
               onChange={(event) => update('amount', event.target.value)}
               aria-invalid={Boolean(errors.amountCents)}

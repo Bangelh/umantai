@@ -12,7 +12,6 @@ import { StoreProductActions } from './StoreProductActions';
 import { getStoreProductDetail } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
 import { getTranslator } from '@/lib/i18n/server';
-import { formatMoney } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +39,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function StoreProductPage({ params }: PageProps) {
-  const { locale, t } = await getTranslator();
+  const { t } = await getTranslator();
   const { store, slug } = await params;
   const slugCheck = validateStoreSlug(store);
   if (!slugCheck.ok) notFound();
@@ -52,7 +51,7 @@ export default async function StoreProductPage({ params }: PageProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-12 sm:px-6">
-      <nav aria-label={t('product.breadcrumb')} className="pt-4 text-xs text-muted">
+      <nav aria-label={t('product.breadcrumb')} className="pt-4 text-sm text-tertiary">
         <Link href="/" className="hover:text-primary">UMANTAI</Link>
         <span aria-hidden="true"> / </span>
         <Link href={`/${shop.slug}`} className="hover:text-primary">{shop.name}</Link>
@@ -60,46 +59,43 @@ export default async function StoreProductPage({ params }: PageProps) {
         <span className="text-secondary">{product.name}</span>
       </nav>
 
-      <header className="mt-5 border-b border-border pb-5">
-        <p className="text-xs uppercase tracking-[2px] text-muted">
-          {product.category ?? shop.category ?? t('product.fallbackCategory')}
-        </p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">{product.name}</h1>
-        <p className="mt-1 text-sm text-tertiary">
-          <Link href={`/${shop.slug}`} className="underline-offset-2 hover:text-primary hover:underline">
-            {shop.name}
-          </Link>
-          {product.brand && ` · ${product.brand}`}
-        </p>
-
-        <div className="mt-4 flex items-end justify-between gap-4">
-          <div>
-            <div className="font-mono text-3xl font-semibold tabular-nums">
-              {formatMoney(product.priceCents, product.currency, locale)}
-            </div>
-            <div className={`mt-1 text-sm font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>
-              {product.inStock
-                ? t('product.inStock', { count: product.available })
-                : t('product.outOfStock')}
-            </div>
-          </div>
-          {product.imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element -- imagen cargada por el comercio
-            <img
-              src={product.imageUrl}
-              alt={product.name}
-              className="h-20 w-20 rounded-xl border border-border object-cover"
-            />
-          )}
+      {/* El precio y el stock NO se repiten acá: el bloque de compra es el único
+          que los muestra (y los actualiza al cambiar de variante). Antes había dos
+          precios en pantalla y el de arriba no reaccionaba a la variante. */}
+      <header className="mt-5 flex items-start gap-4 border-b border-border pb-5">
+        {product.imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- imagen cargada por el comercio
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="h-24 w-24 shrink-0 rounded-2xl border border-border object-cover sm:h-28 sm:w-28"
+          />
+        )}
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-[2px] text-tertiary">
+            {product.category ?? shop.category ?? t('product.fallbackCategory')}
+          </p>
+          <h1 className="mt-1 text-[1.75rem] font-semibold leading-tight tracking-tight sm:text-4xl">
+            {product.name}
+          </h1>
+          <p className="mt-2 text-body text-secondary">
+            <Link
+              href={`/${shop.slug}`}
+              className="underline-offset-2 hover:text-primary hover:underline"
+            >
+              {shop.name}
+            </Link>
+            {product.brand && <span className="text-tertiary"> · {product.brand}</span>}
+          </p>
         </div>
       </header>
 
       {product.description && (
-        <section className="mt-5">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
-            {t('product.description')}
-          </h2>
-          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-secondary">{product.description}</p>
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-primary">{t('product.description')}</h2>
+          <p className="mt-2 whitespace-pre-line text-body leading-relaxed text-secondary">
+            {product.description}
+          </p>
         </section>
       )}
 
@@ -109,7 +105,11 @@ export default async function StoreProductPage({ params }: PageProps) {
           slug: product.slug,
           name: product.name,
           brand: product.brand ?? '',
-          price: product.priceCents / 100,
+          // Centavos: la conversión a unidades ocurre UNA vez, al armar la
+          // línea del carrito (`centsToUnits`). Antes se mandaba el precio base
+          // en unidades y la variante en centavos, y el carrito multiplicaba
+          // por 100 cuando había variante.
+          priceCents: product.priceCents,
           category: product.category ?? shop.category ?? '',
           description: product.description ?? '',
           imageUrl: product.imageUrl,
@@ -124,15 +124,15 @@ export default async function StoreProductPage({ params }: PageProps) {
       />
 
       <section className="mt-8 rounded-2xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-semibold">{t('product.pickup')}</h2>
-        <p className="mt-1 text-sm text-secondary">
+        <h2 className="text-body font-semibold">{t('product.pickup')}</h2>
+        <p className="mt-1 text-body text-secondary">
           {shop.address
             ? t('product.pickupAt', {
                 address: `${shop.address}${shop.district ? `, ${shop.district}` : ''}`,
               })
             : t('product.pickupCoordinate')}
         </p>
-        <p className="mt-1 text-xs text-muted">{t('product.stockNote')}</p>
+        <p className="mt-1 text-sm text-tertiary">{t('product.stockNote')}</p>
       </section>
     </main>
   );

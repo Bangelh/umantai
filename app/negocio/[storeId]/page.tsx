@@ -14,7 +14,7 @@ import { StoreBilling } from './StoreBilling';
 import { resolveAnalyticsRange } from '@/lib/analytics';
 import { orderStatusLabel } from '@/lib/i18n/status';
 import { getCurrentUser } from '@/lib/current-user.server';
-import { formatDate as formatDateLocale, formatMoney } from '@/lib/format';
+import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
 import { getTranslator } from '@/lib/i18n/server';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
 import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
@@ -182,7 +182,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
                     </p>
                   </div>
                   <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                    {formatMoney(Math.round(order.total * 100), order.currency, locale)}
+                    {formatMoney(unitsToCents(order.total), order.currency, locale)}
                   </div>
                 </div>
               </li>

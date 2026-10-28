@@ -9,6 +9,7 @@ import {
 } from "@/lib/commerce";
 import { PayButton } from "./PayButton";
 import { isOnlinePaymentEnabled } from "@/lib/online-payments";
+import { formatMoneyUnits } from "@/lib/format";
 import { getTranslator } from "@/lib/i18n/server";
 import type { Translator } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/dictionaries";
@@ -32,18 +33,20 @@ import type { MessageKey } from "@/lib/i18n/dictionaries";
  * descarta los PIN vencidos— y se renderiza en grande, tipo ticket.
  */
 
+// Tonos con tokens del sistema (funcionan igual en claro y oscuro). Antes usaban
+// `text-success` / `bg-surface` fijos: en tema claro quedaban ilegibles.
 const STATUS_TONES: Record<OrderStatus, string> = {
-  pending_payment: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  confirmed: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  preparing: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  ready_for_pickup: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  picked_up: "border-white/20 bg-white/5 text-white/80",
-  out_for_delivery: "border-white/20 bg-white/5 text-white/80",
-  delivered: "border-white/20 bg-white/5 text-white/80",
-  completed: "border-white/20 bg-white/5 text-white/80",
-  cancelled: "border-red-500/30 bg-red-500/10 text-red-300",
-  expired: "border-red-500/30 bg-red-500/10 text-red-300",
-  refunded: "border-red-500/30 bg-red-500/10 text-red-300",
+  pending_payment: "border-warning/40 bg-warning/10 text-warning",
+  confirmed: "border-success/40 bg-success/10 text-success",
+  preparing: "border-success/40 bg-success/10 text-success",
+  ready_for_pickup: "border-success/40 bg-success/10 text-success",
+  picked_up: "border-border-strong bg-surface-raised text-secondary",
+  out_for_delivery: "border-border-strong bg-surface-raised text-secondary",
+  delivered: "border-border-strong bg-surface-raised text-secondary",
+  completed: "border-border-strong bg-surface-raised text-secondary",
+  cancelled: "border-destructive/40 bg-destructive/10 text-destructive",
+  expired: "border-destructive/40 bg-destructive/10 text-destructive",
+  refunded: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -58,9 +61,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 type PaymentReturnFlag = "exitoso" | "pendiente" | "fallido";
 
 const PAYMENT_RETURN_TONES: Record<PaymentReturnFlag, string> = {
-  exitoso: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-  pendiente: "border-amber-500/30 bg-amber-500/10 text-amber-200",
-  fallido: "border-red-500/30 bg-red-500/10 text-red-200",
+  exitoso: "border-info/40 bg-info/10 text-info",
+  pendiente: "border-warning/40 bg-warning/10 text-warning",
+  fallido: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
 function readPaymentReturnFlag(value: string | string[] | undefined): PaymentReturnFlag | null {
@@ -69,12 +72,15 @@ function readPaymentReturnFlag(value: string | string[] | undefined): PaymentRet
   return null;
 }
 
-function formatMoney(amount: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat("es-PE", { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+/**
+ * Los importes del pedido están en UNIDADES (NUMERIC(10,2)), no en centavos.
+ * Se formatean con el helper único de `lib/format.ts` para que el símbolo, el
+ * separador y el locale coincidan con el carrito; antes esta página armaba su
+ * propio `Intl.NumberFormat` y mostraba "S/ 12.00" donde el carrito decía
+ * "S/ 12,00".
+ */
+function money(amount: number, currency: string): string {
+  return formatMoneyUnits(amount, currency, "es");
 }
 
 /**
@@ -118,7 +124,7 @@ function Notice({
     // aunque la reserva ya venció y el stock volvió a estar disponible.
     if (evaluateOrderPayability(order) !== "payable") {
       return (
-        <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+        <p className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-4 text-body text-destructive">
           {expiresAt
             ? t("order.notice.expiredReservationAt", { date: expiresAt })
             : t("order.notice.expiredReservation")}
@@ -127,7 +133,7 @@ function Notice({
     }
 
     return (
-      <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
+      <p className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4 text-body text-warning">
         {expiresAt ? t("order.notice.holdingUntil", { date: expiresAt }) : t("order.notice.holding")}
       </p>
     );
@@ -135,7 +141,7 @@ function Notice({
 
   if (order.status === "cancelled" || order.status === "expired") {
     return (
-      <p className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+      <p className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-4 text-body text-destructive">
         {t("order.notice.inactive")}
       </p>
     );
@@ -149,7 +155,7 @@ function Notice({
     // Sin PIN vivo —venció a los 7 días, ya se usó o se revocó— el comprador vería
     // "Ready for pickup" y ningún código. Hay que decirle que no venga y que pregunte.
     return (
-      <p className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
+      <p className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4 text-body text-warning">
         {order.lockerCode
           ? t("order.notice.readyAt", { location: order.lockerCode })
           : t("order.notice.ready")}
@@ -184,9 +190,9 @@ function PickupCodeTicket({
   return (
     <section
       aria-labelledby="pickup-code-heading"
-      className="mt-6 rounded-3xl border-2 border-emerald-400/60 bg-emerald-500/10 px-6 pt-6 pb-0 overflow-hidden"
+      className="mt-6 rounded-3xl border-2 border-success/50 bg-success/10 px-6 pt-6 pb-0 overflow-hidden"
     >
-      <p id="pickup-code-heading" className="text-center text-xs tracking-[0.3em] text-emerald-300">
+      <p id="pickup-code-heading" className="text-center text-xs tracking-[0.3em] text-success">
         {t("order.pickupKicker")}
       </p>
 
@@ -197,24 +203,24 @@ function PickupCodeTicket({
         {code.code.split("").map((digit, index) => (
           <span
             key={`${index}-${digit}`}
-            className="w-12 sm:w-16 rounded-2xl bg-neutral-950/70 py-4 text-center font-mono text-4xl sm:text-5xl font-bold tabular-nums text-white"
+            className="w-12 sm:w-16 rounded-2xl bg-background/80 py-4 text-center font-mono text-4xl sm:text-5xl font-bold tabular-nums text-primary"
           >
             {digit}
           </span>
         ))}
       </div>
 
-      <p className="mt-5 text-center text-sm text-emerald-100">
+      <p className="mt-5 text-center text-body text-secondary">
         {t("order.pickupBody")}
       </p>
 
-      <dl className="mt-6 -mx-6 grid grid-cols-2 gap-px border-t-2 border-dashed border-emerald-400/40 bg-emerald-400/30 text-center">
-        <div className="bg-neutral-950/80 px-4 py-4">
-          <dt className="text-[11px] tracking-widest text-white/50">{t("order.pickupAt")}</dt>
+      <dl className="mt-6 -mx-6 grid grid-cols-2 gap-px border-t-2 border-dashed border-success/40 bg-success/30 text-center">
+        <div className="bg-surface px-4 py-4">
+          <dt className="text-[11px] tracking-widest text-tertiary">{t("order.pickupAt")}</dt>
           <dd className="mt-1 font-semibold break-words">{location}</dd>
         </div>
-        <div className="bg-neutral-950/80 px-4 py-4">
-          <dt className="text-[11px] tracking-widest text-white/50">
+        <div className="bg-surface px-4 py-4">
+          <dt className="text-[11px] tracking-widest text-tertiary">
             {t("order.pickupValidUntil")}
           </dt>
           <dd className="mt-1 font-semibold">{expiresAt ?? t("order.askStore")}</dd>
@@ -247,13 +253,13 @@ export default async function OrderStatusPage({
     // Típicamente: base de datos sin configurar en un preview deploy.
     console.error("Order page: could not load order", error);
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-8">
+      <div className="min-h-screen bg-background text-primary flex items-center justify-center px-8">
         <div className="max-w-md text-center">
           <h1 className="text-3xl tracking-tight mb-4">{t("order.loadFailedTitle")}</h1>
-          <p className="text-white/60 mb-8">{t("order.loadFailedBody")}</p>
+          <p className="text-secondary mb-8">{t("order.loadFailedBody")}</p>
           <Link
-            href="/products"
-            className="inline-flex h-12 items-center justify-center rounded-full bg-white px-8 text-black font-medium hover:bg-white/90"
+            href="/"
+            className="inline-flex h-12 items-center justify-center rounded-full bg-brand px-8 text-background font-medium hover:opacity-90"
           >
             {t("order.backToCollection")}
           </Link>
@@ -326,20 +332,23 @@ export default async function OrderStatusPage({
       : null;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <div className="max-w-3xl mx-auto px-8 py-12">
-        <Link href="/products" className="text-sm text-white/50 hover:text-white/80">
-          {t("order.continueShopping")}
+    <div className="min-h-screen bg-background text-primary">
+      <div className="max-w-3xl mx-auto px-4 py-8 sm:px-6 sm:py-10">
+        <Link
+          href="/"
+          className="inline-flex min-h-11 items-center text-body text-secondary underline-offset-4 hover:text-primary hover:underline"
+        >
+          ← {t("order.continueShopping")}
         </Link>
 
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <h1 className="text-4xl sm:text-5xl tracking-tighter font-semibold">
             {order.orderNumber}
           </h1>
-          <span className={`rounded-full border px-4 py-1 text-sm ${statusTone}`}>{statusLabel}</span>
+          <span className={`rounded-full border px-4 py-1 text-body ${statusTone}`}>{statusLabel}</span>
           {simulated && (
             <span
-              className="rounded-full border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-1 text-sm text-fuchsia-200"
+              className="rounded-full border border-warning/40 bg-warning/10 px-4 py-1 text-body text-warning"
               title={t("order.simulatedTitle")}
             >
               {t("order.simulatedBadge")}
@@ -347,7 +356,7 @@ export default async function OrderStatusPage({
           )}
         </div>
 
-        <p className="mt-3 text-sm text-white/50">
+        <p className="mt-3 text-body text-tertiary">
           {placedAt ? t("order.placedOn", { date: placedAt }) : t("order.justPlaced")}
           {order.itemCount > 0
             ? ` · ${t(
@@ -360,7 +369,7 @@ export default async function OrderStatusPage({
         <Notice order={order} hasPickupCode={pickupCode !== null} t={t} />
 
         {returnNotice && (
-          <div className={`mt-4 rounded-2xl border px-5 py-4 text-sm ${returnNotice.tone}`}>
+          <div className={`mt-4 rounded-2xl border px-5 py-4 text-body ${returnNotice.tone}`}>
             <p>{t(returnNotice.messageKey)}</p>
             <Link href={`/pedido/${order.publicToken}`} className="mt-2 inline-block underline underline-offset-4">
               {t("order.checkAgain")}
@@ -374,27 +383,27 @@ export default async function OrderStatusPage({
           <div
             className={`mt-6 rounded-3xl border p-6 ${
               onlinePaymentEnabled
-                ? "border-white/10 bg-neutral-900"
-                : "border-amber-500/30 bg-amber-500/10"
+                ? "border-border bg-surface"
+                : "border-warning/40 bg-warning/10"
             }`}
           >
-            <div className="text-xs tracking-widest text-white/50 mb-2">
+            <div className="text-xs tracking-widest text-tertiary mb-2">
               {t("order.paymentKicker")}
             </div>
             {onlinePaymentEnabled ? (
               <>
-                <p className="text-sm text-white/70 mb-5">{t("order.paymentBody")}</p>
+                <p className="text-body text-secondary mb-5">{t("order.paymentBody")}</p>
                 <PayButton
                   publicToken={order.publicToken}
-                  amountLabel={formatMoney(order.total, order.currency)}
+                  amountLabel={money(order.total, order.currency)}
                 />
               </>
             ) : (
               <>
-                <p className="text-sm font-medium text-amber-200">
+                <p className="text-body font-medium text-warning">
                   {t("order.paymentUnavailableTitle")}
                 </p>
-                <p className="mt-2 text-sm text-white/70">
+                <p className="mt-2 text-body text-secondary">
                   {t("order.paymentUnavailableBody")}
                 </p>
               </>
@@ -408,19 +417,19 @@ export default async function OrderStatusPage({
           {order.items.map((item) => (
             <div
               key={item.id}
-              className="flex items-center gap-5 border border-white/10 bg-neutral-900 p-5 rounded-3xl"
+              className="flex items-center gap-5 border border-border bg-surface p-5 rounded-3xl"
             >
-              <div className="w-16 h-16 rounded-2xl bg-neutral-800 flex-shrink-0 flex items-center justify-center text-lg font-semibold text-white/60">
+              <div className="w-16 h-16 rounded-2xl bg-surface-raised flex-shrink-0 flex items-center justify-centertext-body-lg font-semibold text-secondary">
                 {item.productName.slice(0, 1).toUpperCase()}
               </div>
 
               <div className="flex-1 min-w-0">
                 {item.productBrand && (
-                  <div className="text-xs text-white/50">{item.productBrand}</div>
+                  <div className="text-xs text-tertiary">{item.productBrand}</div>
                 )}
                 <div className="font-semibold tracking-tight truncate">{item.productName}</div>
                 {item.variantKey && (
-                  <div className="text-xs text-white/40 mt-1">
+                  <div className="text-sm text-tertiary mt-1">
                     {Object.entries(item.variant)
                       .filter(([, value]) => Boolean(value))
                       .map(([key, value]) => `${key}: ${value}`)
@@ -430,9 +439,9 @@ export default async function OrderStatusPage({
               </div>
 
               <div className="text-right">
-                <div className="font-mono">{formatMoney(item.lineTotal, order.currency)}</div>
-                <div className="text-xs text-white/40 mt-1">
-                  {item.quantity} × {formatMoney(item.unitPrice, order.currency)}
+                <div className="font-mono">{money(item.lineTotal, order.currency)}</div>
+                <div className="text-sm text-tertiary mt-1">
+                  {item.quantity} × {money(item.unitPrice, order.currency)}
                 </div>
               </div>
             </div>
@@ -440,83 +449,83 @@ export default async function OrderStatusPage({
         </div>
 
         {/* Totales */}
-        <div className="mt-10 border-t border-white/10 pt-6 space-y-2 text-sm">
-          <div className="flex justify-between text-white/70">
+        <div className="mt-10 border-t border-border pt-6 space-y-2 text-base">
+          <div className="flex justify-between text-secondary">
             <span>{t("order.subtotal")}</span>
-            <span className="font-mono">{formatMoney(order.subtotal, order.currency)}</span>
+            <span className="font-mono">{money(order.subtotal, order.currency)}</span>
           </div>
 
           {order.discountTotal > 0 && (
-            <div className="flex justify-between text-white/70">
+            <div className="flex justify-between text-secondary">
               <span>{t("order.discount")}</span>
-              <span className="font-mono">−{formatMoney(order.discountTotal, order.currency)}</span>
+              <span className="font-mono">−{money(order.discountTotal, order.currency)}</span>
             </div>
           )}
 
           {order.taxTotal > 0 && (
-            <div className="flex justify-between text-white/70">
+            <div className="flex justify-between text-secondary">
               <span>{t("order.tax")}</span>
-              <span className="font-mono">{formatMoney(order.taxTotal, order.currency)}</span>
+              <span className="font-mono">{money(order.taxTotal, order.currency)}</span>
             </div>
           )}
 
           {order.shippingTotal > 0 && (
-            <div className="flex justify-between text-white/70">
+            <div className="flex justify-between text-secondary">
               <span>{t("order.shipping")}</span>
-              <span className="font-mono">{formatMoney(order.shippingTotal, order.currency)}</span>
+              <span className="font-mono">{money(order.shippingTotal, order.currency)}</span>
             </div>
           )}
 
-          <div className="flex justify-between items-baseline border-t border-white/10 pt-4 text-xl">
+          <div className="flex justify-between items-baseline border-t border-border pt-4 text-xl">
             <span>{t("order.total")}</span>
             <span className="font-mono tracking-tighter">
-              {formatMoney(order.total, order.currency)}
+              {money(order.total, order.currency)}
             </span>
           </div>
         </div>
 
         {/* Entrega y contacto */}
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
-          <div className="border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">
+          <div className="border border-border bg-surface rounded-3xl p-5">
+            <div className="text-xs tracking-widest text-tertiary mb-2">
               {t("order.fulfillment")}
             </div>
             <div className="font-medium">{fulfillmentLabel}</div>
             {order.lockerCode && (
-              <div className="text-sm text-white/60 mt-1">
+              <div className="text-body text-secondary mt-1">
                 {t("order.location", { location: order.lockerCode })}
               </div>
             )}
           </div>
 
-          <div className="border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">
+          <div className="border border-border bg-surface rounded-3xl p-5">
+            <div className="text-xs tracking-widest text-tertiary mb-2">
               {t("order.contact")}
             </div>
             <div className="font-medium break-all">{order.contactEmail}</div>
             {order.contactPhone && (
-              <div className="text-sm text-white/60 mt-1">{order.contactPhone}</div>
+              <div className="text-body text-secondary mt-1">{order.contactPhone}</div>
             )}
           </div>
         </div>
 
         {order.customerNote && (
-          <div className="mt-4 border border-white/10 bg-neutral-900 rounded-3xl p-5">
-            <div className="text-xs tracking-widest text-white/50 mb-2">
+          <div className="mt-4 border border-border bg-surface rounded-3xl p-5">
+            <div className="text-xs tracking-widest text-tertiary mb-2">
               {t("order.yourNote")}
             </div>
-            <p className="text-sm text-white/80 whitespace-pre-wrap">{order.customerNote}</p>
+            <p className="text-body text-secondary whitespace-pre-wrap">{order.customerNote}</p>
           </div>
         )}
 
-        <p className="mt-10 text-xs text-white/40">
+        <p className="mt-10 text-sm text-tertiary">
           {t("order.saveLink")}
         </p>
 
         <p className="mt-3 text-xs">
           <Link
             href="/libro-de-reclamaciones"
-            className="text-white/60 underline underline-offset-4 hover:text-white"
+            className="text-secondary underline underline-offset-4 hover:text-primary"
           >
             {t("order.complaintsLink")}
           </Link>

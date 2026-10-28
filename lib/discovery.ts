@@ -13,7 +13,7 @@ import {
   parseRadius,
   type GeoPoint,
 } from './geo';
-import { formatMoney } from './format';
+import { formatMoney, unitsToCents } from './format';
 
 export const MAX_QUERY_LENGTH = 80;
 export const MAX_OFFSET = 1000;
@@ -252,5 +252,5 @@ export function formatPriceCents(cents: number, currency = 'PEN', locale: 'es' |
 
 export function priceToCents(price: number): number {
   if (!Number.isFinite(price) || price < 0) return 0;
-  return Math.round(price * 100);
+  return unitsToCents(price);
 }

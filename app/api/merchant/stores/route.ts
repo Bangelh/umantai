@@ -10,7 +10,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth.server';
+import { getSessionUser, resolveAuthBaseUrl } from '@/lib/auth.server';
+import { buildStoreCreatedEmail, sendTransactionalEmail } from '@/lib/email.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { createStoreForOwner, listStoresForUser } from '@/lib/stores.server';
@@ -113,10 +114,30 @@ export async function POST(request: Request) {
       contactPhone: str(body.contactPhone),
     });
 
+    // Aviso por correo: 'store created' es parte del producto (el comerciante
+    // necesita saber que el alta funcionó y qué sigue). Es best-effort: si el
+    // correo falla, la tienda YA existe y la respuesta lo dice explícitamente
+    // para que la UI no deje al usuario con la duda.
+    const email = await sendTransactionalEmail(
+      buildStoreCreatedEmail(user.email, {
+        storeName: store.name,
+        slug: store.slug,
+        panelUrl: `${resolveAuthBaseUrl()}/negocio/${store.id}`,
+        requiresVerification: !user.emailVerified,
+      }),
+    ).catch((error: unknown) => ({ status: 'failed' as const, reason: String(error) }));
+
+    console.info('[merchant-onboarding] tienda creada', {
+      storeId: store.id,
+      emailStatus: email.status,
+      ...(email.status === 'failed' ? { emailReason: email.reason } : {}),
+    });
+
     return NextResponse.json(
       {
         store,
         status: 'pending_approval',
+        email: { status: email.status, to: user.email },
         message: 'La tienda fue creada. Un administrador de UMANTAI debe activarla.',
       },
       { status: 201 },

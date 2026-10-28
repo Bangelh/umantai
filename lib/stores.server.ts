@@ -27,6 +27,7 @@ import {
 } from './catalog';
 import type { DiscoveryProduct, DiscoveryQuery, DiscoveryStore } from './discovery';
 import { normalizeQuery } from './discovery';
+import { centsToUnits } from './format';
 import {
   getPlatformSql,
   requirePlatformSql,
@@ -1203,7 +1204,7 @@ export async function resolveCheckoutProducts(
       name: String(row.name),
       brand: (row.brand as string | null) ?? null,
       imageUrl: (row.image_url as string | null) ?? null,
-      unitPrice: toNumber(row.price_cents) / 100,
+      unitPrice: centsToUnits(toNumber(row.price_cents)),
       storeId: store.id,
       storeSlug: store.slug,
     });
