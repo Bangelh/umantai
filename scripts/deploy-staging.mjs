@@ -106,7 +106,9 @@ async function main() {
   }
 
   const commit = git('rev-parse', 'HEAD');
-  const dirty = git('status', '--porcelain').length > 0;
+  // Solo cambios en archivos versionados: los artefactos locales sin trackear
+  // (notas, volcados) no afectan a lo que se despliega y no deben advertir.
+  const dirty = git('status', '--porcelain', '--untracked-files=no').length > 0;
 
   const stamp = { commit, dirty, stampedAt: new Date().toISOString() };
   writeFileSync(STAMP_FILE, `${JSON.stringify(stamp, null, 2)}\n`, 'utf8');
