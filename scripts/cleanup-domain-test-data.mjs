@@ -261,8 +261,9 @@ async function main() {
       [userIds],
     );
     const deletedVerifications = await client.query(
-      `DELETE FROM verifications WHERE lower(value) = ANY($1::text[]) OR lower(identifier) = ANY($1::text[])`,
-      [...TEST_EMAILS, ...userIds.map((id) => id.toLowerCase())],
+      `DELETE FROM verifications
+        WHERE lower(identifier) = ANY($1::text[]) OR lower(value) = ANY($2::text[])`,
+      [TEST_EMAILS, userIds.map((id) => id.toLowerCase())],
     );
     const deletedStoreProducts = store
       ? await client.query('DELETE FROM store_products WHERE store_id = $1', [store.id])
@@ -336,4 +337,6 @@ async function main() {
   }
 }
 
-void main();
+// `finally`: el cliente cierra SIEMPRE, también en el camino de dry-run (si no,
+// el pool mantiene vivo el proceso y el contenedor no termina).
+void main().finally(() => client.end().catch(() => undefined));
