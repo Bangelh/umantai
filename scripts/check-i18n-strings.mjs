@@ -7,7 +7,13 @@
  *   1. CLAVES: toda clave usada con `t('…')` / `translate('…', '…')` existe en
  *      `lib/i18n/dictionaries.ts` (es y en). Un typo se detecta acá, no en QA.
  *   2. STRINGS: textos JSX y atributos visibles (placeholder, aria-label, alt,
- *      title) que siguen escritos en español fuera del diccionario.
+ *      title) que siguen escritos en español fuera del diccionario, más las
+ *      propiedades de etiqueta con texto literal (`label: 'Carrito'`) en
+ *      módulos compartidos, que no se traducen nunca.
+ *
+ * El alcance incluye `app/`, `components/`, `lib/` y `config/`: el P2 del footer
+ * (etiquetas en español dentro de una página en inglés) vivía justamente en
+ * `lib/navigation.ts`, fuera del alcance anterior.
  *
  * Uso:
  *   node scripts/check-i18n-strings.mjs           # informe; falla solo por claves
@@ -24,7 +30,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SCAN_DIRS = ['app', 'components'];
+const SCAN_DIRS = ['app', 'components', 'lib', 'config'];
 const SKIP_DIRS = new Set(['node_modules', '.next', '.open-next', 'dist', 'coverage']);
 
 const ARGS = new Set(process.argv.slice(2));
@@ -37,6 +43,10 @@ const JSON_OUT = ARGS.has('--json');
  * archivos nuevos acá: la salida es usar `useI18n()`.
  */
 const ALLOWED_FILES = new Map([
+  [
+    'lib/i18n/dictionaries.ts',
+    'Es el diccionario es/en: acá VIVE el texto traducible, no es deuda pendiente.',
+  ],
   ['app/admin/page.tsx', 'Panel legacy de Platform Admin; se reescribe en la fase de paneles.'],
   ['app/admin/notes/page.tsx', 'Demo de notas Supabase, no forma parte del producto.'],
   ['app/debug/supabase/page.tsx', 'Diagnóstico interno, no indexado ni visible al público.'],
@@ -78,6 +88,18 @@ const ALLOWED_FILES = new Map([
     'Terminal de kiosco operado por personal en tienda: interfaz de un solo idioma (es).',
   ],
   ['app/admin/kiosco/page.tsx', 'Terminal de kiosco operado por personal en tienda: es.'],
+  [
+    'lib/legal.ts',
+    'Contenido de los documentos legales: solo existe en español hasta que el negocio apruebe las versiones en inglés (misma razón que app/legal/*).',
+  ],
+  [
+    'lib/email.server.ts',
+    'Correo transaccional de auth: el cuerpo se redacta en español y no depende del locale de quien navega.',
+  ],
+  [
+    'lib/notifications.server.ts',
+    'Avisos al comprador y al kiosco (correo y pantalla operativa): español, igual que app/admin/kiosco/*.',
+  ],
 ]);
 
 /**
@@ -145,7 +167,9 @@ function walk(dir) {
     const full = join(dir, entry);
     const info = statSync(full);
     if (info.isDirectory()) out.push(...walk(full));
-    else if (entry.endsWith('.tsx')) out.push(full);
+    else if (entry.endsWith('.test.ts') || entry.endsWith('.test.tsx') || entry.endsWith('.d.ts')) {
+      continue;
+    } else if (entry.endsWith('.tsx') || entry.endsWith('.ts')) out.push(full);
   }
   return out;
 }
@@ -199,6 +223,16 @@ function scanStrings(source) {
     const value = match[2].replace(/\s+/g, ' ').trim();
     if (!looksSpanish(value)) continue;
     findings.push({ line: lineAt(clean, match.index), kind: match[1], value });
+  }
+
+  // Propiedades de etiqueta con texto literal. Un módulo compartido
+  // (`lib/navigation.ts`) que guarda `label: 'Carrito'` es texto de interfaz que
+  // no se puede traducir: se escapa del chequeo de JSX y del de atributos.
+  const labelRe = /^[ \t]*(label|ariaLabel|heading|helperText)[ \t]*:[ \t]*(["'])([^"'\n]+)\2[ \t]*,?[ \t]*$/gm;
+  while ((match = labelRe.exec(clean))) {
+    const value = match[3].replace(/\s+/g, ' ').trim();
+    if (!looksSpanish(value)) continue;
+    findings.push({ line: lineAt(clean, match.index), kind: `${match[1]}:`, value });
   }
 
   return findings;

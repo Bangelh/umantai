@@ -3,18 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useI18n } from '@/components/i18n/I18nProvider';
-import type { MessageKey } from '@/lib/i18n/dictionaries';
 import { ADMIN_NAV_LINKS } from '@/lib/navigation';
-
-const LABEL_KEYS: Record<string, MessageKey> = {
-  '/admin': 'adminNav.catalog',
-  '/admin/analytics': 'adminNav.analytics',
-  '/admin/inventario': 'adminNav.inventory',
-  '/admin/kiosco': 'adminNav.kiosk',
-  '/admin/notes': 'adminNav.notes',
-  '/admin/planes': 'adminNav.plans',
-  '/admin/reclamaciones': 'adminNav.complaints',
-};
 
 /** Nav común del panel. Scroll horizontal en móvil; foco visible por token. */
 export function AdminNav() {
@@ -37,7 +26,7 @@ export function AdminNav() {
                     : 'text-tertiary hover:bg-surface-raised hover:text-primary'
                 }`}
               >
-                {LABEL_KEYS[link.href] ? t(LABEL_KEYS[link.href]) : link.label}
+                {t(link.labelKey)}
               </Link>
             </li>
           );

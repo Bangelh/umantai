@@ -40,7 +40,7 @@ export async function SiteFooter() {
               {SHOP_NAV_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href} className="text-secondary hover:text-primary">
-                    {link.label}
+                    {t(link.labelKey)}
                   </Link>
                 </li>
               ))}
@@ -53,7 +53,7 @@ export async function SiteFooter() {
               {HELP_NAV_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href} className="text-secondary hover:text-primary">
-                    {link.label}
+                    {t(link.labelKey)}
                   </Link>
                 </li>
               ))}
@@ -66,7 +66,7 @@ export async function SiteFooter() {
               {LEGAL_NAV_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href} className="text-secondary hover:text-primary">
-                    {link.label}
+                    {t(link.labelKey)}
                   </Link>
                 </li>
               ))}
