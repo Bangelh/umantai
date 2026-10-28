@@ -17,6 +17,11 @@ interface ReadyOrdersListProps {
   orders: KioskOrderSummary[];
   /** `true` cuando la última actualización falló: lo que se ve puede estar viejo. */
   isStale: boolean;
+  /**
+   * Momento de la última lectura de la cola (la manda el servidor). Se usa para
+   * decidir si un PIN ya venció sin llamar a `Date.now()` durante el render.
+   */
+  referenceIso: string | null;
 }
 
 function formatExpiry(value: string | null): string | null {
@@ -33,7 +38,7 @@ function formatExpiry(value: string | null): string | null {
   }).format(date);
 }
 
-export function ReadyOrdersList({ orders, isStale }: ReadyOrdersListProps) {
+export function ReadyOrdersList({ orders, isStale, referenceIso }: ReadyOrdersListProps) {
   if (orders.length === 0) {
     return (
       <div className="rounded-3xl border-2 border-dashed border-white/20 bg-neutral-900 p-8 text-center">
@@ -64,6 +69,15 @@ export function ReadyOrdersList({ orders, isStale }: ReadyOrdersListProps) {
       <ul className="space-y-3">
         {orders.map((order) => {
           const expiry = formatExpiry(order.codeExpiresAt);
+          // Un PIN vencido NO se puede canjear, pero el pedido sigue ocupando
+          // stock y lugar en la cola. La lista lo dice en voz alta para que la
+          // operaria no intente tipear un código que ya no existe: es el cliente
+          // quien debe pedir uno nuevo desde su pedido.
+          const reference = referenceIso ? Date.parse(referenceIso) : Number.NaN;
+          const expired =
+            order.codeExpiresAt && Number.isFinite(reference)
+              ? Date.parse(order.codeExpiresAt) < reference
+              : false;
 
           return (
             <li
@@ -87,8 +101,12 @@ export function ReadyOrdersList({ orders, isStale }: ReadyOrdersListProps) {
                 {order.itemSummary ?? `${order.itemCount} producto(s)`}
               </p>
 
-              {expiry && (
-                <p className="mt-2 text-xl text-neutral-400">El PIN vence el {expiry}</p>
+              {expired ? (
+                <p className="mt-3 rounded-xl border-2 border-amber-400/70 bg-amber-950/50 px-4 py-2 text-2xl font-bold text-amber-100">
+                  PIN VENCIDO — el cliente debe pedir uno nuevo.
+                </p>
+              ) : (
+                expiry && <p className="mt-2 text-xl text-neutral-400">El PIN vence el {expiry}</p>
               )}
             </li>
           );

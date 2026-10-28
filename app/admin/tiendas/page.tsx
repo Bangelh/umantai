@@ -222,7 +222,11 @@ export default function AdminStoresPage() {
 
       {stores && (
         <>
-          <p className="mt-5 text-sm text-tertiary">{t('adminStores.count', { count: filtered.length })}</p>
+          <p className="mt-5 text-sm text-tertiary">
+            {filtered.length === 1
+              ? t('adminStores.countOne')
+              : t('adminStores.count', { count: filtered.length })}
+          </p>
 
           {filtered.length === 0 ? (
             <p className="mt-2 rounded-2xl border border-border bg-surface p-6 text-center text-[15px] text-secondary">
@@ -267,12 +271,15 @@ export default function AdminStoresPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/${store.slug}`}
-                          className="flex h-11 items-center rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised"
-                        >
-                          {t('adminStores.open')}
-                        </Link>
+                        {/* Una tienda inactiva no tiene vitrina pública (404): no se enlaza. */}
+                        {store.active && (
+                          <Link
+                            href={`/${store.slug}`}
+                            className="flex h-11 items-center rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised"
+                          >
+                            {t('adminStores.open')}
+                          </Link>
+                        )}
                         <button
                           type="button"
                           onClick={() => void toggle(store)}

@@ -409,7 +409,7 @@ export default function KioscoPage() {
               onBackspace={() => setPin((current) => current.slice(0, -1))}
               onClear={() => setPin('')}
             />
-            <ReadyOrdersList orders={queue.ready} isStale={isStale} />
+            <ReadyOrdersList orders={queue.ready} isStale={isStale} referenceIso={lastUpdated} />
           </>
         ) : (
           <>

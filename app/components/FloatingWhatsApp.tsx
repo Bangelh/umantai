@@ -45,6 +45,10 @@ export function FloatingWhatsApp({
 
   if (numbers.size === 0) return null;
 
+  // En el panel y en la terminal de retiro no va: el botón se monta sobre las
+  // tablas y los botones del operador, y ese canal es de atención al comprador.
+  if (pathname?.startsWith('/admin') || pathname?.startsWith('/kiosk')) return null;
+
   const sharedNumber = numbers.size === 1;
 
   // Generate contextual message based on current page

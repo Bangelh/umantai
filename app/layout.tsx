@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { Toaster } from "sonner";
 import { NavActions } from "./components/NavActions";
+import { RouteChrome } from "./components/RouteChrome";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { SiteFooter } from "./components/SiteFooter";
@@ -128,25 +129,28 @@ export default async function RootLayout({
           messages={getMessages(locale)}
           fallbackMessages={getMessages(DEFAULT_LOCALE)}
         >
-          {/* Top Navigation */}
-          <nav aria-label={t('nav.primary')} className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-50">
-            <div className="max-w-7xl mx-auto px-5 sm:px-8 h-20 flex items-center justify-between gap-4">
-              <Link href="/" className="shrink-0" aria-label={t('nav.homeAria')}>
-                <BrandLogo />
-              </Link>
-              <div className="flex items-center gap-2 sm:gap-4">
-                <AuthLink />
-                <NavActions />
-              </div>
+          <RouteChrome
+            header={
+              /* Top Navigation */
+              <nav aria-label={t('nav.primary')} className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-50">
+                <div className="max-w-7xl mx-auto px-5 sm:px-8 h-20 flex items-center justify-between gap-4">
+                  <Link href="/" className="shrink-0" aria-label={t('nav.homeAria')}>
+                    <BrandLogo />
+                  </Link>
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <AuthLink />
+                    <NavActions />
+                  </div>
+                </div>
+              </nav>
+            }
+            footer={<SiteFooter />}
+          >
+            {/* tabIndex -1: el enlace "Saltar al contenido" mueve el foco acá. */}
+            <div id="contenido" tabIndex={-1} className="flex-1 outline-none">
+              {children}
             </div>
-          </nav>
-
-          {/* tabIndex -1: el enlace "Saltar al contenido" mueve el foco acá. */}
-          <div id="contenido" tabIndex={-1} className="flex-1 outline-none">
-            {children}
-          </div>
-
-          <SiteFooter />
+          </RouteChrome>
 
           {/*
             La barra inferior es `fixed`: sin este espaciador se come el final del

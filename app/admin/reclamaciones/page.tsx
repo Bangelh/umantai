@@ -441,7 +441,9 @@ export default function AdminComplaintsPage() {
                 const due = dueState(complaint);
                 return (
                   <tr key={complaint.id} className="align-top">
-                    <td className="px-4 py-3 font-mono text-[13px]">{complaint.complaintNumber}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-[13px]">
+                      {complaint.complaintNumber}
+                    </td>
                     <td className="px-4 py-3 text-[13px] text-tertiary">
                       {formatDateTime(complaint.submittedAt, locale)}
                     </td>
