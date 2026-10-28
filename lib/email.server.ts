@@ -202,6 +202,9 @@ export async function sendTransactionalEmail(email: TransactionalEmail): Promise
       });
       return { status: 'failed', reason: error.message };
     }
+    // Solo propósito + id del proveedor: sirve para auditar una entrega real sin
+    // poner el destinatario ni el enlace (credencial de un solo uso) en los logs.
+    console.info('[email] enviado', { purpose: email.purpose, id: data?.id ?? null });
     return { status: 'sent', id: data?.id };
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'unknown';
