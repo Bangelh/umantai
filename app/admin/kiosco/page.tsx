@@ -350,7 +350,7 @@ export default function KioscoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 pb-24">
+    <div data-kiosk className="min-h-screen bg-neutral-950 pb-24">
       {/* Encabezado: estado del sistema, sin nada más */}
       <header className="border-b-2 border-white/15 bg-neutral-900 px-5 py-4">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3">

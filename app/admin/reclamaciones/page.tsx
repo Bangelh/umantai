@@ -281,7 +281,7 @@ export default function AdminComplaintsPage() {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="rounded-full border border-border-strong px-4 py-2 text-sm hover:bg-surface-raised disabled:opacity-50"
+            className="h-11 rounded-xl border border-border-strong px-4 text-sm hover:bg-surface-raised disabled:opacity-50"
           >
             {loading ? t('adminComplaints.loading') : t('adminComplaints.refresh')}
           </button>
@@ -332,12 +332,12 @@ export default function AdminComplaintsPage() {
           }}
           className="mt-6 grid gap-3 rounded-2xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end"
         >
-          <label className="text-xs text-tertiary">
+          <label className="text-[13px] text-tertiary">
             <span className="mb-1 block">{t('adminComplaints.status')}</span>
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
+              className="h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-[15px] text-primary"
             >
               <option value={ALL}>{t('adminComplaints.all')}</option>
               {STATUSES.map((value) => (
@@ -348,12 +348,12 @@ export default function AdminComplaintsPage() {
             </select>
           </label>
 
-          <label className="text-xs text-tertiary">
+          <label className="text-[13px] text-tertiary">
             <span className="mb-1 block">{t('adminComplaints.kind')}</span>
             <select
               value={kind}
               onChange={(event) => setKind(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
+              className="h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-[15px] text-primary"
             >
               <option value={ALL}>{t('adminComplaints.all')}</option>
               {KINDS.map((value) => (
@@ -364,28 +364,28 @@ export default function AdminComplaintsPage() {
             </select>
           </label>
 
-          <label className="text-xs text-tertiary">
+          <label className="text-[13px] text-tertiary">
             <span className="mb-1 block">{t('adminComplaints.from')}</span>
             <input
               type="date"
               value={from}
               onChange={(event) => setFrom(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
+              className="h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-[15px] text-primary"
             />
           </label>
 
-          <label className="text-xs text-tertiary">
+          <label className="text-[13px] text-tertiary">
             <span className="mb-1 block">{t('adminComplaints.to')}</span>
             <input
               type="date"
               value={to}
               onChange={(event) => setTo(event.target.value)}
-              className="h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
+              className="h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-[15px] text-primary"
             />
           </label>
 
           <div className="flex gap-2">
-            <button type="submit" className="btn-primary h-10 flex-1 px-3 text-sm" disabled={loading}>
+            <button type="submit" className="btn-primary h-11 flex-1 px-3 text-sm" disabled={loading}>
               {t('adminComplaints.apply')}
             </button>
             <button
@@ -396,7 +396,7 @@ export default function AdminComplaintsPage() {
                 setFrom('');
                 setTo('');
               }}
-              className="btn-secondary h-10 px-3 text-sm"
+              className="btn-secondary h-11 px-3 text-sm"
             >
               {t('adminComplaints.clear')}
             </button>
@@ -422,8 +422,8 @@ export default function AdminComplaintsPage() {
         )}
 
         <div className="mt-6 overflow-x-auto rounded-2xl border border-border">
-          <table className="w-full min-w-[760px] text-sm">
-            <thead className="border-b border-border bg-surface text-left text-xs uppercase tracking-wide text-tertiary">
+          <table className="w-full min-w-[820px] text-[15px]">
+            <thead className="border-b border-border bg-surface text-left text-[13px] uppercase tracking-wide text-tertiary">
               <tr>
                 <th className="px-4 py-3">{t('adminComplaints.number')}</th>
                 <th className="px-4 py-3">{t('adminComplaints.date')}</th>
@@ -441,23 +441,23 @@ export default function AdminComplaintsPage() {
                 const due = dueState(complaint);
                 return (
                   <tr key={complaint.id} className="align-top">
-                    <td className="px-4 py-3 font-mono text-xs">{complaint.complaintNumber}</td>
-                    <td className="px-4 py-3 text-xs text-tertiary">
+                    <td className="px-4 py-3 font-mono text-[13px]">{complaint.complaintNumber}</td>
+                    <td className="px-4 py-3 text-[13px] text-tertiary">
                       {formatDateTime(complaint.submittedAt, locale)}
                     </td>
                     <td className="px-4 py-3">{t(KIND_KEYS[complaint.kind])}</td>
                     <td className="px-4 py-3">
                       <div className="font-medium">{complaint.consumerName}</div>
-                      <div className="text-xs text-tertiary">{complaint.consumerEmail}</div>
+                      <div className="text-[13px] text-tertiary">{complaint.consumerEmail}</div>
                     </td>
-                    <td className="max-w-[16rem] px-4 py-3 text-xs">{complaint.relatedItem}</td>
-                    <td className="max-w-[12rem] px-4 py-3 text-xs">
+                    <td className="max-w-[16rem] px-4 py-3 text-[13px]">{complaint.relatedItem}</td>
+                    <td className="max-w-[12rem] px-4 py-3 text-[13px]">
                       <div className="truncate" title={complaint.assignedTo}>
                         {complaint.assignedTo}
                       </div>
                     </td>
                     <td
-                      className={`px-4 py-3 text-xs ${
+                      className={`px-4 py-3 text-[13px] ${
                         due === 'overdue'
                           ? 'font-medium text-destructive'
                           : due === 'soon'
@@ -467,20 +467,20 @@ export default function AdminComplaintsPage() {
                     >
                       {formatDateTime(complaint.dueAt, locale)}
                       {due === 'overdue' && (
-                        <span className="mt-1 block text-[10px] uppercase tracking-wide">
+                        <span className="mt-1 block text-xs font-medium uppercase tracking-wide">
                           {t('adminComplaints.overdue')}
                         </span>
                       )}
                       {due === 'soon' && (
-                        <span className="mt-1 block text-[10px] uppercase tracking-wide">
+                        <span className="mt-1 block text-xs font-medium uppercase tracking-wide">
                           {t('adminComplaints.dueSoon')}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs">
+                    <td className="px-4 py-3 text-[13px]">
                       {t(STATUS_KEYS[complaint.status])}
                       {complaint.overdue && (
-                        <span className="mt-1 block text-[10px] uppercase tracking-wide text-destructive">
+                        <span className="mt-1 block text-xs font-medium uppercase tracking-wide text-destructive">
                           {t('adminComplaints.overdue')}
                         </span>
                       )}
@@ -489,7 +489,7 @@ export default function AdminComplaintsPage() {
                       <button
                         type="button"
                         onClick={() => void openComplaint(complaint.id)}
-                        className="rounded-full border border-border-strong px-3 py-1 text-xs hover:bg-surface-raised"
+                        className="h-11 rounded-xl border border-border-strong px-4 text-sm hover:bg-surface-raised"
                       >
                         {t('adminComplaints.open')}
                       </button>
@@ -501,7 +501,7 @@ export default function AdminComplaintsPage() {
           </table>
 
           {!loading && complaints.length === 0 && (
-            <p className="px-4 py-8 text-center text-sm text-tertiary">{t('adminComplaints.empty')}</p>
+            <p className="px-4 py-8 text-center text-[15px] text-tertiary">{t('adminComplaints.empty')}</p>
           )}
         </div>
 
@@ -515,7 +515,7 @@ export default function AdminComplaintsPage() {
                 <h2 id="complaint-detail-title" className="text-xl font-semibold">
                   {selected.complaintNumber} · {t(KIND_KEYS[selected.kind])}
                 </h2>
-                <p className="mt-1 text-xs text-tertiary">
+                <p className="mt-1 text-[13px] text-tertiary">
                   {t('adminComplaints.date')}: {formatDateTime(selected.submittedAt, locale)} ·{' '}
                   {t('adminComplaints.due')}: {formatDateTime(selected.dueAt, locale)}
                 </p>
@@ -532,32 +532,32 @@ export default function AdminComplaintsPage() {
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="rounded-full border border-border-strong px-3 py-1 text-xs hover:bg-surface-raised"
+                className="h-11 rounded-xl border border-border-strong px-4 text-sm hover:bg-surface-raised"
               >
                 {t('adminComplaints.close')}
               </button>
             </div>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-2">
-              <div className="space-y-3 text-sm">
+              <div className="space-y-3 text-[15px]">
                 <h3 className="text-xs uppercase tracking-wide text-tertiary">
                   {t('adminComplaints.contact')}
                 </h3>
                 <dl className="space-y-2">
                   <div>
-                    <dt className="text-xs text-tertiary">{t('adminComplaints.consumer')}</dt>
+                    <dt className="text-[13px] text-tertiary">{t('adminComplaints.consumer')}</dt>
                     <dd>{selected.consumerName}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-tertiary">{t('adminComplaints.document')}</dt>
+                    <dt className="text-[13px] text-tertiary">{t('adminComplaints.document')}</dt>
                     <dd className="font-mono">{selected.consumerDocument}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-tertiary">{t('adminComplaints.phone')}</dt>
+                    <dt className="text-[13px] text-tertiary">{t('adminComplaints.phone')}</dt>
                     <dd className="font-mono">{selected.consumerPhone}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-tertiary">{t('adminComplaints.email')}</dt>
+                    <dt className="text-[13px] text-tertiary">{t('adminComplaints.email')}</dt>
                     <dd className="break-all">{selected.consumerEmail}</dd>
                   </div>
                   {selected.isMinor && (
@@ -578,7 +578,7 @@ export default function AdminComplaintsPage() {
                 </dl>
               </div>
 
-              <div className="space-y-3 text-sm">
+              <div className="space-y-3 text-[15px]">
                 <h3 className="text-xs uppercase tracking-wide text-tertiary">
                   {t('adminComplaints.item')}
                 </h3>
@@ -590,11 +590,11 @@ export default function AdminComplaintsPage() {
                   </p>
                 )}
                 <div>
-                  <p className="text-xs text-tertiary">{t('complaints.detail')}</p>
+                  <p className="text-[13px] text-tertiary">{t('complaints.detail')}</p>
                   <p className="mt-1 whitespace-pre-line">{selected.detail}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-tertiary">{t('complaints.request')}</p>
+                  <p className="text-[13px] text-tertiary">{t('complaints.request')}</p>
                   <p className="mt-1 whitespace-pre-line">{selected.consumerRequest}</p>
                 </div>
               </div>
@@ -618,7 +618,7 @@ export default function AdminComplaintsPage() {
             {selected.status === 'answered' ? (
               <div className="mt-6 rounded-2xl border border-border p-4">
                 <h3 className="text-sm font-medium">{t('adminComplaints.historyTitle')}</h3>
-                <dl className="mt-3 grid gap-2 text-xs text-tertiary sm:grid-cols-2">
+                <dl className="mt-3 grid gap-2 text-[13px] text-tertiary sm:grid-cols-2">
                   <div>
                     <dt>{t('adminComplaints.answeredBy')}</dt>
                     <dd className="text-primary">
@@ -637,7 +637,7 @@ export default function AdminComplaintsPage() {
                 <h4 className="mt-4 text-xs uppercase tracking-wide text-tertiary">
                   {t('adminComplaints.responseLabel')}
                 </h4>
-                <p className="mt-1 whitespace-pre-line text-sm text-secondary">
+                <p className="mt-1 whitespace-pre-line text-[15px] text-secondary">
                   {selected.responseText}
                 </p>
                 {selected.providerActions && (
@@ -645,7 +645,7 @@ export default function AdminComplaintsPage() {
                     <h4 className="mt-4 text-xs uppercase tracking-wide text-tertiary">
                       {t('adminComplaints.actionsHistory')}
                     </h4>
-                    <p className="mt-1 whitespace-pre-line text-sm text-secondary">
+                    <p className="mt-1 whitespace-pre-line text-[15px] text-secondary">
                       {selected.providerActions}
                     </p>
                   </>

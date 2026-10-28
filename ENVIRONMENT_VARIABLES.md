@@ -295,6 +295,32 @@ RESEND_FROM_EMAIL=Umantai <pedidos@umantai.com>
 > mostrador. No hay reintento automático.
 > `ADMIN_NOTIFICATION_EMAIL` quedó obsoleto y ya no se lee.
 
+### Correo de autenticación y E2E (staging)
+```env
+# Flag maestro del modo de prueba. NUNCA tiene efecto en Producción
+# (isProductionRuntime() lo anula aunque valga 1).
+AUTH_TEST_MODE=1
+
+# Secreto compartido de la corrida E2E (>= 16 caracteres). Habilita:
+#   · leer /api/auth/test/outbox (header x-e2e-token)
+#   · el cupo alto de rate limit de autenticación (120/min en vez de 15/min)
+# Sin esta variable, el endpoint responde 404 y los límites son los normales,
+# aunque AUTH_TEST_MODE=1. Generar con: openssl rand -hex 32
+E2E_TEST_TOKEN=
+```
+
+> **El modo test es por destinatario, no global.** Con `AUTH_TEST_MODE=1`:
+>
+> | Destinatario | Qué pasa |
+> |---|---|
+> | `@umantai.test` (TLD reservado RFC 2606) | se guarda en `email_outbox`; el E2E lee el enlace con `x-e2e-token` |
+> | cualquier otro (Gmail, dominio propio) | se envía de verdad por Resend |
+>
+> Así una persona real que use `umantai.com` recibe verificación, recuperación y
+> "tienda creada" aunque staging tenga el modo test encendido. Si el modo test está
+> apagado, un `@umantai.test` falla cerrado (`disabled`) en vez de intentar un envío
+> que rebotaría. El E2E toma el token desde `E2E_TEST_TOKEN` (ver `playwright.config.ts`).
+
 ### Sitio público, contacto y sellado del build (Fase 2)
 ```env
 # URL absoluta del sitio: canonical, Open Graph, robots.txt y sitemap.xml.
@@ -323,20 +349,24 @@ LEGAL_EMAIL=juancallerosales19@gmail.com
 ```env
 # Sellado del build (/api/health). NO son secretos.
 # `scripts/write-build-info.mjs` (prebuild) resuelve el commit en este orden:
-#   BUILD_COMMIT > VERCEL_GIT_COMMIT_SHA > RAILWAY_GIT_COMMIT_SHA >
-#   GIT_COMMIT_SHA > GIT_COMMIT > `git rev-parse HEAD`
-# Con `railway up` conviene fijar GIT_COMMIT_SHA antes del deploy (como ya se hace en
-# staging) o BUILD_COMMIT. Si el build real no resuelve commit, health devuelve
-# commit=null (nunca hereda el SHA viejo de la plataforma) y el build queda identificado
-# por build.buildId.
+#   BUILD_COMMIT > RAILWAY_GIT_COMMIT_SHA > VERCEL_GIT_COMMIT_SHA >
+#   .deploy-commit.json (lo escribe `npm run deploy:staging`) > `git rev-parse HEAD`
+#
+# `GIT_COMMIT_SHA` / `GIT_COMMIT` YA NO SE LEEN: eran variables manuales que quedaban
+# viejas y hacían que el health reportara un commit que no era el desplegado.
 BUILD_COMMIT=
 BUILD_ID=
 ```
 
-> `/api/health` ahora devuelve `commit` + `build { buildId, commitSource, builtAt }`.
-> `commit` describe el código desplegado; `buildId` cambia en cada build aunque el commit
-> no cambie. Es el reemplazo de confiar en `RAILWAY_GIT_COMMIT_SHA`, que queda obsoleto
-> con `railway up`.
+> **Deploy de staging:** `npm run deploy:staging`. El script sella el HEAD local en
+> `.deploy-commit.json`, corre `railway up` y verifica que `/api/health` reporte ese
+> mismo commit. `npm run health:staging` consulta sin desplegar.
+>
+> `/api/health` devuelve `commit` + `build { buildId, commitSource, builtAt,
+> deploymentId, snapshotId }`. `deploymentId` es el `RAILWAY_DEPLOYMENT_ID` nativo
+> (el mismo id del dashboard): identifica el artefacto aunque no haya commit —por
+> ejemplo un `railway up` sin el script—, en lugar de heredar un SHA viejo. Si Railway
+> se conecta a GitHub, `RAILWAY_GIT_COMMIT_SHA` llega solo y gana sobre el sello.
 
 ### Additional / Recommended
 ```env
@@ -472,6 +502,13 @@ Healthcheck para Railway (y cualquier hosting). Devuelve sólo:
   "ok": true,
   "version": "0.1.0",
   "commit": "<sha o null>",
+  "build": {
+    "buildId": "20261028153508-abc1234",
+    "commitSource": "deploy_stamp",
+    "builtAt": "2026-10-28T15:35:08.000Z",
+    "deploymentId": "<uuid del deployment de Railway>",
+    "snapshotId": "<uuid o null>"
+  },
   "environment": "staging",
   "database": { "reachable": true, "type": "pg" },
   "timestamp": "2026-10-19T12:00:00.000Z"
@@ -479,8 +516,10 @@ Healthcheck para Railway (y cualquier hosting). Devuelve sólo:
 ```
 
 - `200` si la base responde, `503` si no (o si no hay connection string).
-- `COMMIT` se toma de `VERCEL_GIT_COMMIT_SHA`, `RAILWAY_GIT_COMMIT_SHA`,
-  `GIT_COMMIT_SHA` o `GIT_COMMIT` (el primero presente).
+- `commit` sale del manifiesto sellado en build; en runtime sólo se usa `BUILD_COMMIT`
+  como override explícito. **Nunca** se rellena con `GIT_COMMIT_SHA`/`GIT_COMMIT`: un
+  build real sin commit reporta `null` en lugar de un SHA desfasado.
+- `build.deploymentId` identifica el artefacto con el id nativo de Railway.
 - **Nunca** incluye URL, host, usuario, password ni tokens. Puede quedar público.
 
 ### Cron portable (Railway)

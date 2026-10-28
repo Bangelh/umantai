@@ -8,10 +8,22 @@
  *
  * Precedencia:
  *   1. `BUILD_COMMIT`  → override explícito de runtime (útil para corregir un build).
- *   2. manifiesto      → lo resuelto al compilar (git / Vercel / Railway).
- *   3. variables de plataforma en runtime → último recurso, y se marca como tal.
+ *   2. manifiesto      → lo resuelto al compilar (git / Vercel / Railway / sello).
+ *   3. variables de plataforma en runtime → solo si el manifiesto es de desarrollo.
  *
  * Nunca se inventa un SHA: si no hay dato, `commit` es `null`.
+ *
+ * IDENTIDAD DEL ARTEFACTO
+ *
+ *   Un commit no siempre existe (imagen subida por `railway up`, sin GitHub y
+ *   sin `.git` en el contenedor). En ese caso el build sigue siendo
+ *   identificable de forma única por:
+ *
+ *     buildId       timestamp del build, sellado al compilar
+ *     deploymentId  `RAILWAY_DEPLOYMENT_ID`, nativo de la plataforma
+ *
+ *   Por eso `GIT_COMMIT_SHA` / `GIT_COMMIT` ya no cuentan: son variables
+ *   manuales que quedan viejas y hacían que el health mintiera.
  */
 
 import manifestJson from './build-info.generated.json';
@@ -21,6 +33,10 @@ export interface BuildManifest {
   commit: string | null;
   commitSource: string;
   builtAt: string | null;
+  /** Id del deployment de Railway (mismo que el dashboard). */
+  deploymentId?: string | null;
+  /** Snapshot de build de Railway. */
+  snapshotId?: string | null;
 }
 
 export type RuntimeEnvSource = Record<string, string | undefined>;
@@ -34,6 +50,10 @@ export interface BuildIdentity {
   commitSource: string;
   /** ISO 8601 del build, o `null` si el manifiesto es el de desarrollo. */
   builtAt: string | null;
+  /** Deployment nativo de Railway; `null` fuera de Railway o sin dato. */
+  deploymentId: string | null;
+  /** Snapshot de build de Railway; `null` si no aplica. */
+  snapshotId: string | null;
 }
 
 /** Manifiesto por defecto versionado en el repo (se sobrescribe en cada build). */
@@ -42,17 +62,35 @@ export const DEFAULT_BUILD_MANIFEST: BuildManifest = {
   commit: null,
   commitSource: 'none',
   builtAt: null,
+  deploymentId: null,
+  snapshotId: null,
 };
 
-const PLATFORM_COMMIT_VARS = [
-  'VERCEL_GIT_COMMIT_SHA',
-  'RAILWAY_GIT_COMMIT_SHA',
-  'GIT_COMMIT_SHA',
-  'GIT_COMMIT',
-] as const;
+/**
+ * Variables de plataforma que sí son automáticas. `GIT_COMMIT_SHA`/`GIT_COMMIT`
+ * quedaron fuera a propósito: se mantenían a mano y quedaban desfasadas.
+ */
+const PLATFORM_COMMIT_VARS = ['RAILWAY_GIT_COMMIT_SHA', 'VERCEL_GIT_COMMIT_SHA'] as const;
 
 function clean(value: string | undefined): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Identidad del deployment: el manifiesto manda; Railway es el respaldo. */
+function resolveDeployment(
+  env: RuntimeEnvSource,
+  manifest: BuildManifest,
+): { deploymentId: string | null; snapshotId: string | null } {
+  return {
+    deploymentId:
+      (typeof manifest.deploymentId === 'string' && manifest.deploymentId.trim()) ||
+      clean(env.RAILWAY_DEPLOYMENT_ID) ||
+      null,
+    snapshotId:
+      (typeof manifest.snapshotId === 'string' && manifest.snapshotId.trim()) ||
+      clean(env.RAILWAY_SNAPSHOT_ID) ||
+      null,
+  };
 }
 
 /**
@@ -63,6 +101,7 @@ export function resolveBuildIdentity(
   env: RuntimeEnvSource = process.env,
   manifest: BuildManifest = manifestJson as BuildManifest,
 ): BuildIdentity {
+  const deployment = resolveDeployment(env, manifest);
   const explicit = clean(env.BUILD_COMMIT);
   if (explicit) {
     return {
@@ -70,6 +109,7 @@ export function resolveBuildIdentity(
       commit: explicit,
       commitSource: 'BUILD_COMMIT',
       builtAt: manifest.builtAt ?? null,
+      ...deployment,
     };
   }
 
@@ -79,6 +119,7 @@ export function resolveBuildIdentity(
       commit: manifest.commit,
       commitSource: manifest.commitSource || 'build_manifest',
       builtAt: manifest.builtAt ?? null,
+      ...deployment,
     };
   }
 
@@ -92,6 +133,7 @@ export function resolveBuildIdentity(
       commit: null,
       commitSource: 'build_manifest_unknown',
       builtAt: manifest.builtAt,
+      ...deployment,
     };
   }
 
@@ -103,6 +145,7 @@ export function resolveBuildIdentity(
         commit: value,
         commitSource: name,
         builtAt: manifest.builtAt ?? null,
+        ...deployment,
       };
     }
   }
@@ -112,6 +155,7 @@ export function resolveBuildIdentity(
     commit: null,
     commitSource: 'none',
     builtAt: manifest.builtAt ?? null,
+    ...deployment,
   };
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ShoppingBag, ShoppingCart, Monitor } from "lucide-react";
+import { Home, ShoppingBag, ShoppingCart } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { useHydrated } from "@/lib/useHydrated";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -14,14 +14,15 @@ export function MobileBottomNav() {
   const { t } = useI18n();
   const cartCount = useCartStore((s) => s.getTotalItems());
 
+  // Sin pestaña de kiosco: la terminal de retiro es una pantalla operativa
+  // (/admin/kiosco), no una sección del cliente.
   const tabs = [
     { href: "/", label: t('nav.home'), icon: Home },
     { href: "/#buscar", label: t('nav.shop'), icon: ShoppingBag },
     { href: "/cart", label: t('nav.cart'), icon: ShoppingCart },
-    { href: "/kiosk", label: t('nav.kiosk'), icon: Monitor },
   ];
 
-  // Hide bottom nav for kiosk (full immersive) and admin (desktop tools)
+  // Hide bottom nav for admin (desktop tools) and legacy kiosk route.
   if (pathname.startsWith("/kiosk") || pathname.startsWith("/admin")) {
     return null;
   }

@@ -28,6 +28,8 @@ function fixedDeps(database: HealthDatabase) {
       commit: null,
       commitSource: 'none',
       builtAt: null,
+      deploymentId: null,
+      snapshotId: null,
     },
     now: () => new Date('2026-10-19T12:00:00.000Z'),
   };
@@ -44,6 +46,8 @@ test('reporte sano: ok, versión, commit, entorno, driver y timestamp', async ()
       buildId: 'dev',
       commitSource: 'none',
       builtAt: null,
+      deploymentId: null,
+      snapshotId: null,
     },
     environment: 'staging',
     database: { reachable: true, type: 'pg' },
@@ -129,6 +133,8 @@ test('el build embebido gana sobre un RAILWAY_GIT_COMMIT_SHA desfasado', async (
       commit: 'commit-nuevo',
       commitSource: 'git',
       builtAt: '2026-10-19T12:00:00.000Z',
+      deploymentId: 'deployment-abc',
+      snapshotId: null,
     },
   });
 
@@ -137,5 +143,30 @@ test('el build embebido gana sobre un RAILWAY_GIT_COMMIT_SHA desfasado', async (
     buildId: '20261019120000-abc1234',
     commitSource: 'git',
     builtAt: '2026-10-19T12:00:00.000Z',
+    deploymentId: 'deployment-abc',
+    snapshotId: null,
   });
+});
+
+test('un build sin commit se identifica por buildId + deployment nativo de Railway', async () => {
+  // Caso real: `railway up` sin GitHub. No hay `.git` ni RAILWAY_GIT_COMMIT_SHA.
+  // El health NO debe rellenar con GIT_COMMIT_SHA (variable manual y vieja).
+  const report = await buildHealthReport({
+    ...fixedDeps({ reachable: true, type: 'pg' }),
+    commit: undefined,
+    env: { APP_ENV: 'staging', GIT_COMMIT_SHA: 'sha-viejo-de-2024', RAILWAY_DEPLOYMENT_ID: 'dep-123' },
+    build: {
+      buildId: '20261028153508-nogit',
+      commit: null,
+      commitSource: 'build_manifest_unknown',
+      builtAt: '2026-10-28T15:35:08.000Z',
+      deploymentId: 'dep-123',
+      snapshotId: null,
+    },
+  });
+
+  assert.equal(report.commit, null);
+  assert.equal(report.build.deploymentId, 'dep-123');
+  assert.equal(report.build.buildId, '20261028153508-nogit');
+  assert.ok(!JSON.stringify(report).includes('sha-viejo-de-2024'));
 });

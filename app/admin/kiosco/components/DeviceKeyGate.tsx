@@ -25,7 +25,7 @@ export function DeviceKeyGate({ onSubmit, isChecking, error }: DeviceKeyGateProp
   const [value, setValue] = useState('');
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 py-10">
+    <div data-kiosk className="flex min-h-screen items-center justify-center bg-neutral-950 px-6 py-10">
       <form
         className="w-full max-w-lg"
         onSubmit={(event) => {

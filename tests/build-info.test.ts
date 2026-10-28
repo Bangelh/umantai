@@ -83,6 +83,32 @@ test('las variables vacías o con espacios no cuentan', () => {
   assert.equal(identity.commit, null);
 });
 
+test('GIT_COMMIT_SHA ya no cuenta como fuente de commit (variable manual vieja)', () => {
+  const identity = resolveBuildIdentity(
+    { GIT_COMMIT_SHA: '0e1517e2ce5a5d24906b97a94c1bd28c5dccdc38' },
+    DEFAULT_BUILD_MANIFEST,
+  );
+  assert.equal(identity.commit, null);
+  assert.equal(identity.commitSource, 'none');
+});
+
+test('el deployment nativo de Railway se reporta aunque no haya commit', () => {
+  const identity = resolveBuildIdentity(
+    { RAILWAY_DEPLOYMENT_ID: 'dep-9', RAILWAY_SNAPSHOT_ID: 'snap-9' },
+    {
+      ...DEFAULT_BUILD_MANIFEST,
+      buildId: '20261028153508-0e1517e',
+      builtAt: '2026-10-28T15:35:08.000Z',
+      commit: null,
+      commitSource: 'none',
+    },
+  );
+  assert.equal(identity.commit, null);
+  assert.equal(identity.deploymentId, 'dep-9');
+  assert.equal(identity.snapshotId, 'snap-9');
+  assert.equal(identity.buildId, '20261028153508-0e1517e');
+});
+
 test('el manifiesto versionado tiene la forma esperada y no filtra secretos', () => {
   const current = resolveBuildIdentity({});
   assert.equal(typeof current.buildId, 'string');

@@ -23,7 +23,6 @@ export const SHOP_NAV_LINKS: readonly NavLink[] = [
   // lista de compras no tenía forma de llenarse. Nada en la UI las enlaza.
   { href: '/', labelKey: 'navLink.products' },
   { href: '/cart', labelKey: 'nav.cart' },
-  { href: '/kiosk', labelKey: 'navLink.storePickup' },
 ];
 
 export const LEGAL_NAV_LINKS: readonly NavLink[] = [
@@ -41,11 +40,15 @@ export const HELP_NAV_LINKS: readonly NavLink[] = [
 ];
 
 export const ADMIN_NAV_LINKS: readonly NavLink[] = [
-  { href: '/admin', labelKey: 'adminNav.catalog' },
-  { href: '/admin/analytics', labelKey: 'adminNav.analytics' },
+  { href: '/admin', labelKey: 'adminNav.dashboard' },
+  { href: '/admin/tiendas', labelKey: 'adminNav.stores' },
+  { href: '/admin/catalogo', labelKey: 'adminNav.catalog' },
+  { href: '/admin/productos', labelKey: 'adminNav.siteCatalog' },
   { href: '/admin/inventario', labelKey: 'adminNav.inventory' },
-  { href: '/admin/planes', labelKey: 'adminNav.plans' },
   { href: '/admin/reclamaciones', labelKey: 'adminNav.complaints' },
+  { href: '/admin/analytics', labelKey: 'adminNav.analytics' },
+  { href: '/admin/planes', labelKey: 'adminNav.plans' },
   { href: '/admin/kiosco', labelKey: 'adminNav.kiosk' },
-  { href: '/admin/notes', labelKey: 'adminNav.notes' },
+  // `/admin/notes` queda fuera del menú: es una demo de notas Supabase que no
+  // forma parte del producto y sólo agrega una opción que nadie opera.
 ];

@@ -47,7 +47,10 @@ const ALLOWED_FILES = new Map([
     'lib/i18n/dictionaries.ts',
     'Es el diccionario es/en: acá VIVE el texto traducible, no es deuda pendiente.',
   ],
-  ['app/admin/page.tsx', 'Panel legacy de Platform Admin; se reescribe en la fase de paneles.'],
+  [
+    'app/admin/productos/page.tsx',
+    'Editor legacy del catálogo base del sitio (no es el marketplace). Se aísla en /admin/productos hasta retirarlo o migrarlo a i18n.',
+  ],
   ['app/admin/notes/page.tsx', 'Demo de notas Supabase, no forma parte del producto.'],
   ['app/debug/supabase/page.tsx', 'Diagnóstico interno, no indexado ni visible al público.'],
   ['app/debug/page.tsx', 'Diagnóstico interno de staging.'],

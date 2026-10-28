@@ -33,9 +33,9 @@ externa (bandeja real, panel de Resend) y el cutover a Producción.
 
 Puntos finos que hay que respetar al configurar:
 
-- **`AUTH_TEST_MODE=1` gana sobre la API key**: mientras esté activo, los correos
-  de auth se guardan en `email_outbox` y **no salen**. Para la prueba real hay
-  que quitarlo; después se restaura para el E2E de staging.
+- **`AUTH_TEST_MODE=1` solo desvía los destinatarios `@umantai.test`**: el resto
+  sale por Resend aunque el flag esté encendido. Ya no hay que apagarlo para
+  probar con un buzón real (ver §5.8).
 - El remitente por defecto es `Umantai <onboarding@resend.dev>`, que **solo
   entrega al correo dueño de la cuenta de Resend**. No sirve para compradores.
 - Los enlaces usan `BETTER_AUTH_URL` / `NEXT_PUBLIC_SITE_URL`; deben apuntar al
@@ -129,8 +129,11 @@ BETTER_AUTH_URL=https://<host activo>
 Para la prueba real, además:
 
 ```env
-# QUITAR durante la prueba (si está en 1, los correos van al outbox y no salen).
-AUTH_TEST_MODE=
+# Dejar en 1: el desvío al outbox es solo para @umantai.test.
+AUTH_TEST_MODE=1
+
+# Secreto de la corrida E2E (header x-e2e-token). >= 16 caracteres.
+E2E_TEST_TOKEN=
 
 # Decisión de producto: exigir verificación en Producción.
 # Recomendado 1 una vez que el correo real funcione.
@@ -151,8 +154,9 @@ en Producción después del cutover.
 
 ### 5.1 Verificación de cuenta
 
-1. Quitar `AUTH_TEST_MODE` y redesplegar `web`.
-2. Registrarse con un correo real.
+1. Registrarse con un correo real (no hace falta tocar `AUTH_TEST_MODE`).
+2. Confirmar que el correo llega **desde el dominio verificado** (no desde
+   `resend.dev`), en bandeja de entrada (no spam).
 3. Confirmar que el correo llega **desde el dominio verificado** (no desde
    `resend.dev`), en bandeja de entrada (no spam).
 4. Abrir el enlace: la cuenta queda verificada (`users."emailVerified" = true`)
@@ -194,9 +198,8 @@ en Producción después del cutover.
 - [ ] Cabeceras muestran `spf=pass`, `dkim=pass`, `dmarc=pass`.
 - [ ] Sin rebotes ni quejas en el panel de Resend.
 - [ ] Revisar los reportes DMARC a los 2–3 días.
-- [x] Restaurar `AUTH_TEST_MODE=1` en staging si se sigue usando el E2E con
-      outbox (o actualizar el E2E si se deja el envío real). → **restaurado**
-      tras la corrida del 2026-10-27; ver §5.8.
+- [x] Ya no hace falta alternar `AUTH_TEST_MODE`: el correo real y el E2E
+      conviven en staging (desvío por destinatario). Ver §5.8.
 
 ### 5.7 Corrida real de validación (staging, 2026-10-27)
 
@@ -245,31 +248,36 @@ respeta el cupo anunciado. Corrección sugerida: quitar el bloque
 
 ### 5.8 Test mode (`AUTH_TEST_MODE`) vs. correo real
 
-Son **dos modos excluyentes**; el modo test gana siempre sobre la API key
-(`lib/email.server.ts`).
+**Desde esta fase el modo test es POR DESTINATARIO, no global.** Antes, con
+`AUTH_TEST_MODE=1` ningún correo salía de la app: una persona real que probaba
+`umantai.com` no recibía verificación ni recuperación. Eso obligaba a apagar la
+variable a mano para cada prueba humana y a acordarse de volver a encenderla.
 
-| | `AUTH_TEST_MODE=1` (staging por defecto) | `AUTH_TEST_MODE=0` (correo real) |
-|---|---|---|
-| Proveedor de auth | `test`: escribe en `email_outbox` | `resend`: envía de verdad |
-| Cupos de auth | 120 login/min, 30 recuperación/min | 15 login/min, 5 recuperación/min |
-| `/api/auth/test/outbox` | 200 (lee el enlace) | **404** |
-| Suites que lo requieren | `e2e/auth.spec.ts` (`npm run e2e`) | — |
-| Suites que **no** lo requieren | `npm test`, `npm run test:integration`, `scripts/security-smoke.mjs`, y los smokes de contacto/reclamaciones | igual |
+| Destinatario con `AUTH_TEST_MODE=1` | Proveedor |
+|---|---|
+| `@umantai.test` (TLD reservado RFC 2606) | `test`: escribe en `email_outbox` |
+| cualquier otro correo | `resend`: envía de verdad |
 
-El modo test se queda **encendido** en staging para que el E2E de auth siga
-verde: el smoke de correo real es una corrida **explícita y separada**, no el
-estado permanente. Procedimiento:
+Además, el endpoint que devuelve los enlaces exige **tres** condiciones:
+`AUTH_TEST_MODE=1`, entorno distinto de Producción y header `x-e2e-token` igual a
+`E2E_TEST_TOKEN` (comparación en tiempo constante). Sin token responde 404 y
+solo puede leer direcciones `@umantai.test`, así que ni un token filtrado sirve
+para cosechar enlaces de cuentas reales.
 
-1. `railway variables --set AUTH_TEST_MODE=0 -s web -e staging` (dispara
-   redeploy del último artefacto; confirmar `SUCCESS` y que
-   `/api/auth/test/outbox` responda 404).
-2. Correr el smoke real (§5.7) y revisar los logs de `web`.
-3. Volver a `AUTH_TEST_MODE=1` y redesplegar; confirmar el 200 del endpoint de
-   outbox.
+El cupo alto de autenticación (120/min) también quedó atado al token E2E: un
+visitante humano conserva 15/min aunque staging tenga el modo test encendido.
 
-En **Producción** el modo test no puede activarse nunca (`isAuthTestMode()` lo
-bloquea fuera de Producción… es decir, con `APP_ENV=production` siempre devuelve
-`false`), así que allí el correo real es el único camino.
+| | Valor en staging |
+|---|---|
+| `AUTH_TEST_MODE` | `1` permanente (el E2E lo necesita) |
+| `E2E_TEST_TOKEN` | secreto de 64 hex; lo usa `playwright.config.ts` |
+| Correo de personas reales | Resend, siempre |
+| `/api/auth/test/outbox` sin token | 404 |
+
+En **Producción** el modo test no puede activarse nunca (`isAuthTestMode()`
+devuelve `false` con `APP_ENV=production`), así que allí el correo real es el
+único camino. Un `@umantai.test` en Producción falla cerrado (`disabled`): no se
+intenta un envío que rebotaría.
 
 ---
 
@@ -280,13 +288,13 @@ bloquea fuera de Producción… es decir, con `APP_ENV=production` siempre devue
 | SPF duplicado invalida el dominio | Fusionar en un único TXT antes de verificar |
 | DKIM incompleto | Copiar el valor completo del panel; no reescribirlo a mano |
 | Correos a spam | Subdominio de envío, DMARC en `none`, probar con Gmail y Outlook |
-| `AUTH_TEST_MODE` olvidado | Revisar la variable antes de dar por buena la prueba |
+| `E2E_TEST_TOKEN` filtrado | Solo habilita enlaces de `@umantai.test` y cupos de auth en staging; rotarlo es cambiar la variable y el `.env` local del E2E |
 | Remitente no verificado | El envío falla cerrado; la app no se rompe, pero no llega el correo |
 | Fuga de la API key | Solo en Railway, permiso de envío, rotarla si se expuso |
 
-**Rollback:** borrar `RESEND_API_KEY` (o volver a `AUTH_TEST_MODE=1`). El
-registro, el checkout y el formulario siguen funcionando con degradación
-explícita; no hay que revertir código.
+**Rollback:** borrar `RESEND_API_KEY`. El registro, el checkout y el formulario
+siguen funcionando con degradación explícita; no hay que revertir código. Los
+correos de personas reales dejan de salir (fail-closed), los de E2E no cambian.
 
 ---
 
@@ -295,8 +303,8 @@ explícita; no hay que revertir código.
 1. Crear cuenta en Resend y agregar el subdominio de envío.
 2. Publicar MX, SPF, DKIM y DMARC; esperar *Verified*.
 3. Crear la API key (solo envío).
-4. Cargar las cinco variables en Railway `staging` → `web`; quitar
-   `AUTH_TEST_MODE`; redesplegar.
+4. Cargar las variables en Railway `staging` → `web` (`RESEND_API_KEY`,
+   `RESEND_FROM_EMAIL`, `CONTACT_TO_EMAIL`, `E2E_TEST_TOKEN`).
 5. Ejecutar 5.1 → 5.4 con un buzón real.
-6. Revisar entregabilidad (5.5) y restaurar el modo de test si corresponde.
+6. Revisar entregabilidad (5.5).
 7. Repetir en Producción **después** del cutover, no antes.

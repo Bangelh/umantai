@@ -7,9 +7,19 @@ import { E2E_PASSWORD, latestOutbox, loginUi, logoutUi, signUpUi, uniqueEmail } 
  * registro → verificación de correo (test-mode) → logout/login →
  * recuperación de contraseña → cambio de contraseña y revocación de sesiones.
  *
- * No depende de Mercado Pago. El correo real no se envía: `AUTH_TEST_MODE=1`
- * guarda el enlace en `email_outbox` y el endpoint de test lo devuelve.
+ * No depende de Mercado Pago. El correo real no se envía: con `AUTH_TEST_MODE=1`
+ * un destinatario `@umantai.test` (dominio reservado) se guarda en
+ * `email_outbox` y el endpoint de test lo devuelve a quien presente el header
+ * `x-e2e-token`. Los correos de personas reales siguen saliendo por Resend.
  */
+
+test('el outbox de test no responde a quien no trae el token E2E', async ({ request }) => {
+  const response = await request.get(
+    '/api/auth/test/outbox?email=e2e-probe@umantai.test&purpose=verify_email',
+    { headers: { 'x-e2e-token': 'no-es-el-token' } },
+  );
+  expect(response.status()).toBe(404);
+});
 
 test.describe.serial('auth lifecycle', () => {
   const email = uniqueEmail('e2e-auth');

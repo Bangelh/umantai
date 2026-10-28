@@ -6,7 +6,7 @@
  */
 
 import { getAuthServer } from '@/lib/auth.server';
-import { isAuthTestMode } from '@/lib/email.server';
+import { isE2ERequest } from '@/lib/e2e-access.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
 import { logSecurityEvent, requestIdFrom, withRequestLogging } from '@/lib/observability.server';
 
@@ -21,18 +21,17 @@ export const dynamic = 'force-dynamic';
  * contaba el mismo intento dos veces, así que el cupo real era la mitad del
  * anunciado.
  *
- * En `AUTH_TEST_MODE` (nunca Producción) el cupo sube para que la suite E2E
- * pueda crear y entrar a varias cuentas en el mismo minuto. El modo test ya
- * escribe tokens en `email_outbox`, así que no amplía nada que no estuviera
- * habilitado explícitamente.
+ * El cupo alto es SOLO para la corrida E2E, identificada por el header
+ * `x-e2e-token` (ver `lib/e2e-access.server.ts`). Un visitante humano de
+ * `umantai.com` nunca lo envía, así que conserva los límites normales: el modo
+ * test ya no relaja la aplicación entera.
  */
-function limits() {
-  // Se evalúa por request: en un build de staging el modo test puede estar
-  // apagado y encenderse solo en runtime.
-  const testMode = isAuthTestMode();
+function limits(request: Request) {
+  // Se evalúa por request: el flag y el secreto pueden cambiar en runtime.
+  const e2e = isE2ERequest(request);
   return {
-    credentials: testMode ? 120 : 15,
-    recovery: testMode ? 30 : 5,
+    credentials: e2e ? 120 : 15,
+    recovery: e2e ? 30 : 5,
     general: 90,
   };
 }
@@ -41,8 +40,8 @@ async function handleGet(request: Request) {
   return getAuthServer().handler(request);
 }
 
-function scopeForPath(path: string): { scope: string; limit: number } {
-  const caps = limits();
+function scopeForPath(path: string, request: Request): { scope: string; limit: number } {
+  const caps = limits(request);
   if (path.includes('/sign-in/') || path.includes('/sign-up/')) {
     return { scope: 'auth-credentials', limit: caps.credentials };
   }
@@ -54,7 +53,7 @@ function scopeForPath(path: string): { scope: string; limit: number } {
 
 async function handlePost(request: Request) {
   const path = new URL(request.url).pathname;
-  const { scope, limit } = scopeForPath(path);
+  const { scope, limit } = scopeForPath(path, request);
   const gate = await rateLimitGate(request, scope, { limit, windowMs: 60_000 });
   if (gate) return gate;
 

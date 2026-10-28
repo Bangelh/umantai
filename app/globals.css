@@ -326,6 +326,34 @@ body {
   cursor: not-allowed;
 }
 
+/*
+ * KIOSCO OPERATIVO — paleta oscura fija.
+ *
+ * /admin/kiosco se usa en una tablet de mostrador, muchas veces de pie y con luz
+ * reflejada: el contraste alto blanco-sobre-negro es una decisión operativa, no
+ * una preferencia de tema. El puente de compatibilidad de arriba remapea
+ * `text-white`/`bg-neutral-950` en tema claro; acá se restauran los tokens
+ * oscuros DENTRO del kiosco para que ese remapeo no lo vuelva ilegible.
+ */
+[data-kiosk] {
+  color-scheme: dark;
+  --um-background: #0a0a0a;
+  --um-surface: #111113;
+  --um-surface-raised: #17171a;
+  --um-primary: #ededed;
+  --um-secondary: #d4d4d8;
+  --um-tertiary: #a1a1aa;
+  --um-muted: #a1a1aa;
+  --um-border: #2a2a2f;
+  --um-border-strong: #52525b;
+  --um-brand: #ffffff;
+  --um-success: #34d399;
+  --um-warning: #fbbf24;
+  --um-destructive: #f87171;
+  background-color: var(--um-background);
+  color: var(--um-primary);
+}
+
 /* Contraste reforzado cuando el sistema lo pide. */
 @media (prefers-contrast: more) {
   :root {

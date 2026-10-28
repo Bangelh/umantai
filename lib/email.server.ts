@@ -5,12 +5,29 @@
  *  PROVIDERS
  *
  *  1. `resend`     — si `RESEND_API_KEY` existe. Es el provider real.
- *  2. `test`       — solo fuera de Producción y con `AUTH_TEST_MODE=1`. NO envía
- *                    nada: escribe el mensaje (con su enlace) en `email_outbox`.
+ *  2. `test`       — solo fuera de Producción, con `AUTH_TEST_MODE=1` Y un
+ *                    destinatario del dominio reservado `umantai.test`
+ *                    (RFC 2606: no puede recibir correo). NO envía nada:
+ *                    escribe el mensaje (con su enlace) en `email_outbox`.
  *                    El E2E lee de ahí para completar verificación / reset.
- *  3. `disabled`   — en Producción sin API key. El registro sigue funcionando
- *                    (la cuenta se crea), pero el envío falla cerrado y se
- *                    registra el evento; nunca se imprime el token.
+ *  3. `disabled`   — en Producción sin API key, o un destinatario de prueba sin
+ *                    modo test. El registro sigue funcionando (la cuenta se
+ *                    crea), pero el envío falla cerrado y se registra el
+ *                    evento; nunca se imprime el token.
+ *
+ *  ─────────────────────────────────────────────────────────────────────────────
+ *  POR QUÉ EL MODO TEST ES POR DESTINATARIO (y no global)
+ *
+ *  `umantai.com` es a la vez preview humano y entorno de staging. Un flag que
+ *  desviara TODOS los correos al outbox dejaba a una persona real sin
+ *  verificación ni recuperación. Ahora el desvío se decide por dirección:
+ *
+ *      AUTH_TEST_MODE=1 + destinatario @umantai.test  → outbox (E2E)
+ *      cualquier otro destinatario                    → Resend (correo real)
+ *
+ *  Un dominio reservado nunca se manda a Resend: rebotaría y ensuciaría la
+ *  reputación del dominio. Si el modo test está apagado, un `@umantai.test`
+ *  queda en `disabled` (fail-closed), no se intenta enviar.
  *
  *  Nunca se loguea el enlace ni el token: llevan credenciales de un solo uso.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -55,14 +72,43 @@ export function getEmailSender(): string {
 }
 
 /** El modo test exige flag explícito Y un entorno que no sea Producción. */
+/**
+ * Dominio de los correos de prueba. `.test` es un TLD reservado por la RFC 2606:
+ * no está delegado, así que ninguna persona real puede recibir correo ahí.
+ */
+export const TEST_RECIPIENT_DOMAIN = 'umantai.test';
+
+/**
+ * `true` si el correo pertenece al espacio de pruebas. Compara el dominio
+ * completo (no substring) para que `x@notumantai.test.evil.com` no pase.
+ */
+export function isTestRecipient(to: string): boolean {
+  const at = to.lastIndexOf('@');
+  if (at < 0) return false;
+  const domain = to.slice(at + 1).trim().toLowerCase().replace(/\.$/, '');
+  return domain === TEST_RECIPIENT_DOMAIN || domain.endsWith(`.${TEST_RECIPIENT_DOMAIN}`);
+}
+
+/** Flag maestro del modo test: nunca aplica en Producción. */
 export function isAuthTestMode(): boolean {
   return readEnv('AUTH_TEST_MODE') === '1' && !isProductionRuntime();
 }
 
-export function resolveEmailProviderName(): EmailProviderName {
-  // Test mode GANA sobre una API key real: el E2E y el staging con clave no
-  // deben enviar correos de verdad ni depender de un dominio verificado.
-  if (isAuthTestMode()) return 'test';
+/**
+ * Provider para un destinatario concreto.
+ *
+ * Sin argumento se resuelve el provider "para correo real" (`resend` o
+ * `disabled`), que es lo que antes devolvía la función cuando el modo test
+ * estaba apagado.
+ */
+export function resolveEmailProviderName(to?: string): EmailProviderName {
+  if (to) {
+    if (isAuthTestMode() && isTestRecipient(to)) return 'test';
+    // Destinatario de prueba con el modo test apagado: fail-closed. Mandarlo a
+    // Resend solo generaría un rebote y una alerta de reputación.
+    if (isTestRecipient(to)) return 'disabled';
+  }
+
   if (readEnv('RESEND_API_KEY')) return 'resend';
   return 'disabled';
 }
@@ -120,11 +166,13 @@ async function storeInOutbox(email: TransactionalEmail): Promise<EmailDelivery> 
  * llamador (Better Auth) no debe fallar el registro porque el correo esté caído.
  */
 export async function sendTransactionalEmail(email: TransactionalEmail): Promise<EmailDelivery> {
-  const provider = resolveEmailProviderName();
+  const provider = resolveEmailProviderName(email.to);
 
   if (provider === 'disabled') {
     console.warn(
-      `[email] sin RESEND_API_KEY ni AUTH_TEST_MODE: no se pudo enviar "${email.purpose}".`,
+      isTestRecipient(email.to)
+        ? `[email] destinatario de prueba sin AUTH_TEST_MODE: no se envió "${email.purpose}".`
+        : `[email] sin RESEND_API_KEY: no se pudo enviar "${email.purpose}".`,
     );
     return { status: 'disabled', reason: 'not_configured' };
   }
@@ -332,7 +380,7 @@ export async function readLatestOutboxMessage(
   recipient: string,
   purpose?: EmailPurpose,
 ): Promise<OutboxMessage | null> {
-  if (!isAuthTestMode()) return null;
+  if (!isAuthTestMode() || !isTestRecipient(recipient)) return null;
   const sql = getPlatformSql();
   if (!sql) return null;
 

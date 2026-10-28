@@ -255,13 +255,13 @@ Verificación mínima:
 ## 6. Deploy
 
 ```bash
-export GIT_COMMIT_SHA=$(git rev-parse HEAD)
-railway up --service web --environment staging
+npm run deploy:staging   # sella el HEAD, hace railway up y verifica el health
 railway logs --service web --environment staging
 curl -sS https://<host>/api/health | jq '{ok, environment, commit, build, database}'
 ```
 
-- [ ] `GIT_COMMIT_SHA` = HEAD congelado (el deploy por archivo no lo inyecta solo).
+- [ ] `commit` del health = `git rev-parse HEAD` (lo hace cumplir el script).
+  `GIT_COMMIT_SHA` ya no se usa: se eliminó de staging porque quedaba vieja.
 - [ ] Build `SUCCESS`.
 - [ ] `/api/health` → 200, `commit` = HEAD, `database.reachable=true`,
       `database.type=pg`.
@@ -336,7 +336,7 @@ sin ese checklist cerrado.
 ```bash
 railway redeploy --service web --environment staging   # vuelve a la imagen anterior
 # o
-git checkout <SHA-anterior> && GIT_COMMIT_SHA=<SHA-anterior> railway up --service web
+git checkout <SHA-anterior> && npm run deploy:staging
 ```
 
 Verificar `/api/health` con el `commit` anterior y repetir el smoke mínimo.

@@ -6,6 +6,7 @@ import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
+import { AdminNav } from '../components/AdminNav';
 import {
   formatSkuUsage,
   formatUsdCents,
@@ -236,22 +237,34 @@ export default function AdminPlansPage() {
             type="button"
             onClick={() => void load()}
             disabled={busy}
-            className="h-9 rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised disabled:opacity-50"
+            className="h-11 rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised disabled:opacity-50"
           >
             {t('adminPlans.refresh')}
           </button>
           <button
             type="button"
             onClick={() => void admin.signOut()}
-            className="h-9 rounded-xl border border-border px-3 text-xs text-tertiary"
+            className="h-11 rounded-xl border border-border px-3 text-sm text-tertiary"
           >
             {t('admin.signOut')}
           </button>
         </div>
       </div>
 
-      {error && <p className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
-      {notice && <p className="mt-4 text-sm text-success">{notice}</p>}
+      <div className="mt-4 overflow-x-auto">
+        <AdminNav />
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-[15px] text-destructive">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mt-4 text-[15px] text-success">
+          {notice}
+        </p>
+      )}
 
       <section className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">{t('adminPlans.catalog')}</h2>
@@ -263,7 +276,7 @@ export default function AdminPlansPage() {
                 <span className="font-mono text-sm tabular-nums">{formatUsdCents(plan.priceCents)}</span>
               </div>
               <p className="mt-1 text-xs text-tertiary">{plan.skuLimit} SKU · {plan.currency} / {plan.billingInterval}</p>
-              <p className="mt-1 text-[11px] text-muted">
+              <p className="mt-1 text-[13px] text-muted">
                 code: {plan.code} · {plan.active ? t('adminPlans.active') : t('adminPlans.inactive')}
               </p>
             </div>
@@ -277,7 +290,7 @@ export default function AdminPlansPage() {
           <span className="text-xs text-muted tabular-nums">{subscriptions.length}</span>
         </div>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[880px] text-left text-xs">
+          <table className="w-full min-w-[880px] text-left text-[15px]">
             <thead className="text-muted">
               <tr className="border-b border-border">
                 <th className="py-2 font-medium">{t('adminPlans.store')}</th>
@@ -311,9 +324,13 @@ export default function AdminPlansPage() {
                     <div className={row.usage.overLimit ? 'text-destructive' : ''}>
                       {formatSkuUsage(row.usage.current, row.usage.limit)}
                     </div>
-                    {row.usage.overLimit && <div className="text-[10px] text-destructive">over_limit</div>}
+                    {row.usage.overLimit && (
+                      <div className="text-xs font-medium text-destructive">
+                        {t('adminPlans.overLimitBadge')}
+                      </div>
+                    )}
                   </td>
-                  <td className="py-2.5 font-mono text-[11px] text-tertiary">
+                  <td className="py-2.5 font-mono text-[13px] text-tertiary">
                     {row.currentPeriodEnd ? row.currentPeriodEnd.slice(0, 10) : '—'}
                   </td>
                   <td className="py-2.5">
@@ -424,7 +441,7 @@ export default function AdminPlansPage() {
         </form>
 
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-xs">
+          <table className="w-full min-w-[640px] text-left text-[15px]">
             <thead className="text-muted">
               <tr className="border-b border-border">
                 <th className="py-2 font-medium">{t('adminPlans.code')}</th>

@@ -4,13 +4,16 @@
 **Entorno:** `staging` (`c19f1bca-5aba-4eaf-8117-20761a6e9d37`) — el entorno
 `production` del proyecto Railway quedó **vacío**, sin servicios ni deploy.
 **URL:** https://web-staging-6756.up.railway.app
-**Commit de runtime desplegado:** `0c261cc5330759d6d70dccd16a10ae18d8466192`
-(`feat/railway-staging`), verificado en `/api/health` → `commit` y
-`build { buildId, commitSource: "GIT_COMMIT_SHA", builtAt }`.
-El SHA se inyecta como `GIT_COMMIT_SHA` antes de cada `railway up`, porque el
-deploy por archivo no lo expone. Desde la Fase 2, `npm run build` sella además un
-manifiesto embebido (`lib/build-info.generated.json`), así que el health identifica
-el build aunque la variable de plataforma quede desfasada.
+**Identidad del artefacto:** ver `/api/health` → `commit` +
+`build { buildId, commitSource, builtAt, deploymentId }`.
+
+El deploy se hace con **`npm run deploy:staging`** (`scripts/deploy-staging.mjs`):
+antes de `railway up` escribe `.deploy-commit.json` con el HEAD local, que
+`scripts/write-build-info.mjs` sella en el bundle; al terminar verifica que el
+health reporte ese commit. La variable manual `GIT_COMMIT_SHA` se **eliminó** de
+staging: era la que quedaba vieja y hacía que el health mintiera. Si no hay commit
+(por ejemplo un `railway up` suelto), el artefacto se identifica por
+`build.deploymentId`, el id nativo del deployment.
 
 > No se tocó Vercel/Neon productivos, DNS, Mercado Pago ni se hizo merge a `main`.
 
@@ -131,8 +134,8 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
 - `/admin/inventario`, `/cart` y `/products` responden 200.
 - Confirmación de compra muestra subtotal y total; verificado en el bundle
   desplegado (`app/cart/page-*.js` contiene la fila `Subtotal`).
-- ~~Nota: `/api/health` toma `commit` de `RAILWAY_GIT_COMMIT_SHA`…~~ **Resuelto en
-  Fase 2**: el commit y el `buildId` se sellan al compilar (ver §5.3).
+- ~~Nota: `/api/health` toma `commit` de `RAILWAY_GIT_COMMIT_SHA`…~~ **Resuelto**: el
+  commit y el `buildId` se sellan al compilar y el deploy los verifica (§5.3).
 
 ### 5.3 Fase funcional 2 — analytics + legal + frontend (2026-10-19)
 
@@ -141,7 +144,7 @@ Artefacto: `audit-staging.json`. Detalle: `MIGRATIONS_004_007.md`.
   `Postgres17`. 001–008 intactas. Idempotentes (`IF NOT EXISTS`).
 - Deploy `0c261cc` (`SUCCESS`). `/api/health` → 200 con
   `commit=0c261cc…`, `buildId=20261019193732-0c261cc`,
-  `commitSource=GIT_COMMIT_SHA`, base `reachable=true`.
+  `commitSource` sellado por el build, base `reachable=true`.
 - Smoke público (200): `/`, `/products`, `/products/<slug>`, `/cart`, `/admin`,
   `/admin/inventario`, `/admin/analytics`, `/contacto`, `/legal`,
   `/legal/{privacidad,terminos,reembolsos,cookies,aviso-legal}`,

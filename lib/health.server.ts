@@ -8,10 +8,12 @@
  *
  *      ok                 true si la base respondió
  *      version            versión de la app (package.json)
- *      commit             SHA del build realmente desplegado
- *      build.id           id único del build (se sella al compilar)
- *      build.commitSource de dónde salió el SHA (`git`, `BUILD_COMMIT`…)
+ *      commit             SHA del build realmente desplegado (null si no hay)
+ *      build.buildId      id único del build (se sella al compilar)
+ *      build.commitSource de dónde salió el SHA (`deploy_stamp`, `git`…)
  *      build.builtAt      ISO 8601 del build
+ *      build.deploymentId id del deployment de Railway (mismo del dashboard)
+ *      build.snapshotId   snapshot de build de Railway, si existe
  *      environment        APP_ENV resuelto (production | staging | preview | development)
  *      database.reachable true/false
  *      database.type      driver en uso (`neon`, `pg` o `none`)
@@ -48,7 +50,7 @@ export interface HealthReport {
   version: string;
   commit: string | null;
   /** Identidad del build embebida al compilar. Siempre presente. */
-  build: Pick<BuildIdentity, 'buildId' | 'commitSource' | 'builtAt'>;
+  build: Pick<BuildIdentity, 'buildId' | 'commitSource' | 'builtAt' | 'deploymentId' | 'snapshotId'>;
   environment: RuntimeEnvironmentName;
   database: HealthDatabase;
   timestamp: string;
@@ -76,6 +78,10 @@ export const HEALTH_DB_TIMEOUT_MS = 2_000;
  * La fuente principal es el manifiesto sellado en build (`lib/build-info.ts`),
  * justamente porque `RAILWAY_GIT_COMMIT_SHA` queda viejo con `railway up`. Las
  * variables de plataforma siguen como último recurso.
+ *
+ * Un commit ausente NO se rellena con `GIT_COMMIT_SHA` (variable manual, fácil
+ * de dejar vieja). Cuando no hay commit, el artefacto se identifica por
+ * `build.buildId` + `build.deploymentId`, ambos automáticos.
  */
 export function resolveBuildCommit(source: RuntimeEnvSource = process.env): string | null {
   return resolveBuildIdentity(source).commit;
@@ -140,6 +146,8 @@ export async function buildHealthReport(deps: HealthDependencies): Promise<Healt
       buildId: identity.buildId,
       commitSource: identity.commitSource,
       builtAt: identity.builtAt,
+      deploymentId: identity.deploymentId,
+      snapshotId: identity.snapshotId,
     },
     environment: resolveRuntimeEnvironment(env).name,
     database,

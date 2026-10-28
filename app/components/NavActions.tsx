@@ -24,13 +24,8 @@ export function NavActions() {
 
   return (
     <div className="flex items-center gap-2 sm:gap-4">
-      <Link
-        href="/kiosk"
-        className="hidden md:inline-flex items-center rounded-full border border-border-strong px-4 py-1.5 text-sm text-primary transition-colors hover:bg-surface-raised"
-      >
-        {t('nav.readyPickup')}
-      </Link>
-
+      {/* El enlace a /kiosk se retiró: era una demo del template, no el retiro
+          real. La pantalla operativa vive en /admin/kiosco. */}
       <Link
         href="/cart"
         className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"

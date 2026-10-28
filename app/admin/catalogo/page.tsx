@@ -6,6 +6,7 @@ import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
+import { AdminNav } from '../components/AdminNav';
 
 interface MasterHit {
   id: string;
@@ -262,6 +263,10 @@ export default function MasterCatalogPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <div className="mb-4 overflow-x-auto">
+        <AdminNav />
+      </div>
+
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
         <div>
           <p className="text-xs uppercase tracking-[2px] text-muted">{t('catalog.kicker')}</p>
@@ -269,13 +274,13 @@ export default function MasterCatalogPage() {
           <p className="mt-1 text-sm text-tertiary">{t('catalog.subtitle')}</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/admin" className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3 text-sm">
+          <Link href="/admin/productos" className="inline-flex h-11 items-center rounded-xl border border-border-strong px-3 text-sm">
             {t('catalog.legacyPanel')}
           </Link>
           <button
             type="button"
             onClick={() => void admin.signOut()}
-            className="h-9 rounded-xl border border-border px-3 text-xs text-tertiary"
+            className="h-11 rounded-xl border border-border px-3 text-sm text-tertiary"
           >
             {t('admin.signOut')}
           </button>
@@ -361,14 +366,14 @@ export default function MasterCatalogPage() {
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate text-sm font-medium">{product.name}</span>
+                <span className="truncate text-[15px] font-medium">{product.name}</span>
                 {product.archivedAt && (
-                  <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted">
+                  <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
                     {t('catalog.archived')}
                   </span>
                 )}
               </div>
-              <div className="truncate text-xs text-tertiary">
+              <div className="truncate text-[13px] text-tertiary">
                 {[product.brand, product.category].filter(Boolean).join(' · ') || 'Sin marca'}
               </div>
             </div>

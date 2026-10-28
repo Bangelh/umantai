@@ -607,11 +607,11 @@ function StockPanel({
             >
               <div className="min-w-0">
                 <div className="truncate">{item.productName}</div>
-                <div className="truncate text-xs text-tertiary">{item.variantLabel}</div>
+                <div className="truncate text-[13px] text-tertiary">{item.variantLabel}</div>
               </div>
               <div className="shrink-0 text-right">
                 <div className="font-mono">{item.available}</div>
-                <div className="text-[10px] text-muted">
+                <div className="text-xs text-muted">
                   {item.reorderPoint > 0
               ? t('analytics.min', { value: item.reorderPoint })
               : t('analytics.noMin')}
