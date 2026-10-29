@@ -37,6 +37,22 @@ interface Props {
 const TILES_URL =
   process.env.NEXT_PUBLIC_MAP_TILES_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
+/**
+ * Atribución obligatoria, SIEMPRE visible (sin botón ⓘ que la esconda).
+ *
+ * · OpenStreetMap: los datos y las teselas son OSM, con enlace a la página de
+ *   copyright.
+ * · Geoapify: sus Términos exigen atribución en el plan Free además de la de
+ *   OSM, aunque el mapa use teselas de OSM.
+ *
+ * Va como `customAttribution` (HTML con enlaces) y no como atribución de la
+ * fuente: MapLibre pinta esta última como texto plano, sin enlace.
+ */
+const OSM_ATTRIBUTION =
+  '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>';
+const GEOAPIFY_ATTRIBUTION =
+  '<a href="https://www.geoapify.com/" target="_blank" rel="noreferrer">Powered by Geoapify</a>';
+
 /** Estilo mínimo con teselas ráster: sin key ni servicios de terceros atados. */
 function rasterStyle() {
   return {
@@ -46,7 +62,6 @@ function rasterStyle() {
         type: 'raster' as const,
         tiles: [TILES_URL],
         tileSize: 256,
-        attribution: '© OpenStreetMap',
         maxzoom: 19,
       },
     },
@@ -80,10 +95,18 @@ export function MapCanvas({ center, marker, onMarkerChange, label, className }: 
         style: rasterStyle(),
         center: [center.longitude, center.latitude],
         zoom: 16,
-        attributionControl: { compact: true },
+        // La atribución se agrega a mano, siempre expandida.
+        attributionControl: false,
       });
       mapRef.current = map;
 
+      map.addControl(
+        new maplibregl.AttributionControl({
+          compact: false,
+          customAttribution: [OSM_ATTRIBUTION, GEOAPIFY_ATTRIBUTION],
+        }),
+        'bottom-right',
+      );
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
       map.on('click', (event) => {

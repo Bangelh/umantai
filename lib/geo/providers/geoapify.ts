@@ -12,28 +12,85 @@
  *    funcionando con el pin manual y la API responde 503. Nunca se inventan
  *    coordenadas.
  *  · No se loguea la dirección ni el punto: son datos del comerciante.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  QUÉ CUENTA COMO COINCIDENCIA (por qué no todo vale)
+ *
+ *  Geoapify SIEMPRE devuelve algo cuando se le pasa un distrito: si no reconoce
+ *  la calle, responde el centro del distrito con
+ *  `rank.match_type = "match_by_city_or_disrict"`. Aceptar eso como dirección
+ *  convertía "zzzz qqq 0000" en un pin válido con confianza alta.
+ *
+ *  Por eso se mira `rank.match_type` y `rank.confidence`:
+ *
+ *    · `administrative` (ciudad/distrito/postcode/estado/país) → NO es una
+ *      dirección: el adaptador devuelve `null` y la UI ofrece el pin manual.
+ *    · `exact` (full_match / inner_part / match_by_building) → sirve, pero solo
+ *      es `high` si además el rank ≥ 0.5 y el distrito coincide.
+ *    · `approximate` (match_by_street: calle sin número) → `low`.
+ *    · `unknown` (sin match_type) → `low` si hay calle; si no, `null`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ *  MAPEO TERRITORIAL EN PERÚ
+ *
+ *  Los nombres de Geoapify NO son los del UBIGEO. En Perú:
+ *
+ *    · `properties.district` es el BARRIO/urbanización ("Barrio Nicaragua");
+ *    · `properties.city`     es el DISTRITO administrativo ("Máncora");
+ *    · `properties.county`   es la PROVINCIA ("Talara");
+ *    · `properties.state`    es el DEPARTAMENTO ("Piura").
+ *
+ *  En Lima, en cambio, `district` sí trae el distrito ("Miraflores") y `city`
+ *  trae "Lima". Por eso el adaptador no elige uno: devuelve
+ *  `districtCandidates` del más específico al más general y el servidor resuelve
+ *  contra el catálogo UBIGEO (`resolveUbigeoFromCandidates`), aceptando solo una
+ *  coincidencia inequívoca.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { getPrefixedEnv } from '../../env';
 import { foldGeoText } from '../peru';
-import type { Geocoder, GeocodeHit, GeocodeQuery, GeoPoint, ReverseHit } from '../types';
+import type {
+  Geocoder,
+  GeocodeHit,
+  GeocodePrecision,
+  GeocodeQuery,
+  GeoPoint,
+  ReverseHit,
+} from '../types';
 
 const ENDPOINT = 'https://api.geoapify.com/v1/geocode';
 const TIMEOUT_MS = 8_000;
+/** Rank mínimo para dar una dirección por buena (`high`). */
+const HIGH_CONFIDENCE_RANK = 0.5;
+
+/** Tipos que solo identifican una unidad administrativa, no una calle. */
+const ADMINISTRATIVE_MATCH_TYPES = new Set([
+  'match_by_city_or_disrict', // sic: valor real que devuelve la API
+  'match_by_city_or_district',
+  'match_by_postcode',
+  'match_by_county',
+  'match_by_state',
+  'match_by_country',
+]);
+
+/** Tipos que identifican una calle y, cuando aplica, un número de puerta. */
+const EXACT_MATCH_TYPES = new Set(['full_match', 'inner_part', 'match_by_building']);
 
 interface GeoapifyProperties {
   formatted?: string;
   address_line1?: string;
   address_line2?: string;
   district?: string;
+  suburb?: string;
   city?: string;
   county?: string;
   state?: string;
   country_code?: string;
+  postcode?: string;
   lat?: number;
   lon?: number;
-  rank?: { confidence?: number };
+  rank?: { confidence?: number; match_type?: string };
 }
 
 interface GeoapifyFeature {
@@ -49,7 +106,66 @@ function apiKey(): string {
   return (getPrefixedEnv('GEOAPIFY_API_KEY') ?? '').trim();
 }
 
-function toHit(feature: GeoapifyFeature): GeocodeHit | null {
+/**
+ * Precisión declarada por el proveedor.
+ *
+ * Un `match_type` ausente no se interpreta como "exacto": queda `unknown` y,
+ * como mucho, produce una coincidencia `low`.
+ */
+export function precisionOf(matchType: string | undefined): GeocodePrecision {
+  if (!matchType) return 'unknown';
+  if (ADMINISTRATIVE_MATCH_TYPES.has(matchType)) return 'administrative';
+  if (EXACT_MATCH_TYPES.has(matchType)) return 'exact';
+  if (matchType === 'match_by_street') return 'approximate';
+  return 'unknown';
+}
+
+function rankConfidence(properties: GeoapifyProperties): number | null {
+  const value = properties.rank?.confidence;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Nombres de distrito candidatos, del más específico al más general. */
+function districtCandidates(properties: GeoapifyProperties): string[] {
+  const names = [properties.district, properties.suburb, properties.city]
+    .map((value) => value?.trim() ?? '')
+    .filter((value) => value.length > 0);
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const name of names) {
+    const key = foldGeoText(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(name);
+  }
+  return unique;
+}
+
+/**
+ * Un resultado solo sirve como dirección si identifica una vía.
+ *
+ * · coincidencia administrativa (solo ciudad/distrito) → `null`;
+ * · sin `address_line1` → `null` (no hay calle que mostrar);
+ * · `address_line1` igual al distrito/ciudad → `null` (Geoapify repite el
+ *   nombre del lugar cuando no encontró la vía).
+ */
+function streetLine(properties: GeoapifyProperties): string | null {
+  const line = properties.address_line1?.trim() ?? '';
+  if (line.length < 3) return null;
+
+  const folded = foldGeoText(line);
+  const placeNames = [properties.district, properties.city, properties.suburb]
+    .map((value) => (value ? foldGeoText(value) : ''))
+    .filter((value) => value.length > 0);
+  if (placeNames.includes(folded)) return null;
+
+  return line;
+}
+
+function toHit(
+  feature: GeoapifyFeature,
+): { hit: GeocodeHit; streetLine: string | null } | null {
   const properties = feature.properties ?? {};
   const coordinates = feature.geometry?.coordinates;
   const latitude = typeof properties.lat === 'number' ? properties.lat : coordinates?.[1];
@@ -57,14 +173,26 @@ function toHit(feature: GeoapifyFeature): GeocodeHit | null {
   if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
+  const precision = precisionOf(properties.rank?.match_type);
+  const candidates = districtCandidates(properties);
+
   return {
-    point: { latitude, longitude },
-    formatted: properties.formatted?.trim() || properties.address_line1?.trim() || '',
-    confidence: 'low',
-    department: properties.state?.trim() || null,
-    // En Geoapify la provincia peruana llega como `county`.
-    province: properties.county?.trim() || null,
-    district: properties.district?.trim() || properties.city?.trim() || null,
+    streetLine: streetLine(properties),
+    hit: {
+      point: { latitude, longitude },
+      formatted: properties.formatted?.trim() || properties.address_line1?.trim() || '',
+      // El servidor puede bajarla, nunca subirla. `high` exige rank alto.
+      confidence:
+        precision === 'exact' && (rankConfidence(properties) ?? 0) >= HIGH_CONFIDENCE_RANK
+          ? 'high'
+          : 'low',
+      department: properties.state?.trim() || null,
+      // En Perú la provincia llega como `county`.
+      province: properties.county?.trim() || null,
+      district: candidates[0] ?? null,
+      districtCandidates: candidates,
+      precision,
+    },
   };
 }
 
@@ -116,13 +244,20 @@ export function createGeoapifyGeocoder(): Geocoder {
       const feature = payload?.features?.[0];
       if (!feature) return null;
 
-      const hit = toHit(feature);
-      if (!hit) return null;
+      const mapped = toHit(feature);
+      if (!mapped) return null;
 
-      // Solo es "alta" si el proveedor devuelve el MISMO distrito elegido.
+      const { hit, streetLine: line } = mapped;
+      // Sin calle no hay dirección: el centro del distrito no es una coincidencia.
+      if (hit.precision === 'administrative') return null;
+      if (!line) return null;
+
+      // Solo es `high` si además el proveedor devolvió el MISMO distrito pedido.
+      // (El servidor vuelve a comprobarlo contra el catálogo UBIGEO.)
       const expected = query.ubigeo?.district ? foldGeoText(query.ubigeo.district) : null;
-      const got = hit.district ? foldGeoText(hit.district) : null;
-      if (expected && got && expected === got) hit.confidence = 'high';
+      const sameDistrict =
+        !expected || hit.districtCandidates.some((name) => foldGeoText(name) === expected);
+      if (!sameDistrict) hit.confidence = 'low';
 
       return hit;
     },
@@ -142,8 +277,8 @@ export function createGeoapifyGeocoder(): Geocoder {
       const feature = payload?.features?.[0];
       if (!feature) return null;
 
-      const hit = toHit(feature);
-      if (!hit) return null;
+      const mapped = toHit(feature);
+      if (!mapped) return null;
 
       const properties = feature.properties ?? {};
       const addressLine =
@@ -153,8 +288,11 @@ export function createGeoapifyGeocoder(): Geocoder {
           .join(', ') || null;
 
       return {
-        ...hit,
-        confidence: 'high',
+        ...mapped.hit,
+        // El reverse siempre describe un punto: no se descarta por precisión,
+        // pero tampoco se da por exacto si el proveedor no dio una vía.
+        confidence:
+          mapped.hit.precision === 'exact' && mapped.hit.confidence === 'high' ? 'high' : 'low',
         addressLine,
         ubigeoHint: null, // lo resuelve el servidor contra el catálogo
       };

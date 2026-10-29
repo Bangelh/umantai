@@ -137,6 +137,44 @@ export async function matchUbigeoByName(input: {
   };
 }
 
+/**
+ * Resuelve el UBIGEO probando varios nombres de distrito, del más específico al
+ * más general.
+ *
+ * El proveedor no habla el idioma del catálogo: en Máncora devuelve
+ * `district = "Barrio Nicaragua"` y `city = "Máncora"`; en Lima devuelve
+ * `district = "Miraflores"` y `city = "Lima"`. En vez de adivinar cuál campo es
+ * el distrito, se prueban en orden y se acepta el PRIMER nombre que resuelva a
+ * una única cadena departamento → provincia → distrito.
+ *
+ * Si ningún candidato es inequívoco se devuelve `null`: el pin sigue siendo
+ * válido, pero no se inventa un ubigeo ni se cambian los selects.
+ */
+export async function resolveUbigeoFromCandidates(input: {
+  department: string | null;
+  province: string | null;
+  names: Array<string | null | undefined>;
+}): Promise<UbigeoChain | null> {
+  const seen = new Set<string>();
+
+  for (const raw of input.names) {
+    const name = (raw ?? '').trim();
+    if (name.length < 2) continue;
+    const key = name.toLocaleLowerCase('es-PE');
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const match = await matchUbigeoByName({
+      department: input.department,
+      province: input.province,
+      district: name,
+    });
+    if (match) return match;
+  }
+
+  return null;
+}
+
 /** Nombre legible "Distrito, Provincia, Departamento". */
 export function formatUbigeoChain(chain: UbigeoChain): string {
   return `${chain.district}, ${chain.province}, ${chain.department}`;

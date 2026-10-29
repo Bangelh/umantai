@@ -38,18 +38,38 @@ export interface GeocodeQuery {
   ubigeo?: UbigeoChain | null;
 }
 
+/**
+ * Qué tan específica es la coincidencia según el proveedor.
+ *
+ * `administrative` (solo ciudad/distrito) NO es una dirección y la capa superior
+ * la descarta: es la diferencia entre "encontramos tu calle" y "encontramos el
+ * distrito, ubica el pin a mano".
+ */
+export type GeocodePrecision = 'exact' | 'approximate' | 'administrative' | 'unknown';
+
 export interface GeocodeHit {
   point: GeoPoint;
   formatted: string;
   /**
-   * `high` solo si el resultado cae en el distrito pedido. Cualquier otra cosa
-   * es `low`: se muestra el pin, pero NUNCA se da por buena la coincidencia.
+   * `high` solo si el resultado identifica una vía, tiene rank suficiente y cae
+   * en el distrito pedido. Cualquier otra cosa es `low`: se muestra el pin, pero
+   * NUNCA se da por buena la coincidencia.
    */
   confidence: 'high' | 'low';
   /** Nombres administrativos que devolvió el proveedor (para diagnóstico). */
   department: string | null;
   province: string | null;
   district: string | null;
+  /**
+   * Nombres de distrito candidatos, del más específico al más general.
+   *
+   * En Perú el proveedor devuelve el barrio en `district` y el distrito real en
+   * `city`; en Lima puede ser al revés. El servidor prueba cada candidato contra
+   * el catálogo UBIGEO y solo acepta una coincidencia inequívoca.
+   */
+  districtCandidates: string[];
+  /** Precisión declarada por el proveedor (no se inventa). */
+  precision: GeocodePrecision;
 }
 
 export interface ReverseHit extends GeocodeHit {

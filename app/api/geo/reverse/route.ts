@@ -17,7 +17,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth.server';
 import { isGeocoderAvailable, reversePoint } from '@/lib/geo/geocode.server';
 import { isValidPoint, isPointInPeru } from '@/lib/geo/peru';
-import { matchUbigeoByName } from '@/lib/geo/ubigeo.server';
+import { resolveUbigeoFromCandidates } from '@/lib/geo/ubigeo.server';
 import { logSecurityEvent } from '@/lib/observability.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
@@ -88,10 +88,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, provider, address: null, ubigeo: null }, { headers: NO_STORE });
     }
 
-    const ubigeo = await matchUbigeoByName({
+    // El proveedor devuelve el barrio y el distrito en campos distintos según la
+    // ciudad; se prueban todos los candidatos y solo se acepta el inequívoco.
+    const ubigeo = await resolveUbigeoFromCandidates({
       department: hit.department,
       province: hit.province,
-      district: hit.district,
+      names: hit.districtCandidates,
     }).catch((error: unknown) => {
       logSecurityEvent('geocode_ubigeo_match_failed', {
         errorName: error instanceof Error ? error.name : 'unknown',

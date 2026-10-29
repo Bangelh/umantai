@@ -447,7 +447,7 @@ export const MESSAGES = {
     'location.notFound':
       'No encontramos esa dirección exacta. Mueve el marcador hasta la entrada de tu tienda.',
     'location.lowConfidence':
-      'La dirección no coincide con el distrito elegido. Revisa el marcador.',
+      'La dirección coincide solo en parte. Mueve el marcador hasta la entrada de tu tienda.',
     'location.step3Title': 'Ajusta el marcador',
     'location.mapHelp': 'Arrastra el marcador o toca el mapa hasta la entrada de tu tienda.',
     'location.mapLabel': 'Mapa para ubicar tu tienda',
@@ -1729,7 +1729,8 @@ export const MESSAGES = {
     'location.locating': 'Looking up the address…',
     'location.notFound':
       'We could not find that exact address. Move the marker to your store entrance.',
-    'location.lowConfidence': 'The address does not match the chosen district. Check the marker.',
+    'location.lowConfidence':
+      'The address only partially matches. Move the marker to your store entrance.',
     'location.step3Title': 'Adjust the marker',
     'location.mapHelp': 'Drag the marker or tap the map to your store entrance.',
     'location.mapLabel': 'Map to place your store',

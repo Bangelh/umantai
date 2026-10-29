@@ -204,3 +204,59 @@ test('matchUbigeoByName solo resuelve coincidencias inequívocas', async () => {
   });
   assert.equal(unknown, null);
 });
+
+test('el barrio del proveedor no impide resolver el distrito (Máncora)', async () => {
+  for (const neighborhood of ['Barrio Nicaragua', 'Barrio Santa Rosa']) {
+    const chain = await ubigeo.resolveUbigeoFromCandidates({
+      department: 'Piura',
+      province: 'Talara',
+      names: [neighborhood, 'Máncora'],
+    });
+    assert.equal(chain?.code, '200706', neighborhood);
+    assert.equal(chain?.district, 'Máncora');
+    assert.equal(chain?.province, 'Talara');
+    assert.equal(chain?.department, 'Piura');
+  }
+});
+
+test('en Lima resuelve el distrito, no la ciudad (district ≠ city)', async () => {
+  const chain = await ubigeo.resolveUbigeoFromCandidates({
+    department: 'Lima',
+    province: 'Lima',
+    names: ['Miraflores', 'Lima'],
+  });
+  assert.equal(chain?.code, '150122');
+  assert.equal(chain?.district, 'Miraflores');
+});
+
+test('un punto de borde/playa resuelve el distrito por su ciudad', async () => {
+  const chain = await ubigeo.resolveUbigeoFromCandidates({
+    department: 'Piura',
+    province: 'Talara',
+    names: ['Barrio Santa Rosa', null, 'Máncora'],
+  });
+  assert.equal(chain?.code, '200706');
+});
+
+test('sin coincidencia inequívoca no se inventa ubigeo', async () => {
+  const ambiguous = await ubigeo.resolveUbigeoFromCandidates({
+    department: null,
+    province: null,
+    names: ['San Juan'],
+  });
+  assert.equal(ambiguous, null);
+
+  const unknown = await ubigeo.resolveUbigeoFromCandidates({
+    department: 'Piura',
+    province: 'Talara',
+    names: ['Barrio Inexistente'],
+  });
+  assert.equal(unknown, null);
+
+  const wrongProvince = await ubigeo.resolveUbigeoFromCandidates({
+    department: 'Piura',
+    province: 'Paita',
+    names: ['Máncora'],
+  });
+  assert.equal(wrongProvince, null);
+});

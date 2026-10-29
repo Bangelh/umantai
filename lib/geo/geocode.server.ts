@@ -16,7 +16,8 @@ import { logEvent, logSecurityEvent } from '../observability.server';
 import { TtlCache } from './cache.server';
 import { foldGeoText, roundPoint } from './peru';
 import { createGeoapifyGeocoder } from './providers/geoapify';
-import type { Geocoder, GeocodeHit, GeocodeQuery, GeoPoint, ReverseHit } from './types';
+import type { Geocoder, GeocodeHit, GeocodeQuery, GeoPoint, ReverseHit, UbigeoChain } from './types';
+import { resolveUbigeoFromCandidates } from './ubigeo.server';
 
 const HIT_TTL_MS = 24 * 60 * 60_000;
 const MISS_TTL_MS = 10 * 60_000;
@@ -64,6 +65,44 @@ function forwardKey(query: GeocodeQuery): string {
 }
 
 /**
+ * Traduce los nombres del proveedor al catálogo UBIGEO y ajusta la confianza.
+ *
+ * `high` exige dos cosas: que el proveedor haya identificado una vía con rank
+ * suficiente y que el resultado caiga en el distrito pedido. Si el catálogo no
+ * puede resolver la cadena administrativa, la coincidencia baja a `low` en vez
+ * de darse por buena.
+ */
+async function canonicalizeHit(
+  hit: GeocodeHit,
+  requested: UbigeoChain | null | undefined,
+): Promise<GeocodeHit> {
+  let resolved: UbigeoChain | null = null;
+  try {
+    resolved = await resolveUbigeoFromCandidates({
+      department: hit.department,
+      province: hit.province,
+      names: hit.districtCandidates,
+    });
+  } catch (error) {
+    logSecurityEvent('geocode_ubigeo_match_failed', {
+      errorName: error instanceof Error ? error.name : 'unknown',
+    });
+    return { ...hit, confidence: 'low' };
+  }
+
+  if (!resolved) return { ...hit, confidence: 'low' };
+
+  const sameDistrict = !requested || resolved.code === requested.code;
+  return {
+    ...hit,
+    department: resolved.department,
+    province: resolved.province,
+    district: resolved.district,
+    confidence: hit.confidence === 'high' && sameDistrict ? 'high' : 'low',
+  };
+}
+
+/**
  * Dirección → punto.
  *
  * Devuelve `null` cuando no hay proveedor o no hay coincidencia. Los errores del
@@ -92,6 +131,8 @@ export async function forwardAddress(query: GeocodeQuery): Promise<{
     // Un fallo del proveedor no se cachea: el usuario puede reintentar.
     return { hit: null, cached: false, provider };
   }
+
+  if (hit) hit = await canonicalizeHit(hit, query.ubigeo);
 
   forwardCache.set(key, { hit, expiresIn: hit ? HIT_TTL_MS : MISS_TTL_MS });
   logEvent('geocode_forward', {
