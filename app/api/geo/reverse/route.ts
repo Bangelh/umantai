@@ -49,17 +49,8 @@ export async function POST(request: Request) {
   });
   if (limited) return limited;
 
-  if (!isGeocoderAvailable()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: 'geocoder_unavailable',
-        error: 'La búsqueda de direcciones no está disponible ahora mismo.',
-      },
-      { status: 503, headers: NO_STORE },
-    );
-  }
-
+  // Validar la entrada ANTES de mirar el proveedor: un punto fuera del Perú es
+  // un 400, no un 503 (y no depende de si hay key configurada).
   const body = await readJsonBody<Body>(request);
   const point = {
     latitude: typeof body?.latitude === 'number' ? body.latitude : Number(body?.latitude),
@@ -70,6 +61,17 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, code: 'invalid_point', error: 'La ubicación debe estar dentro del Perú.' },
       { status: 400, headers: NO_STORE },
+    );
+  }
+
+  if (!isGeocoderAvailable()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'geocoder_unavailable',
+        error: 'La búsqueda de direcciones no está disponible ahora mismo.',
+      },
+      { status: 503, headers: NO_STORE },
     );
   }
 

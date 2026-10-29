@@ -49,17 +49,8 @@ export async function POST(request: Request) {
   });
   if (limited) return limited;
 
-  if (!isGeocoderAvailable()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        code: 'geocoder_unavailable',
-        error: 'La búsqueda de direcciones no está disponible ahora mismo.',
-      },
-      { status: 503, headers: NO_STORE },
-    );
-  }
-
+  // La forma del payload se valida primero: un 400 no debe depender de si hay
+  // proveedor configurado.
   const body = await readJsonBody<Body>(request);
   const address = typeof body?.address === 'string' ? body.address.trim() : '';
   const ubigeo = typeof body?.ubigeo === 'string' ? body.ubigeo.trim() : '';
@@ -74,6 +65,17 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, code: 'invalid_ubigeo', error: 'Elige el distrito primero.' },
       { status: 400, headers: NO_STORE },
+    );
+  }
+
+  if (!isGeocoderAvailable()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'geocoder_unavailable',
+        error: 'La búsqueda de direcciones no está disponible ahora mismo.',
+      },
+      { status: 503, headers: NO_STORE },
     );
   }
 
