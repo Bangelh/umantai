@@ -46,6 +46,8 @@ const MIGRATIONS = [
   '022_rls_tenant_isolation.sql',
   '023_consumer_complaints.sql',
   '024_complaint_assignment.sql',
+  '025_store_location_ubigeo.sql',
+  '026_seed_ubigeo.sql',
 ] as const;
 
 export interface EmbeddedTestDatabase {

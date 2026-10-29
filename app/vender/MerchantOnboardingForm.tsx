@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useI18n } from '@/components/i18n/I18nProvider';
-import { LOCATION_PRESETS } from '@/lib/locations';
+import { LocationPicker, type StoreLocationValue } from '@/components/map/LocationPicker';
 import { normalizeStoreSlug, validateStoreSlug } from '@/lib/tenancy';
 
 interface CreatedStore {
@@ -25,10 +25,7 @@ export function MerchantOnboardingForm() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('');
-  const [district, setDistrict] = useState('');
-  const [city, setCity] = useState('Lima');
-  const [zoneId, setZoneId] = useState('');
+  const [location, setLocation] = useState<StoreLocationValue | null>(null);
   const [contactPhone, setContactPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedStore | null>(null);
@@ -50,8 +47,6 @@ export function MerchantOnboardingForm() {
       return;
     }
 
-    const zone = LOCATION_PRESETS.find((item) => item.id === zoneId) ?? null;
-
     setSubmitting(true);
     try {
       const response = await fetch('/api/merchant/stores', {
@@ -62,11 +57,10 @@ export function MerchantOnboardingForm() {
           slug: slugValidation.slug,
           category: category.trim() || null,
           description: description.trim() || null,
-          address: address.trim() || null,
-          district: district.trim() || zone?.label || null,
-          city: city.trim() || null,
-          latitude: zone?.latitude ?? null,
-          longitude: zone?.longitude ?? null,
+          // Ubicación estructurada: departamento/provincia/distrito los deriva la
+          // base desde el UBIGEO. Si el comerciante la deja para después, la
+          // tienda se crea igual y se completa desde el panel.
+          location: location ?? undefined,
           contactPhone: contactPhone.trim() || null,
         }),
       });
@@ -211,55 +205,14 @@ export function MerchantOnboardingForm() {
         />
       </label>
 
-      <label className="text-xs text-tertiary sm:col-span-2">
-        {t('onboarding.address')}
-        <input
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          maxLength={160}
-          className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
+      <div className="mt-2 sm:col-span-2">
+        <LocationPicker
+          onValueChange={setLocation}
+          hideSubmit
+          submitLabel={t('onboarding.create')}
+          onSubmit={async () => undefined}
         />
-      </label>
-
-      <label className="text-xs text-tertiary">
-        {t('onboarding.zone')}
-        <select
-          value={zoneId}
-          onChange={(event) => {
-            setZoneId(event.target.value);
-            const zone = LOCATION_PRESETS.find((item) => item.id === event.target.value);
-            if (zone) setDistrict(zone.label);
-          }}
-          className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
-        >
-          <option value="">{t('onboarding.selectZone')}</option>
-          {LOCATION_PRESETS.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.label} · {preset.region}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="text-xs text-tertiary">
-        {t('onboarding.district')}
-        <input
-          value={district}
-          onChange={(event) => setDistrict(event.target.value)}
-          maxLength={60}
-          className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
-        />
-      </label>
-
-      <label className="text-xs text-tertiary">
-        {t('onboarding.city')}
-        <input
-          value={city}
-          onChange={(event) => setCity(event.target.value)}
-          maxLength={60}
-          className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
-        />
-      </label>
+      </div>
 
       <div className="sm:col-span-2">
         <button

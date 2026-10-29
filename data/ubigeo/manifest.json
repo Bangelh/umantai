@@ -1,0 +1,37 @@
+{
+  "version": "2026.10",
+  "generatedAt": "2026-10-29T04:14:35.189Z",
+  "generator": "scripts/build-ubigeo.mjs",
+  "source": {
+    "description": "Dataset público de UBIGEO con equivalencias INEI ↔ RENIEC (MIT). Origen de los códigos: INEI, códigos estandarizados.",
+    "license": "MIT",
+    "files": [
+      {
+        "name": "ubigeo_departamento.csv",
+        "url": "https://raw.githubusercontent.com/jmcastagnetto/ubigeo-peru-aumentado/main/ubigeo_departamento.csv",
+        "sha256": "4362c5ee7cfd0631938e365c7cf96c6340b1be4e2acb0e852206f2f65cca0097"
+      },
+      {
+        "name": "ubigeo_provincia.csv",
+        "url": "https://raw.githubusercontent.com/jmcastagnetto/ubigeo-peru-aumentado/main/ubigeo_provincia.csv",
+        "sha256": "832eab7cc4da217093f7d363e0a3d7873dbe6a3df694541d542f55ca94fcb3fb"
+      },
+      {
+        "name": "ubigeo_distrito.csv",
+        "url": "https://raw.githubusercontent.com/jmcastagnetto/ubigeo-peru-aumentado/main/ubigeo_distrito.csv",
+        "sha256": "6a2cde8fb82e336285da4d684241450e8a36630e42799652c8d72b596ec252e4"
+      }
+    ],
+    "downloadCommand": "node scripts/build-ubigeo.mjs"
+  },
+  "counts": {
+    "departments": 25,
+    "provinces": 196,
+    "districts": 1892,
+    "skippedWithoutIneiCode": 1
+  },
+  "artifacts": {
+    "seed": "db/migrations/026_seed_ubigeo.sql",
+    "seedSha256": "6b6b3706c76d0f43ef5fac7552244ccedd7343f799188bd2e2a1a51cb6a88e59"
+  }
+}

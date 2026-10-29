@@ -321,6 +321,28 @@ E2E_TEST_TOKEN=
 > apagado, un `@umantai.test` falla cerrado (`disabled`) en vez de intentar un envío
 > que rebotaría. El E2E toma el token desde `E2E_TEST_TOKEN` (ver `playwright.config.ts`).
 
+### Ubicación de tienda: UBIGEO, mapa y geocoding
+```env
+# Proveedor de geocoding (dirección ↔ punto). Default: geoapify.
+# Valores: geoapify | none (sin proveedor: el pin manual sigue funcionando).
+GEO_PROVIDER=geoapify
+
+# API key de Geoapify. SOLO servidor: nunca se expone al navegador.
+# Sin key, /api/geo/geocode y /api/geo/reverse responden 503
+# (geocoder_unavailable) y el formulario pide mover el marcador a mano.
+GEOAPIFY_API_KEY=
+
+# Teselas del mapa (MapLibre, ráster). Público: va en el bundle del navegador.
+# Default: https://tile.openstreetmap.org/{z}/{x}/{y}.png
+# Para producción con volumen, apuntar a un proveedor de teselas con key
+# restringida por dominio (MapTiler, Geoapify, Stadia…).
+NEXT_PUBLIC_MAP_TILES_URL=
+```
+
+> El catálogo UBIGEO **no** se pide a ninguna API: vive en la base (migraciones
+> 025/026) y se regenera con `node scripts/build-ubigeo.mjs` (fuente INEI, snapshot
+> versionado con checksum en `data/ubigeo/manifest.json`).
+
 ### Sitio público, contacto y sellado del build (Fase 2)
 ```env
 # URL absoluta del sitio: canonical, Open Graph, robots.txt y sitemap.xml.

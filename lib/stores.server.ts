@@ -66,8 +66,15 @@ export interface Store {
   imageUrl: string | null;
   category: string | null;
   address: string | null;
+  /** Referencia administrativa canónica (catálogo UBIGEO del INEI). */
+  ubigeo: string | null;
+  /** Derivados del ubigeo por trigger; no se escriben desde la app. */
+  department: string | null;
+  province: string | null;
   district: string | null;
   city: string | null;
+  reference: string | null;
+  locationSource: string | null;
   latitude: number | null;
   longitude: number | null;
   contactEmail: string | null;
@@ -147,8 +154,13 @@ export function toStore(row: Row): Store {
     imageUrl: (row.image_url as string | null) ?? null,
     category: (row.category as string | null) ?? null,
     address: (row.address as string | null) ?? null,
+    ubigeo: (row.ubigeo as string | null) ?? null,
+    department: (row.department as string | null) ?? null,
+    province: (row.province as string | null) ?? null,
     district: (row.district as string | null) ?? null,
     city: (row.city as string | null) ?? null,
+    reference: (row.reference as string | null) ?? null,
+    locationSource: (row.location_source as string | null) ?? null,
     latitude: toNullableNumber(row.latitude),
     longitude: toNullableNumber(row.longitude),
     contactEmail: (row.contact_email as string | null) ?? null,
@@ -701,6 +713,10 @@ export interface CreateStoreInput {
   description?: string | null;
   category?: string | null;
   address?: string | null;
+  /** Referencia administrativa canónica. Si viene, manda sobre district/city. */
+  ubigeo?: string | null;
+  reference?: string | null;
+  locationSource?: string | null;
   district?: string | null;
   city?: string | null;
   latitude?: number | null;
@@ -760,11 +776,15 @@ export async function createStoreForOwner(input: CreateStoreInput): Promise<Stor
         sql`
           INSERT INTO stores (
             name, slug, description, category,
-            address, district, city, latitude, longitude,
+            address, ubigeo, reference, location_source, location_updated_at,
+            district, city, latitude, longitude,
             contact_email, contact_phone, active, metadata
           ) VALUES (
             ${name}, ${candidate}, ${input.description ?? null}, ${input.category ?? null},
-            ${input.address ?? null}, ${input.district ?? null}, ${input.city ?? null},
+            ${input.address ?? null}, ${input.ubigeo ?? null}, ${input.reference ?? null},
+            ${input.locationSource ?? null},
+            CASE WHEN ${latitude !== null && longitude !== null} THEN NOW() ELSE NULL END,
+            ${input.district ?? null}, ${input.city ?? null},
             ${latitude}::float8, ${longitude}::float8,
             ${input.contactEmail ?? null}, ${input.contactPhone ?? null},
             FALSE, ${JSON.stringify({ source: 'merchant_onboarding' })}::jsonb

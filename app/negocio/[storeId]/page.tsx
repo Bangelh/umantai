@@ -124,7 +124,47 @@ export default async function MerchantStorePage({ params }: PageProps) {
           </h2>
           <p className="mt-1 text-sm text-secondary">{t('merchant.incompleteNotice')}</p>
           <p className="mt-1 text-xs text-tertiary">{t('merchant.locationBody')}</p>
-          <StoreLocationForm storeId={storeId} />
+          <div className="mt-3">
+            <StoreLocationForm storeId={storeId} />
+          </div>
+        </section>
+      )}
+
+      {status.hasLocation && (
+        <section
+          id="ubicacion"
+          aria-labelledby="ubicacion-title"
+          className="mt-4 rounded-2xl border border-border bg-surface p-4"
+        >
+          <h2 id="ubicacion-title" className="text-sm font-semibold text-secondary">
+            {t('merchant.locationHeading')}
+          </h2>
+          <p className="mt-1 text-sm text-primary">{store.address ?? t('merchant.locationNoAddress')}</p>
+          <p className="mt-0.5 text-xs text-tertiary">
+            {[store.district, store.province, store.department].filter(Boolean).join(' · ') ||
+              t('merchant.locationNoUbigeo')}
+          </p>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-sm font-medium text-tertiary underline-offset-2 hover:text-primary hover:underline">
+              {t('merchant.changeLocation')}
+            </summary>
+            <div className="mt-3">
+              <StoreLocationForm
+                storeId={storeId}
+                initial={
+                  store.latitude !== null && store.longitude !== null
+                    ? {
+                        ubigeo: store.ubigeo ?? '',
+                        address: store.address ?? '',
+                        reference: store.reference ?? '',
+                        latitude: store.latitude,
+                        longitude: store.longitude,
+                      }
+                    : null
+                }
+              />
+            </div>
+          </details>
         </section>
       )}
 

@@ -71,10 +71,15 @@ export async function createStoreViaApi(
       slug,
       category: 'abarrotes',
       description: 'Tienda creada por la suite E2E.',
-      district: 'Miraflores',
-      city: 'Lima',
-      latitude: -12.1211,
-      longitude: -77.0297,
+      // Ubicación canónica: UBIGEO de Miraflores (Lima) + pin.
+      location: {
+        ubigeo: '150122',
+        address: 'Av. Larco 123',
+        reference: 'Suite E2E',
+        latitude: -12.1211,
+        longitude: -77.0297,
+        source: 'map_pin',
+      },
     },
   });
   expect(response.ok(), `createStore falló: ${response.status()}`).toBeTruthy();

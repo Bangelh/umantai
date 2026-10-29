@@ -12,8 +12,11 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser, resolveAuthBaseUrl } from '@/lib/auth.server';
 import { buildStoreCreatedEmail, sendTransactionalEmail } from '@/lib/email.server';
+import { distanceKm } from '@/lib/geo/peru';
+import { getUbigeoChain } from '@/lib/geo/ubigeo.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
+import { validateStoreLocation, type StoreLocationWarning } from '@/lib/store-location';
 import { createStoreForOwner, listStoresForUser } from '@/lib/stores.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
 
@@ -47,6 +50,9 @@ interface CreateStoreBody {
   slug?: unknown;
   description?: unknown;
   category?: unknown;
+  /** Ubicación estructurada (flujo nuevo). */
+  location?: unknown;
+  /** Campos legacy: se aceptan mientras haya clientes antiguos. */
   address?: unknown;
   district?: unknown;
   city?: unknown;
@@ -98,6 +104,49 @@ export async function POST(request: Request) {
     );
   }
 
+  // Ubicación estructurada: si viene, manda. Se valida ANTES de crear la tienda
+  // para no dejar una fila a medio llenar si el payload es inválido.
+  let structured: {
+    ubigeo: string;
+    address: string;
+    reference: string | null;
+    latitude: number;
+    longitude: number;
+    source: 'map_pin' | 'gps' | 'geocoder' | 'legacy_zone';
+  } | null = null;
+  const warnings: StoreLocationWarning[] = [];
+
+  if (body.location !== undefined && body.location !== null) {
+    const validation = validateStoreLocation(body.location);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: validation.message, code: validation.code, field: validation.field },
+        { status: 400 },
+      );
+    }
+    if (isPlatformDbConfigured()) {
+      const chain = await getUbigeoChain(validation.value.ubigeo).catch(() => null);
+      if (!chain) {
+        return NextResponse.json(
+          { error: 'El distrito elegido no existe en el catálogo.', code: 'ubigeo_not_found' },
+          { status: 400 },
+        );
+      }
+      warnings.push(...validation.warnings);
+      if (
+        chain.centroid &&
+        distanceKm(chain.centroid, {
+          latitude: validation.value.latitude,
+          longitude: validation.value.longitude,
+        }) > 60 &&
+        !warnings.includes('pin_far_from_district')
+      ) {
+        warnings.push('pin_far_from_district');
+      }
+    }
+    structured = validation.value;
+  }
+
   try {
     const store = await createStoreForOwner({
       ownerUserId: user.id,
@@ -105,11 +154,15 @@ export async function POST(request: Request) {
       slug: str(body.slug) ?? name,
       description: str(body.description),
       category: str(body.category),
-      address: str(body.address),
-      district: str(body.district),
-      city: str(body.city),
-      latitude: num(body.latitude),
-      longitude: num(body.longitude),
+      address: structured?.address ?? str(body.address),
+      ubigeo: structured?.ubigeo ?? null,
+      reference: structured?.reference ?? null,
+      locationSource: structured?.source ?? null,
+      // Con UBIGEO los nombres los deriva la base: no se escriben desde acá.
+      district: structured ? null : str(body.district),
+      city: structured ? null : str(body.city),
+      latitude: structured?.latitude ?? num(body.latitude),
+      longitude: structured?.longitude ?? num(body.longitude),
       contactEmail: str(body.contactEmail) ?? user.email,
       contactPhone: str(body.contactPhone),
     });
@@ -137,6 +190,7 @@ export async function POST(request: Request) {
       {
         store,
         status: 'pending_approval',
+        warnings,
         email: { status: email.status, to: user.email },
         message: 'La tienda fue creada. Un administrador de UMANTAI debe activarla.',
       },
