@@ -11,8 +11,11 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { MerchantCatalog } from './MerchantCatalog';
 import { StoreBilling } from './StoreBilling';
+import { StoreLocationForm } from './StoreLocationForm';
 import { resolveAnalyticsRange } from '@/lib/analytics';
 import { orderStatusLabel } from '@/lib/i18n/status';
+import { storeStatusLabel } from '@/lib/i18n/store-status';
+import { resolveMerchantStoreStatus } from '@/lib/store-status';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
 import { getTranslator } from '@/lib/i18n/server';
@@ -48,6 +51,9 @@ export default async function MerchantStorePage({ params }: PageProps) {
     notFound();
   }
 
+  // Estado real: activa · pendiente de revisión · falta completarla.
+  const status = resolveMerchantStoreStatus(store);
+
   const [products, orders, billing] = await Promise.all([
     listStoreProducts(user.id, storeId),
     listStoreOrders(user.id, storeId, 30),
@@ -80,13 +86,13 @@ export default async function MerchantStorePage({ params }: PageProps) {
           <h1 className="text-3xl font-semibold tracking-tight">{store.name}</h1>
           <p className="mt-1 text-sm text-tertiary">
             /{store.slug} · {store.category ?? t('merchant.categoryNone')} ·{' '}
-            <span className={store.active ? 'text-success' : 'text-warning'}>
-              {store.active ? t('merchant.active') : t('merchant.pending')}
+            <span className={status.state === 'active' ? 'text-success' : 'text-warning'}>
+              {storeStatusLabel(t, status.state)}
             </span>
           </p>
         </div>
         <div className="flex gap-2">
-          {store.active ? (
+          {status.state === 'active' ? (
             <Link
               href={`/${store.slug}`}
               className="inline-flex h-9 items-center rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised"
@@ -101,10 +107,25 @@ export default async function MerchantStorePage({ params }: PageProps) {
         </div>
       </header>
 
-      {!store.active && (
+      {status.state === 'pending_review' && (
         <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
           {t('merchant.pendingNotice')}
         </div>
+      )}
+
+      {status.missing === 'location' && (
+        <section
+          id="ubicacion"
+          aria-labelledby="ubicacion-title"
+          className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-4"
+        >
+          <h2 id="ubicacion-title" className="text-sm font-semibold text-warning">
+            {t('merchant.locationTitle')}
+          </h2>
+          <p className="mt-1 text-sm text-secondary">{t('merchant.incompleteNotice')}</p>
+          <p className="mt-1 text-xs text-tertiary">{t('merchant.locationBody')}</p>
+          <StoreLocationForm storeId={storeId} />
+        </section>
       )}
 
       {billing && <StoreBilling storeId={storeId} initialBilling={billing} />}

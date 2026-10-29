@@ -11,10 +11,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { EmailVerificationCard } from './EmailVerificationCard';
 import { ProfileForm } from './ProfileForm';
 import { SignOutButton } from './SignOutButton';
 import { SecurityPanel } from './SecurityPanel';
 import { orderStatusLabel } from '@/lib/i18n/status';
+import { storeStatusLabel } from '@/lib/i18n/store-status';
+import { resolveMerchantStoreStatus } from '@/lib/store-status';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { getCustomerProfile, listCustomerOrders, listStoresForUser } from '@/lib/stores.server';
 import { getTranslator } from '@/lib/i18n/server';
@@ -50,12 +53,14 @@ export default async function AccountPage() {
             {t('account.greeting', { name: user.name.split(' ')[0] })}
           </h1>
           <p className="mt-1 text-sm text-tertiary">{user.email}</p>
-          <p className="mt-1 text-xs text-muted">
-            {user.emailVerified ? t('account.emailVerified') : t('account.emailUnverified')}
-          </p>
         </div>
         <SignOutButton />
       </div>
+
+      {/* Estado del CORREO de la cuenta (independiente del estado de la tienda) */}
+      <section aria-label={t('account.status')}>
+        <EmailVerificationCard verified={user.emailVerified} />
+      </section>
 
       {/* Negocios */}
       <section className="mt-6">
@@ -80,32 +85,58 @@ export default async function AccountPage() {
           </div>
         ) : (
           <ul className="mt-2 divide-y divide-border">
-            {stores.map((store) => (
-              <li key={store.id}>
-                <Link
-                  href={`/negocio/${store.id}`}
-                  className="flex items-center justify-between gap-3 py-3 hover:bg-surface-raised/60"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{store.name}</span>
-                    <span className="block truncate text-xs text-tertiary">
-                      /{store.slug} ·{' '}
-                      {t('account.productsOrders', {
-                        products: store.productCount,
-                        orders: store.orderCount,
-                      })}
+            {stores.map((store) => {
+              // El estado sale del mismo resolver que usan /negocio y el panel
+              // de admin: activa, en revisión o incompleta (sin ubicación).
+              const status = resolveMerchantStoreStatus(store);
+              return (
+                <li key={store.id} className="py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link href={`/negocio/${store.id}`} className="min-w-0 hover:opacity-80">
+                      <span className="block truncate text-sm font-medium">{store.name}</span>
+                      <span className="block truncate text-xs text-tertiary">
+                        /{store.slug} ·{' '}
+                        {t('account.productsOrders', {
+                          products: store.productCount,
+                          orders: store.orderCount,
+                        })}
+                      </span>
+                    </Link>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                        status.state === 'active'
+                          ? 'border-success/40 bg-success/10 text-success'
+                          : 'border-warning/40 bg-warning/10 text-warning'
+                      }`}
+                    >
+                      {storeStatusLabel(t, status.state, 'account')}
                     </span>
-                  </span>
-                  <span className="shrink-0 text-xs text-tertiary">
-                    {store.active ? (
-                      <span className="text-success">{t('account.active')}</span>
-                    ) : (
-                      <span className="text-warning">{t('account.pending')}</span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            ))}
+                  </div>
+
+                  {status.state !== 'active' && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-secondary">
+                        {status.state === 'incomplete'
+                          ? t('account.storeIncompleteBody')
+                          : t('account.storePendingReviewBody')}
+                      </p>
+                      <Link
+                        href={
+                          status.state === 'incomplete'
+                            ? `/negocio/${store.id}#ubicacion`
+                            : `/negocio/${store.id}`
+                        }
+                        className="text-xs font-medium text-tertiary underline-offset-2 hover:text-primary hover:underline"
+                      >
+                        {status.state === 'incomplete'
+                          ? t('account.storeIncompleteAction')
+                          : t('account.storeOpenPanel')}
+                      </Link>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

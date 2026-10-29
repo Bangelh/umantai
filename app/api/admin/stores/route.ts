@@ -12,6 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { requireAdminAccess } from '@/lib/admin.server';
+import { logEvent } from '@/lib/observability.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { requirePlatformSql, toIsoString, toNumber } from '@/lib/platform-db.server';
 
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     const rows = await sql`
       SELECT s.id, s.name, s.slug, s.category, s.active, s.is_default,
              s.address, s.district, s.city, s.latitude, s.longitude,
+             (s.latitude IS NOT NULL AND s.longitude IS NOT NULL) AS has_location,
              s.created_at, s.approved_at,
              (SELECT COUNT(*)::int FROM store_members m WHERE m.store_id = s.id) AS member_count,
              (SELECT COUNT(*)::int FROM store_products p WHERE p.store_id = s.id) AS product_count,
@@ -55,6 +57,9 @@ export async function GET(request: Request) {
         city: (row.city as string | null) ?? null,
         latitude: row.latitude === null ? null : toNumber(row.latitude),
         longitude: row.longitude === null ? null : toNumber(row.longitude),
+        // Sin coordenadas el constraint `stores_active_location_chk` rechaza la
+        // activación: la pantalla lo avisa antes de intentarlo.
+        hasLocation: row.has_location === true,
         createdAt: toIsoString(row.created_at),
         approvedAt: row.approved_at ? toIsoString(row.approved_at) : null,
         memberCount: toNumber(row.member_count),
@@ -99,6 +104,17 @@ export async function PATCH(request: Request) {
     if (!row) {
       return NextResponse.json({ error: 'Tienda no encontrada.', code: 'store_not_found' }, { status: 404 });
     }
+
+    // Auditoría de la aprobación: quién la cambió, cuándo y desde dónde.
+    // `approved_at` (columna) guarda el cuándo; este evento agrega el quién.
+    logEvent('store_approval_changed', {
+      storeId: String(row.id),
+      active: row.active === true,
+      adminUserId: access.userId ?? 'shared_admin_token',
+      via: access.via ?? 'token',
+      approvedAt: row.approved_at ? toIsoString(row.approved_at) : undefined,
+    });
+
     return NextResponse.json({
       store: {
         id: String(row.id),

@@ -31,6 +31,20 @@ test.describe.serial('auth lifecycle', () => {
     await expect(page.getByText(email)).toBeVisible();
   });
 
+  test('una cuenta sin verificar puede pedir otro correo desde /cuenta', async ({ page, request }) => {
+    // Cuentas anteriores al envío de verificación (o con el correo perdido) no
+    // tenían acción: la página solo decía "Correo sin verificar".
+    await loginUi(page, email);
+    await page.goto('/cuenta');
+    await expect(page.getByText('Correo sin verificar')).toBeVisible();
+
+    await page.getByRole('button', { name: /Reenviar correo de verificación/ }).click();
+    await expect(page.getByText(/Te enviamos un correo de verificación/)).toBeVisible();
+
+    const resent = await latestOutbox(request, email, 'verify_email');
+    expect(resent.actionUrl).toContain('/api/auth/verify-email');
+  });
+
   test('verificación de correo test-mode marca la cuenta como verificada', async ({ page, request }) => {
     const message = await latestOutbox(request, email, 'verify_email');
     await page.goto(message.actionUrl as string);

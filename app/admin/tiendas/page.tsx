@@ -31,6 +31,7 @@ interface StoreRow {
   slug: string;
   category: string | null;
   active: boolean;
+  hasLocation: boolean;
   district: string | null;
   city: string | null;
   createdAt: string | null;
@@ -268,6 +269,12 @@ export default function AdminStoresPage() {
                           {' · '}
                           {t('adminStores.products')}: {store.productCount}
                         </p>
+
+                        {!store.active && !store.hasLocation && (
+                          <p className="mt-1 text-xs text-warning">
+                            {t('adminStores.missingLocation')} · {t('adminStores.missingLocationHint')}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
@@ -283,8 +290,11 @@ export default function AdminStoresPage() {
                         <button
                           type="button"
                           onClick={() => void toggle(store)}
-                          disabled={busy}
-                          className={`h-11 rounded-xl px-4 text-sm font-semibold disabled:opacity-50 ${
+                          // Activar sin coordenadas falla en la base
+                          // (`store_location_required`): no se ofrece el botón
+                          // para una operación imposible.
+                          disabled={busy || (!store.active && !store.hasLocation)}
+                          className={`h-11 rounded-xl px-4 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed ${
                             store.active
                               ? 'border border-destructive/40 text-destructive hover:bg-destructive/10'
                               : 'bg-brand text-background'

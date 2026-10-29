@@ -8,7 +8,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/current-user.server';
+import { storeStatusLabel } from '@/lib/i18n/store-status';
 import { getTranslator } from '@/lib/i18n/server';
+import { resolveMerchantStoreStatus } from '@/lib/store-status';
 import { listStoresForUser } from '@/lib/stores.server';
 
 export const dynamic = 'force-dynamic';
@@ -46,33 +48,45 @@ export default async function MerchantHomePage() {
         </div>
       ) : (
         <ul className="mt-4 divide-y divide-border">
-          {stores.map((store) => (
-            <li key={store.id}>
-              <Link
-                href={`/negocio/${store.id}`}
-                className="flex items-center justify-between gap-3 py-4 hover:bg-surface-raised/60"
-              >
-                <span className="min-w-0">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-base font-medium">{store.name}</span>
-                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-tertiary">
-                      {store.role}
+          {stores.map((store) => {
+            const status = resolveMerchantStoreStatus(store);
+            return (
+              <li key={store.id}>
+                <Link
+                  href={`/negocio/${store.id}`}
+                  className="flex items-start justify-between gap-3 py-4 hover:bg-surface-raised/60"
+                >
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-base font-medium">{store.name}</span>
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-tertiary">
+                        {store.role}
+                      </span>
                     </span>
+                    <span className="mt-0.5 block truncate text-xs text-tertiary">
+                      {t('merchant.storeMeta', {
+                        slug: store.slug,
+                        products: store.productCount,
+                        orders: store.orderCount,
+                      })}
+                    </span>
+                    {status.state === 'incomplete' && (
+                      <span className="mt-1 block text-xs text-warning">
+                        {t('merchant.incompleteNotice')}
+                      </span>
+                    )}
                   </span>
-                  <span className="mt-0.5 block truncate text-xs text-tertiary">
-                    {t('merchant.storeMeta', {
-                      slug: store.slug,
-                      products: store.productCount,
-                      orders: store.orderCount,
-                    })}
+                  <span
+                    className={`shrink-0 text-xs ${
+                      status.state === 'active' ? 'text-success' : 'text-warning'
+                    }`}
+                  >
+                    {storeStatusLabel(t, status.state)}
                   </span>
-                </span>
-                <span className={`shrink-0 text-xs ${store.active ? 'text-success' : 'text-warning'}`}>
-                  {store.active ? t('merchant.active') : t('merchant.pending')}
-                </span>
-              </Link>
-            </li>
-          ))}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
 

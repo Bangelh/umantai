@@ -312,6 +312,19 @@ export const MESSAGES = {
     'account.status': 'Estado de la cuenta',
     'account.emailVerified': 'Correo verificado',
     'account.emailUnverified': 'Correo sin verificar',
+    'account.emailVerifiedBody':
+      'Tu correo está confirmado. Lo usamos para recuperar tu contraseña y para avisarte del estado de tus pedidos.',
+    'account.emailUnverifiedBody':
+      'Confirma tu correo para asegurar la recuperación de tu contraseña y recibir los avisos de tus pedidos. Si el mensaje no llegó (o tu cuenta es anterior a estos avisos), pide uno nuevo.',
+    'account.resendVerification': 'Reenviar correo de verificación',
+    'account.resendingVerification': 'Enviando…',
+    'account.verificationSent':
+      'Te enviamos un correo de verificación. Revisa también la carpeta de spam.',
+    'account.verificationCooldown': 'Podrás pedir otro correo en {seconds} s.',
+    'account.verificationFailed':
+      'No pudimos enviar el correo. Inténtalo de nuevo en un minuto.',
+    'account.verificationUnavailable':
+      'El envío de correo no está disponible ahora mismo. Escríbenos a soporte@umantai.com.',
     'account.security': 'Seguridad',
     'account.sessions': 'Sesiones activas',
     'account.signOutOthers': 'Cerrar las demás sesiones',
@@ -325,6 +338,20 @@ export const MESSAGES = {
     'account.passwordTooShort': 'La contraseña debe tener al menos 8 caracteres.',
     'account.passwordChangeFailed': 'No se pudo cambiar la contraseña.',
     'account.sessionExpires': 'Esta sesión expira el {date}.',
+    'account.storePendingReview': 'Pendiente de revisión',
+    'account.storePendingReviewBody':
+      'Estamos revisando tu tienda. Un administrador de UMANTAI la activa; mientras tanto puedes cargar productos.',
+    'account.storeIncomplete': 'Falta completar',
+    'account.storeIncompleteBody':
+      'Falta la ubicación de tu tienda: sin ella no puede aparecer en el buscador ni activarse.',
+    'account.storeIncompleteAction': 'Completar ubicación',
+    'account.storeOpenPanel': 'Abrir panel',
+
+    'verify.title': 'Correo verificado',
+    'verify.success': 'Tu correo quedó confirmado. Ya puedes usar tu cuenta con normalidad.',
+    'verify.errorTitle': 'No pudimos verificar tu correo',
+    'verify.expired': 'El enlace venció o ya se había usado. Pide uno nuevo desde tu cuenta.',
+    'verify.backToAccount': 'Ir a mi cuenta',
 
     'product.notFound': 'Producto no encontrado',
     'product.breadcrumb': 'Migas de pan',
@@ -370,6 +397,20 @@ export const MESSAGES = {
     'merchant.hidden': 'Vitrina oculta hasta la aprobación',
     'merchant.pendingNotice':
       'La tienda todavía no es visible en el buscador. Un administrador de UMANTAI debe activarla. Puedes preparar el catálogo mientras tanto.',
+    'merchant.incomplete': 'Falta completar',
+    'merchant.incompleteNotice':
+      'Falta la ubicación de la tienda. Sin ella no puede activarse ni aparecer en el buscador: complétala y un administrador la revisa.',
+    'merchant.locationTitle': 'Ubicación de la tienda',
+    'merchant.locationBody':
+      'Elige la zona donde atiendes. Se usa para aparecer en las búsquedas cercanas; no publicamos tu dirección exacta.',
+    'merchant.locationZone': 'Zona',
+    'merchant.locationSelect': 'Elige una zona',
+    'merchant.locationSave': 'Guardar ubicación',
+    'merchant.locationSaving': 'Guardando…',
+    'merchant.locationSaved':
+      'Ubicación guardada. Tu tienda queda lista para la revisión de un administrador.',
+    'merchant.locationFailed': 'No pudimos guardar la ubicación.',
+    'merchant.locationRequired': 'Elige una zona para continuar.',
     'merchant.summary': 'Resumen',
     'merchant.sales30': 'Ventas 30d',
     'merchant.orders': 'Pedidos',
@@ -712,6 +753,9 @@ export const MESSAGES = {
     'adminStores.count': '{count} tiendas',
     'adminStores.countOne': '1 tienda',
     'adminStores.noOwner': 'Sin dueño registrado',
+    'adminStores.missingLocation': 'Falta ubicación',
+    'adminStores.missingLocationHint':
+      'El comerciante debe completar la zona de la tienda antes de poder activarla.',
 
     'inventory.kicker': 'OPERACIÓN',
     'inventory.title': 'Inventario',
@@ -1501,6 +1545,17 @@ export const MESSAGES = {
     'account.status': 'Account status',
     'account.emailVerified': 'Email verified',
     'account.emailUnverified': 'Email not verified',
+    'account.emailVerifiedBody':
+      'Your email is confirmed. We use it to recover your password and to tell you the status of your orders.',
+    'account.emailUnverifiedBody':
+      'Confirm your email to secure password recovery and receive updates about your orders. If the message never arrived (or your account predates these emails), request a new one.',
+    'account.resendVerification': 'Resend verification email',
+    'account.resendingVerification': 'Sending…',
+    'account.verificationSent': 'We sent you a verification email. Check your spam folder too.',
+    'account.verificationCooldown': 'You can request another email in {seconds}s.',
+    'account.verificationFailed': 'We could not send the email. Try again in a minute.',
+    'account.verificationUnavailable':
+      'Email delivery is unavailable right now. Write to soporte@umantai.com.',
     'account.security': 'Security',
     'account.sessions': 'Active sessions',
     'account.signOutOthers': 'Sign out of other sessions',
@@ -1514,6 +1569,20 @@ export const MESSAGES = {
     'account.passwordTooShort': 'Password must be at least 8 characters.',
     'account.passwordChangeFailed': 'We could not change the password.',
     'account.sessionExpires': 'This session expires on {date}.',
+    'account.storePendingReview': 'Pending review',
+    'account.storePendingReviewBody':
+      'We are reviewing your store. A UMANTAI administrator activates it; you can load products meanwhile.',
+    'account.storeIncomplete': 'Needs details',
+    'account.storeIncompleteBody':
+      'Your store has no location yet: without it the store cannot appear in search or be activated.',
+    'account.storeIncompleteAction': 'Complete location',
+    'account.storeOpenPanel': 'Open dashboard',
+
+    'verify.title': 'Email verified',
+    'verify.success': 'Your email is confirmed. You can use your account normally.',
+    'verify.errorTitle': 'We could not verify your email',
+    'verify.expired': 'The link expired or was already used. Request a new one from your account.',
+    'verify.backToAccount': 'Go to my account',
 
     'product.notFound': 'Product not found',
     'product.breadcrumb': 'Breadcrumb',
@@ -1559,6 +1628,20 @@ export const MESSAGES = {
     'merchant.hidden': 'Storefront hidden until approval',
     'merchant.pendingNotice':
       'This store is not visible in search yet. A UMANTAI administrator must activate it. You can prepare the catalog meanwhile.',
+    'merchant.incomplete': 'Needs details',
+    'merchant.incompleteNotice':
+      'This store has no location. Without it the store cannot be activated or appear in search: complete it and an administrator will review it.',
+    'merchant.locationTitle': 'Store location',
+    'merchant.locationBody':
+      'Pick the area where you operate. It is used to appear in nearby searches; we never publish your exact address.',
+    'merchant.locationZone': 'Area',
+    'merchant.locationSelect': 'Choose an area',
+    'merchant.locationSave': 'Save location',
+    'merchant.locationSaving': 'Saving…',
+    'merchant.locationSaved':
+      'Location saved. Your store is ready for an administrator to review.',
+    'merchant.locationFailed': 'We could not save the location.',
+    'merchant.locationRequired': 'Choose an area to continue.',
     'merchant.summary': 'Summary',
     'merchant.sales30': 'Sales 30d',
     'merchant.orders': 'Orders',
@@ -1899,6 +1982,9 @@ export const MESSAGES = {
     'adminStores.count': '{count} stores',
     'adminStores.countOne': '1 store',
     'adminStores.noOwner': 'No owner on record',
+    'adminStores.missingLocation': 'Missing location',
+    'adminStores.missingLocationHint':
+      'The merchant must complete the store area before it can be activated.',
 
     'inventory.kicker': 'OPERATIONS',
     'inventory.title': 'Inventory',
