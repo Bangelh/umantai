@@ -392,7 +392,7 @@ export const MESSAGES = {
     'merchant.dashboard': 'Panel de tienda',
     'merchant.categoryNone': 'Sin rubro',
     'merchant.active': 'Activa',
-    'merchant.pending': 'Pendiente de aprobación',
+    'merchant.pending': 'Pendiente de revisión',
     'merchant.viewStore': 'Ver vitrina',
     'merchant.hidden': 'Vitrina oculta hasta la aprobación',
     'merchant.pendingNotice':
@@ -1678,7 +1678,7 @@ export const MESSAGES = {
     'merchant.dashboard': 'Store dashboard',
     'merchant.categoryNone': 'No category',
     'merchant.active': 'Active',
-    'merchant.pending': 'Pending approval',
+    'merchant.pending': 'Pending review',
     'merchant.viewStore': 'View storefront',
     'merchant.hidden': 'Storefront hidden until approval',
     'merchant.pendingNotice':
