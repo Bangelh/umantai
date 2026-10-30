@@ -11,10 +11,12 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { MerchantCatalog } from './MerchantCatalog';
 import { StoreBilling } from './StoreBilling';
+import { StoreIdentityForm } from './StoreIdentityForm';
 import { StoreLocationForm } from './StoreLocationForm';
 import { resolveAnalyticsRange } from '@/lib/analytics';
 import { orderStatusLabel } from '@/lib/i18n/status';
 import { storeStatusLabel } from '@/lib/i18n/store-status';
+import { canEditStoreIdentity, publicStoreUrl } from '@/lib/store-identity';
 import { resolveMerchantStoreStatus } from '@/lib/store-status';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
@@ -53,6 +55,8 @@ export default async function MerchantStorePage({ params }: PageProps) {
 
   // Estado real: activa · pendiente de revisión · falta completarla.
   const status = resolveMerchantStoreStatus(store);
+  // Nombre y dirección pública solo se editan antes de la primera publicación.
+  const canEditIdentity = canEditStoreIdentity(store);
 
   const [products, orders, billing] = await Promise.all([
     listStoreProducts(user.id, storeId),
@@ -112,6 +116,33 @@ export default async function MerchantStorePage({ params }: PageProps) {
           {t('merchant.pendingNotice')}
         </div>
       )}
+
+      <section
+        id="identidad"
+        aria-labelledby="identidad-title"
+        className="mt-4 rounded-2xl border border-border bg-surface p-4"
+      >
+        <h2 id="identidad-title" className="text-sm font-semibold text-secondary">
+          {t('merchant.identityHeading')}
+        </h2>
+        {canEditIdentity ? (
+          <StoreIdentityForm
+            storeId={storeId}
+            initialName={store.name}
+            initialSlug={store.slug}
+          />
+        ) : (
+          <div className="mt-2">
+            <p className="text-xs font-medium text-tertiary">
+              {t('merchant.identityPublicAddress')}
+            </p>
+            <p className="mt-1 break-all font-mono text-sm text-primary">
+              {publicStoreUrl(store.slug)}
+            </p>
+            <p className="mt-1 text-xs text-tertiary">{t('merchant.identityLocked')}</p>
+          </div>
+        )}
+      </section>
 
       {status.missing === 'location' && (
         <section

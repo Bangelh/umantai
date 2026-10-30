@@ -43,6 +43,7 @@ import {
   validateStoreSlug,
   type StoreRole,
 } from './tenancy';
+import { validateStoreIdentity } from './store-identity';
 import {
   assertCanCreateStoreProduct,
   assertCanPublishStoreProduct,
@@ -80,6 +81,8 @@ export interface Store {
   contactEmail: string | null;
   contactPhone: string | null;
   active: boolean;
+  /** Sello de publicación. NULL = la tienda nunca fue publicada. */
+  approvedAt: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -166,6 +169,7 @@ export function toStore(row: Row): Store {
     contactEmail: (row.contact_email as string | null) ?? null,
     contactPhone: (row.contact_phone as string | null) ?? null,
     active: row.active === true,
+    approvedAt: row.approved_at ? toIsoString(row.approved_at) : null,
     isDefault: row.is_default === true,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),
@@ -814,6 +818,89 @@ export async function createStoreForOwner(input: CreateStoreInput): Promise<Stor
   }
 
   throw new TenancyError('store_slug_taken', 'Ese identificador ya está en uso. Prueba con otro.');
+}
+
+/**
+ * Cambia el nombre y/o la dirección pública (slug) de una tienda.
+ *
+ * Solo mientras la tienda NUNCA haya sido publicada (`active = FALSE` y
+ * `approved_at IS NULL`). Una tienda activa conserva su slug: cambiarlo rompería
+ * enlaces y pedidos sin un redirect 301, que todavía no existe.
+ *
+ * La condición de publicación va en el `WHERE` además de la comprobación previa:
+ * si un administrador activa la tienda entre la lectura y la escritura, la fila
+ * no se actualiza y el error es el mismo.
+ */
+export async function updateStoreIdentity(
+  userId: string,
+  storeId: string,
+  input: { name?: unknown; slug?: unknown },
+): Promise<Store> {
+  const { store } = await requireStoreAccess(userId, storeId, 'admin');
+
+  const validation = validateStoreIdentity(input);
+  if (!validation.ok) {
+    throw new TenancyError(
+      validation.code === 'slug_reserved' ? 'store_slug_reserved' : 'invalid_store_input',
+      validation.message,
+    );
+  }
+
+  const { name, slug } = validation.value;
+
+  if (store.active || store.approvedAt !== null) {
+    throw new TenancyError(
+      'store_identity_locked',
+      'La tienda ya fue publicada: su dirección pública todavía no puede cambiarse.',
+    );
+  }
+
+  if (name === store.name && slug === store.slug) return store;
+
+  const sql = requirePlatformSql();
+
+  try {
+    const rows = await sql`
+      UPDATE stores
+         SET name = ${name},
+             slug = ${slug},
+             updated_at = NOW()
+       WHERE id = ${storeId}::uuid
+         AND active = FALSE
+         AND approved_at IS NULL
+       RETURNING *
+    `;
+
+    const row = (rows[0] ?? null) as Row | null;
+    if (!row) {
+      throw new TenancyError(
+        'store_identity_locked',
+        'La tienda ya fue publicada: su dirección pública todavía no puede cambiarse.',
+      );
+    }
+
+    return toStore(row);
+  } catch (error) {
+    if (error instanceof TenancyError) throw error;
+
+    if (isUniqueViolation(error)) {
+      if (errorText(error).includes('reserved_store_slug')) {
+        throw new TenancyError('store_slug_reserved', 'Ese identificador está reservado por UMANTAI.');
+      }
+      throw new TenancyError('store_slug_taken', 'Ese identificador ya está en uso. Prueba con otro.');
+    }
+
+    // El trigger de la base rechaza formatos que la app ya filtra: si llegara
+    // acá, es un 400 de validación, no un 500.
+    if ((error as { code?: string } | null)?.code === '22023') {
+      throw new TenancyError(
+        'invalid_store_input',
+        'Usa minúsculas, números y guiones (sin guion al inicio/fin).',
+      );
+    }
+
+    throw error;
+  }
 }
 
 // =============================================================================

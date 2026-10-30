@@ -415,6 +415,28 @@ export const MESSAGES = {
     'merchant.changeLocation': 'Cambiar ubicación',
     'merchant.locationNoAddress': 'Sin dirección registrada',
     'merchant.locationNoUbigeo': 'Sin distrito registrado',
+    'merchant.identityHeading': 'Datos de la tienda',
+    'merchant.identityName': 'Nombre de la tienda',
+    'merchant.identityNameInvalid': 'El nombre debe tener entre 2 y 80 caracteres.',
+    'merchant.identityPublicAddress': 'Dirección pública',
+    'merchant.identityPublicHelp':
+      'Esta será la dirección que tus clientes usarán para entrar a tu tienda.',
+    'merchant.identitySlugHint':
+      'Minúsculas, números y guiones. Si escribes mayúsculas, tildes o espacios, los normalizamos al guardar.',
+    'merchant.identitySlugShort': 'La dirección debe tener al menos 3 caracteres.',
+    'merchant.identityInvalid': 'Revisa el nombre y la dirección pública.',
+    'merchant.identitySlugTaken': 'Esa dirección ya está en uso. Prueba con otra.',
+    'merchant.identitySlugReserved':
+      'Esa dirección es una ruta reservada de UMANTAI. Elige otra.',
+    'merchant.identityPreview': 'Se guardará así',
+    'merchant.identitySave': 'Guardar datos de la tienda',
+    'merchant.identitySaving': 'Guardando…',
+    'merchant.identitySaved': 'Datos de la tienda actualizados.',
+    'merchant.identityFailed': 'No pudimos guardar los cambios.',
+    'merchant.identityLocked':
+      'La tienda ya fue publicada: su dirección pública todavía no puede cambiarse.',
+    'merchant.identityNote':
+      'La dirección no indica dónde está la tienda. La ubicación se define aparte.',
 
     // Asistente de ubicación de tienda (departamento → provincia → distrito).
     'location.title': '¿Dónde está tu tienda?',
@@ -1718,6 +1740,28 @@ export const MESSAGES = {
     'merchant.changeLocation': 'Change location',
     'merchant.locationNoAddress': 'No address on file',
     'merchant.locationNoUbigeo': 'No district on file',
+    'merchant.identityHeading': 'Store details',
+    'merchant.identityName': 'Store name',
+    'merchant.identityNameInvalid': 'The name must be between 2 and 80 characters.',
+    'merchant.identityPublicAddress': 'Public address',
+    'merchant.identityPublicHelp':
+      'This is the address your customers will use to reach your store.',
+    'merchant.identitySlugHint':
+      'Lowercase letters, numbers and hyphens. Uppercase, accents and spaces are normalized when saving.',
+    'merchant.identitySlugShort': 'The address needs at least 3 characters.',
+    'merchant.identityInvalid': 'Check the name and the public address.',
+    'merchant.identitySlugTaken': 'That address is already taken. Try another one.',
+    'merchant.identitySlugReserved':
+      'That address is a UMANTAI system route. Choose another one.',
+    'merchant.identityPreview': 'Will be saved as',
+    'merchant.identitySave': 'Save store details',
+    'merchant.identitySaving': 'Saving…',
+    'merchant.identitySaved': 'Store details updated.',
+    'merchant.identityFailed': 'We could not save the changes.',
+    'merchant.identityLocked':
+      'This store is already published: its public address cannot change yet.',
+    'merchant.identityNote':
+      'The address does not say where the store is. Location is set separately.',
 
     // Store location wizard (department → province → district).
     'location.title': 'Where is your store?',

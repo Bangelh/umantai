@@ -141,6 +141,8 @@ export type TenancyErrorCode =
   | 'store_forbidden'
   | 'not_authenticated'
   | 'store_slug_taken'
+  | 'store_slug_reserved'
+  | 'store_identity_locked'
   | 'invalid_store_input'
   | 'store_product_slug_taken'
   | 'store_product_not_found';
@@ -159,10 +161,12 @@ export class TenancyError extends Error {
         ? 401
         : code === 'store_forbidden'
           ? 403
-          : code === 'store_slug_taken' || code === 'store_product_slug_taken'
-            ? 409
-            : code === 'invalid_store_input'
-              ? 400
-              : 404);
+          : code === 'store_slug_taken' ||
+                code === 'store_product_slug_taken' ||
+                code === 'store_identity_locked'
+              ? 409
+              : code === 'invalid_store_input' || code === 'store_slug_reserved'
+                ? 400
+                : 404);
   }
 }
