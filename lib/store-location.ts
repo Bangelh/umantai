@@ -16,17 +16,22 @@
  *  los deriva el trigger de la base desde el UBIGEO (ver migración 025).
  *
  * ─────────────────────────────────────────────────────────────────────────────
- *  GUARDA UBIGEO ↔ PIN
+ *  GUARDA UBIGEO ↔ PIN (basada en centroide, NO en límites)
  *
- *  El centroide del distrito NO son sus límites: no sirve para validar
- *  territorialmente. Se usa solo como detector de errores obvios, con tres
- *  tramos (ver `evaluatePinDistance`):
+ *  El centroide del distrito NO son sus límites y un distrito grande o rural
+ *  puede tener puntos legítimos a más de 60 km del centro. Por eso esta guarda
+ *  NUNCA bloquea: solo sube el nivel de fricción.
  *
  *    · ≤ PIN_REVIEW_KM   → se guarda sin fricción;
- *    · ≤ PIN_MAX_KM      → advertencia fuerte: exige confirmación explícita
- *                          (`confirmFarPin`) antes de persistir;
- *    · > PIN_MAX_KM      → se rechaza. El usuario debe reconciliar marcador o
- *                          distrito; nunca se guarda "por accidente".
+ *    · ≤ PIN_CRITICAL_KM → advertencia + confirmación explícita (`confirmFarPin`);
+ *    · > PIN_CRITICAL_KM → advertencia CRÍTICA + confirmación explícita. Se puede
+ *                          guardar, porque el centroide no prueba nada.
+ *
+ *  PENDIENTE (validación territorial estricta): cuando existan polígonos
+ *  administrativos reales (límites distritales oficiales), reemplazar esta
+ *  heurística por `point-in-polygon` contra el polígono del UBIGEO. Solo entonces
+ *  tendría sentido rechazar un pin por estar fuera del distrito. Hasta ahora el
+ *  centroide es únicamente un detector de errores obvios.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -36,10 +41,10 @@ import type { GeoPoint } from './geo/types';
 export const LOCATION_SOURCES = ['map_pin', 'gps', 'geocoder', 'legacy_zone'] as const;
 export type LocationSource = (typeof LOCATION_SOURCES)[number];
 
-/** A partir de acá el guardado exige una confirmación explícita del usuario. */
+/** A partir de acá el guardado pide una confirmación explícita del usuario. */
 export const PIN_REVIEW_KM = 25;
-/** A partir de acá el guardado se rechaza: hay que mover el pin o el distrito. */
-export const PIN_MAX_KM = 60;
+/** A partir de acá la advertencia es crítica (sigue sin bloquear). */
+export const PIN_CRITICAL_KM = 60;
 
 export interface StoreLocationInput {
   ubigeo: string;
@@ -59,25 +64,18 @@ export type StoreLocationValidation =
 /**
  * Resultado de comparar el pin con el centroide del distrito elegido.
  *
- * `blocked` y `review` NO son errores de forma: son señales para que la UI pida
- * reconciliar. Las rutas las traducen a 400 `pin_too_far_from_district` y
- * `pin_confirmation_required`.
+ * `review` NO es un bloqueo: la UI muestra una advertencia (normal o crítica) y
+ * exige que el usuario confirme. Con `confirmed: true` pasa a `ok` y se guarda.
  */
 export type PinDistanceVerdict =
   | { level: 'ok'; km: number | null; warnings: StoreLocationWarning[] }
   | {
       level: 'review';
       km: number;
+      severity: 'warn' | 'critical';
       code: 'pin_confirmation_required';
       message: string;
-      warnings: StoreLocationWarning[];
-    }
-  | {
-      level: 'blocked';
-      km: number;
-      code: 'pin_too_far_from_district';
-      message: string;
-      warnings: [];
+      warnings: ['pin_far_from_district'];
     };
 
 const UBIGEO = /^[0-9]{6}$/;
@@ -96,13 +94,13 @@ function asFiniteNumber(value: unknown): number | null {
 }
 
 /**
- * Compara el pin con el centroide del distrito.
+ * Compara el pin con el centroide del distrito. Nunca bloquea.
  *
  * Sin centroide (distrito del snapshot sin coordenadas) la guarda no opina: no
- * hay con qué comparar y bloquear por falta de dato sería peor.
+ * hay con qué comparar.
  *
- * `confirmed` refleja que el usuario ya vio la advertencia y afirmó que el pin
- * es correcto. Solo aplica al tramo intermedio; el extremo no se puede forzar.
+ * `confirmed` refleja que el usuario vio la advertencia y afirmó que el pin es
+ * correcto. Es lo único que separa `review` de `ok`.
  */
 export function evaluatePinDistance(
   centroid: GeoPoint | null,
@@ -114,28 +112,21 @@ export function evaluatePinDistance(
   const km = distanceKm(centroid, pin);
   if (!Number.isFinite(km)) return { level: 'ok', km: null, warnings: [] };
 
-  if (km > PIN_MAX_KM) {
-    return {
-      level: 'blocked',
-      km,
-      code: 'pin_too_far_from_district',
-      message: 'El marcador está muy lejos del distrito elegido.',
-      warnings: [],
-    };
-  }
+  if (km <= PIN_REVIEW_KM) return { level: 'ok', km, warnings: [] };
 
-  if (km > PIN_REVIEW_KM) {
-    if (options.confirmed) return { level: 'ok', km, warnings: ['pin_far_from_district'] };
-    return {
-      level: 'review',
-      km,
-      code: 'pin_confirmation_required',
-      message: 'El marcador está lejos del distrito elegido. Confírmalo antes de guardar.',
-      warnings: ['pin_far_from_district'],
-    };
-  }
+  if (options.confirmed) return { level: 'ok', km, warnings: ['pin_far_from_district'] };
 
-  return { level: 'ok', km, warnings: [] };
+  return {
+    level: 'review',
+    km,
+    severity: km > PIN_CRITICAL_KM ? 'critical' : 'warn',
+    code: 'pin_confirmation_required',
+    message:
+      km > PIN_CRITICAL_KM
+        ? 'El marcador está muy lejos del centro del distrito elegido. Revisa que el distrito y el punto sean correctos antes de continuar.'
+        : 'El marcador está lejos del centro del distrito. Confírmalo antes de guardar.',
+    warnings: ['pin_far_from_district'],
+  };
 }
 
 /**
@@ -205,7 +196,7 @@ export function validateStoreLocation(raw: unknown): StoreLocationValidation {
   };
 }
 
-/** `true` solo si el cliente mandó la confirmación del tramo intermedio. */
+/** `true` solo si el cliente mandó la confirmación del aviso de distancia. */
 export function readFarPinConfirmation(raw: unknown): boolean {
   if (!raw || typeof raw !== 'object') return false;
   return (raw as Record<string, unknown>).confirmFarPin === true;

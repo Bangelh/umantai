@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { distanceKm, foldGeoText, isPointInPeru, sanitizeAddress } from '../lib/geo/peru';
-import { evaluatePinDistance, PIN_MAX_KM, PIN_REVIEW_KM, validateStoreLocation } from '../lib/store-location';
+import { evaluatePinDistance, PIN_CRITICAL_KM, PIN_REVIEW_KM, validateStoreLocation } from '../lib/store-location';
 
 const UBIGEO_MANCORA = '200706';
 const PIN_MANCORA = { latitude: -4.1069, longitude: -81.0539 };
@@ -131,21 +131,30 @@ test('distancia sospechosa: exige confirmación explícita', () => {
   assert.deepEqual(confirmed.warnings, ['pin_far_from_district']);
 });
 
-test('distancia extrema: no se guarda, ni siquiera confirmando', () => {
-  for (const km of [PIN_MAX_KM + 1, 200, 640]) {
-    for (const confirmed of [false, true]) {
-      const verdict = evaluatePinDistance(CENTROID, atKm(km), { confirmed });
-      assert.equal(verdict.level, 'blocked', `${km} km (confirmed=${confirmed})`);
-      if (verdict.level === 'blocked') assert.equal(verdict.code, 'pin_too_far_from_district');
+test('distancia extrema: aviso crítico, nunca bloqueo por centroide', () => {
+  // Un distrito grande puede tener puntos legítimos lejos del centroide: la
+  // guarda sube la fricción, no cierra la puerta.
+  for (const km of [PIN_CRITICAL_KM + 1, 200, 640]) {
+    const verdict = evaluatePinDistance(CENTROID, atKm(km));
+    assert.equal(verdict.level, 'review', `${km} km`);
+    if (verdict.level === 'review') {
+      assert.equal(verdict.severity, 'critical');
+      assert.equal(verdict.code, 'pin_confirmation_required');
     }
+
+    // Con confirmación explícita se guarda igual.
+    const confirmed = evaluatePinDistance(CENTROID, atKm(km), { confirmed: true });
+    assert.equal(confirmed.level, 'ok');
+    assert.deepEqual(confirmed.warnings, ['pin_far_from_district']);
   }
 });
 
-test('Máncora con pin en Trujillo queda bloqueado', () => {
+test('Máncora con pin en Trujillo pide confirmación crítica', () => {
   // El caso real: se eligió Máncora y el pin quedó en La Libertad.
   const trujillo = { latitude: -8.1089557, longitude: -79.0179336 };
   const verdict = evaluatePinDistance(CENTROID, trujillo);
-  assert.equal(verdict.level, 'blocked');
+  assert.equal(verdict.level, 'review');
+  if (verdict.level === 'review') assert.equal(verdict.severity, 'critical');
 });
 
 test('sin centroide la guarda no bloquea (no hay con qué comparar)', () => {

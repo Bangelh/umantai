@@ -19,8 +19,9 @@
  *    reescriben los selects en silencio (ver lib/store-location-wizard.ts).
  *  · Antes de guardar se muestra siempre el resumen (departamento, provincia,
  *    distrito, dirección y pin) con la misma data que se enviará.
- *  · Guarda UBIGEO ↔ pin: lejos → confirmación explícita; a cientos de km → no
- *    se puede confirmar hasta mover el marcador o cambiar el distrito.
+ *  · Guarda UBIGEO ↔ pin: el centroide no son los límites del distrito, así que
+ *    un pin lejano solo sube la fricción (aviso y, a más de 60 km, aviso crítico
+ *    con confirmación). Nunca bloquea el guardado.
  *  · Si el pin lo puso el GPS o el geocoder y el usuario lo mueve, el origen
  *    pasa a `map_pin`: refleja que hubo ajuste manual.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -642,44 +643,42 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               />
             </div>
 
-            {pinVerdict.level === 'blocked' && (
-              <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
-                <p className="text-sm font-medium text-destructive">{t('location.pinTooFar')}</p>
-                <p className="mt-1 text-xs text-secondary">{t('location.pinTooFarHelp')}</p>
+            {pinVerdict.level === 'review' && (
+              <div
+                role={pinVerdict.severity === 'critical' ? 'alert' : 'status'}
+                className={`rounded-xl border p-3 ${
+                  pinVerdict.severity === 'critical'
+                    ? 'border-destructive/40 bg-destructive/10'
+                    : 'border-warning/50 bg-warning/10'
+                }`}
+              >
+                <p
+                  className={`text-sm ${
+                    pinVerdict.severity === 'critical' ? 'text-destructive' : 'text-warning'
+                  }`}
+                >
+                  {pinVerdict.severity === 'critical'
+                    ? t('location.pinCritical')
+                    : t('location.pinReview', { km: Math.round(pinVerdict.km) })}
+                </p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => mapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
                     className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
                   >
-                    {t('location.fixMarker')}
+                    {t('location.reviewLocation')}
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setStatus(null);
-                      setStep(1);
-                    }}
-                    className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+                    onClick={() => setFarConfirmed(true)}
+                    className="h-11 flex-1 rounded-xl bg-brand px-3 text-sm font-semibold text-background"
                   >
-                    {t('location.changeDistrict')}
+                    {pinVerdict.severity === 'critical'
+                      ? t('location.pinCriticalConfirm')
+                      : t('location.pinReviewConfirm')}
                   </button>
                 </div>
-              </div>
-            )}
-
-            {pinVerdict.level === 'review' && (
-              <div className="rounded-xl border border-warning/50 bg-warning/10 p-3">
-                <p className="text-sm text-warning">
-                  {t('location.pinReview', { km: Math.round(pinVerdict.km) })}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFarConfirmed(true)}
-                  className="mt-3 h-11 w-full rounded-xl border border-warning/60 px-3 text-sm font-medium text-primary"
-                >
-                  {t('location.pinReviewConfirm')}
-                </button>
               </div>
             )}
 

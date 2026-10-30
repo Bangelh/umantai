@@ -117,8 +117,10 @@ test('el geocoder también solo propone', () => {
 });
 
 test('Máncora + pin en Trujillo no permite confirmación directa', () => {
+  // Aviso crítico: se puede guardar, pero solo después de confirmarlo.
   const verdict = evaluatePinDistance(MANCORA_CENTROID, TRUJILLO_PIN);
-  assert.equal(verdict.level, 'blocked');
+  assert.equal(verdict.level, 'review');
+  if (verdict.level === 'review') assert.equal(verdict.severity, 'critical');
 
   const value = buildLocationValue({
     ubigeo: MANCORA.district,
@@ -129,6 +131,18 @@ test('Máncora + pin en Trujillo no permite confirmación directa', () => {
     pin: verdict,
   });
   assert.equal(value, null);
+
+  const confirmed = evaluatePinDistance(MANCORA_CENTROID, TRUJILLO_PIN, { confirmed: true });
+  const saved = buildLocationValue({
+    ubigeo: MANCORA.district,
+    address: 'Av. Grau 123',
+    reference: '',
+    marker: TRUJILLO_PIN,
+    source: 'map_pin',
+    pin: confirmed,
+  });
+  assert.ok(saved);
+  assert.equal(saved?.confirmFarPin, true);
 });
 
 test('pin sospechoso: sin confirmar no hay payload; confirmado sí', () => {
@@ -136,6 +150,7 @@ test('pin sospechoso: sin confirmar no hay payload; confirmado sí', () => {
 
   const pending = evaluatePinDistance(MANCORA_CENTROID, about30km);
   assert.equal(pending.level, 'review');
+  if (pending.level === 'review') assert.equal(pending.severity, 'warn');
   assert.equal(
     buildLocationValue({
       ubigeo: MANCORA.district,

@@ -10,8 +10,9 @@
  *     exactamente como estaba.
  *   · El resumen que se muestra antes de guardar se construye con las mismas
  *     piezas que el payload, así no puede decir una cosa y guardar otra.
- *   · Si el pin cae en el tramo `review` o `blocked` de
- *     `evaluatePinDistance`, no hay valor que guardar.
+ *   · Si el pin cae en el tramo `review` de `evaluatePinDistance` (lejos o muy
+ *     lejos del centroide), no hay valor que guardar hasta que el usuario
+ *     confirme que la ubicación es correcta.
  */
 
 import type { GeoPoint } from './geo/types';
@@ -139,9 +140,9 @@ export function buildLocationSummary(input: {
 }
 
 /**
- * Payload listo para persistir. Devuelve `null` si falta algo o si el pin está
- * en un tramo que exige reconciliación: así el botón de confirmar no puede
- * enviar una ubicación que la API va a rechazar.
+ * Payload listo para persistir. Devuelve `null` si falta algo o si el pin
+ * todavía no fue confirmado en el tramo de aviso por distancia: así el botón de
+ * confirmar no puede enviar una ubicación que la API va a rechazar.
  */
 export function buildLocationValue(input: {
   ubigeo: string;
