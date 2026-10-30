@@ -8,15 +8,21 @@
  *
  *    1. Departamento → Provincia → Distrito   (selects dependientes, datos INEI)
  *    2. Dirección + referencia + "Usar mi ubicación actual"
- *    3. Mapa con pin arrastrable → "Confirmar ubicación"
+ *    3. Resumen de lo que se va a guardar + mapa con pin → "Confirmar esta ubicación"
+ *
+ *  REGLAS QUE NO SE NEGOCIAN
  *
  *  · El UBIGEO es la referencia canónica: los nombres los deriva la base.
- *  · El único dato geográfico que se guarda es el pin (lat/lng). No hay inputs
- *    de latitud/longitud en ningún paso.
- *  · Si el geocoder no encuentra la dirección, el usuario igual puede confirmar:
- *    el pin manual es la fuente de verdad.
- *  · El GPS solo SUGIERE distrito y dirección; el usuario siempre puede
- *    corregirlos.
+ *  · El único dato geográfico que se guarda es el pin (lat/lng).
+ *  · GPS y geocoder SOLO PROPONEN un distrito: si detectan otro, se muestra una
+ *    confirmación con «Usar esta ubicación» / «Mantener mi selección». Nunca se
+ *    reescriben los selects en silencio (ver lib/store-location-wizard.ts).
+ *  · Antes de guardar se muestra siempre el resumen (departamento, provincia,
+ *    distrito, dirección y pin) con la misma data que se enviará.
+ *  · Guarda UBIGEO ↔ pin: lejos → confirmación explícita; a cientos de km → no
+ *    se puede confirmar hasta mover el marcador o cambiar el distrito.
+ *  · Si el pin lo puso el GPS o el geocoder y el usuario lo mueve, el origen
+ *    pasa a `map_pin`: refleja que hubo ajuste manual.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -24,15 +30,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { MapCanvas } from '@/components/map/MapCanvas';
+import {
+  buildDistrictSuggestion,
+  buildLocationSummary,
+  buildLocationValue,
+  evaluatePinDistance,
+  resolveSuggestionChoice,
+  type DistrictSelection,
+  type DistrictSuggestion,
+  type StoreLocationValue,
+} from '@/lib/store-location-wizard';
 
-export interface StoreLocationValue {
-  ubigeo: string;
-  address: string;
-  reference: string | null;
-  latitude: number;
-  longitude: number;
-  source: 'map_pin' | 'gps' | 'geocoder';
-}
+export type { StoreLocationValue };
 
 interface UbigeoDepartment {
   code: string;
@@ -89,10 +98,17 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
   );
   const [source, setSource] = useState<StoreLocationValue['source']>('map_pin');
 
+  /** Sugerencia pendiente de aceptar (GPS o geocoder). No cambia la selección. */
+  const [suggestion, setSuggestion] = useState<DistrictSuggestion | null>(null);
+  /** El usuario confirmó un pin del tramo intermedio de la guarda. */
+  const [farConfirmed, setFarConfirmed] = useState(false);
+
   const [status, setStatus] = useState<Status>(null);
   const [gpsBusy, setGpsBusy] = useState(false);
   const [geocodeBusy, setGeocodeBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const mapRef = useRef<HTMLDivElement | null>(null);
 
   const selectedDistrict = useMemo(
     () => districts.find((item) => item.code === district) ?? null,
@@ -152,17 +168,46 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
   // previa. El usuario lo confirma moviéndolo o guardando (queda 'map_pin').
   const effectiveMarker = marker ?? districtCentroid;
 
+  // La guarda necesita el centroide, que llega con el catálogo del distrito.
+  // Sin ese dato no se puede comparar, así que tampoco se habilita el guardado.
+  const districtReady = selectedDistrict !== null;
+
+  const pinVerdict = useMemo(
+    () =>
+      effectiveMarker
+        ? evaluatePinDistance(districtCentroid, effectiveMarker, { confirmed: farConfirmed })
+        : evaluatePinDistance(null, { latitude: 0, longitude: 0 }),
+    [districtCentroid, effectiveMarker, farConfirmed],
+  );
+
   const value = useMemo<StoreLocationValue | null>(() => {
-    if (!/^[0-9]{6}$/.test(district) || address.trim().length < 3 || !effectiveMarker) return null;
-    return {
+    if (!districtReady || !effectiveMarker) return null;
+    return buildLocationValue({
       ubigeo: district,
-      address: address.trim(),
-      reference: reference.trim() ? reference.trim() : null,
-      latitude: effectiveMarker.latitude,
-      longitude: effectiveMarker.longitude,
+      address,
+      reference,
+      marker: effectiveMarker,
+      // Si el usuario movió el marcador, `onMarkerChange` ya lo dejó en map_pin.
       source: marker ? source : 'map_pin',
-    };
-  }, [district, address, reference, effectiveMarker, marker, source]);
+      pin: pinVerdict,
+    });
+  }, [districtReady, effectiveMarker, district, address, reference, marker, source, pinVerdict]);
+
+  // Resumen: mismas piezas y mismo pin que el payload.
+  const summary = useMemo(
+    () =>
+      buildLocationSummary({
+        ubigeo: district,
+        address,
+        marker: districtReady ? effectiveMarker : null,
+        names: {
+          department: departments.find((item) => item.code === department)?.name ?? null,
+          province: provinces.find((item) => item.code === province)?.name ?? null,
+          district: selectedDistrict?.name ?? null,
+        },
+      }),
+    [district, address, districtReady, effectiveMarker, departments, department, provinces, province, selectedDistrict],
+  );
 
   const onChangeRef = useRef(onValueChange);
   useEffect(() => {
@@ -172,13 +217,25 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
     onChangeRef.current?.(value);
   }, [value]);
 
-  // ── Acciones ───────────────────────────────────────────────────────────────
+  /** Cambia la selección SOLO cuando el usuario lo pide explícitamente. */
+  const chooseSuggestion = useCallback(
+    (choice: 'use' | 'keep') => {
+      const selection: DistrictSelection = { department, province, district };
+      const next = resolveSuggestionChoice(selection, suggestion, choice);
+      setSuggestion(null);
+      setFarConfirmed(false);
 
-  const applyDistrictFromUbigeo = useCallback((code: string) => {
-    setDepartment(code.slice(0, 2));
-    setProvince(code.slice(0, 4));
-    setDistrict(code);
-  }, []);
+      if (choice === 'keep') return;
+
+      setDepartment(next.department);
+      setProvince(next.province);
+      setDistrict(next.district);
+      setStatus({ kind: 'info', message: t('location.districtChanged') });
+    },
+    [department, province, district, suggestion, t],
+  );
+
+  // ── Acciones ───────────────────────────────────────────────────────────────
 
   const takeGpsLocation = async () => {
     if (gpsBusy) return;
@@ -212,7 +269,12 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
         | {
             ok?: boolean;
             address?: string | null;
-            ubigeo?: { code: string } | null;
+            ubigeo?: {
+              code?: string | null;
+              district?: string | null;
+              province?: string | null;
+              department?: string | null;
+            } | null;
             code?: string;
           }
         | null;
@@ -234,12 +296,22 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
       setMarker(point);
       setSource('gps');
 
-      if (payload?.ubigeo?.code) {
-        applyDistrictFromUbigeo(payload.ubigeo.code);
-      }
       if (payload?.address) {
         setAddress((current) => (current.trim().length >= 3 ? current : (payload.address as string)));
       }
+
+      // El distrito detectado NO se aplica solo: se propone y el usuario decide.
+      const proposal = buildDistrictSuggestion({
+        source: 'gps',
+        currentUbigeo: district,
+        detected: payload?.ubigeo ?? null,
+      });
+      if (proposal) {
+        setSuggestion(proposal);
+        setStatus(null);
+        return;
+      }
+
       setStatus({ kind: 'info', message: t('location.gpsApplied') });
     } catch {
       setStatus({ kind: 'warn', message: t('location.gpsDenied') });
@@ -274,6 +346,10 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
             hit?: {
               point: { latitude: number; longitude: number };
               confidence: 'high' | 'low';
+              ubigeo?: string | null;
+              district?: string | null;
+              province?: string | null;
+              department?: string | null;
             } | null;
           }
         | null;
@@ -298,8 +374,22 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
 
       setMarker(payload.hit.point);
       setSource('geocoder');
+
+      // Igual que el GPS: el geocoder sugiere, nunca cambia el UBIGEO.
+      const proposal = buildDistrictSuggestion({
+        source: 'geocoder',
+        currentUbigeo: district,
+        detected: {
+          code: payload.hit.ubigeo ?? null,
+          district: payload.hit.district ?? null,
+          province: payload.hit.province ?? null,
+          department: payload.hit.department ?? null,
+        },
+      });
+      if (proposal) setSuggestion(proposal);
+
       setStatus(
-        payload.hit.confidence === 'high'
+        payload.hit.confidence === 'high' && !proposal
           ? null
           : { kind: 'warn', message: t('location.lowConfidence') },
       );
@@ -359,6 +449,8 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setDistrict('');
                   setDistricts([]);
                   setMarker(null);
+                  setSuggestion(null);
+                  setFarConfirmed(false);
                 }}
                 className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary"
               >
@@ -380,6 +472,8 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setProvince(event.target.value);
                   setDistrict('');
                   setMarker(null);
+                  setSuggestion(null);
+                  setFarConfirmed(false);
                 }}
                 className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary disabled:opacity-50"
               >
@@ -397,7 +491,11 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               <select
                 value={district}
                 disabled={!province}
-                onChange={(event) => setDistrict(event.target.value)}
+                onChange={(event) => {
+                  setDistrict(event.target.value);
+                  setSuggestion(null);
+                  setFarConfirmed(false);
+                }}
                 className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary disabled:opacity-50"
               >
                 <option value="">{t('location.selectDistrict')}</option>
@@ -478,6 +576,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               type="button"
               onClick={() => {
                 setStatus(null);
+                setSuggestion(null);
                 setStep(1);
               }}
               className="h-11 text-sm text-tertiary underline-offset-2 hover:text-primary hover:underline"
@@ -490,18 +589,103 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
         {step === 3 && (
           <div className="space-y-4">
             <h4 className="text-sm font-medium text-primary">{t('location.step3Title')}</h4>
+
+            {/* Resumen: lo que se va a guardar, antes de confirmar. */}
+            <div className="rounded-xl border border-border bg-surface-raised p-3">
+              <h5 className="text-xs uppercase tracking-[2px] text-tertiary">
+                {t('location.summaryTitle')}
+              </h5>
+              <dl className="mt-2 space-y-1 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-tertiary">{t('location.department')}</dt>
+                  <dd className="text-right font-medium text-primary">{summary?.department ?? ''}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-tertiary">{t('location.province')}</dt>
+                  <dd className="text-right font-medium text-primary">{summary?.province ?? ''}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-tertiary">{t('location.district')}</dt>
+                  <dd className="text-right font-medium text-primary">{summary?.district ?? ''}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-tertiary">{t('location.address')}</dt>
+                  <dd className="text-right font-medium text-primary">{summary?.address ?? ''}</dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus(null);
+                  setStep(1);
+                }}
+                className="mt-3 h-10 text-sm text-secondary underline underline-offset-2 hover:text-primary"
+              >
+                {t('location.summaryEdit')}
+              </button>
+            </div>
+
             <p className="text-xs text-tertiary">{t('location.mapHelp')}</p>
 
-            <MapCanvas
-              center={effectiveMarker ?? { latitude: -9.19, longitude: -75.0152 }}
-              marker={effectiveMarker}
-              onMarkerChange={(point) => {
-                setMarker(point);
-                setSource('map_pin');
-              }}
-              label={t('location.mapLabel')}
-              className="h-72 w-full overflow-hidden rounded-2xl border border-border"
-            />
+            <div ref={mapRef} tabIndex={-1}>
+              <MapCanvas
+                center={effectiveMarker ?? { latitude: -9.19, longitude: -75.0152 }}
+                marker={effectiveMarker}
+                onMarkerChange={(point) => {
+                  setMarker(point);
+                  // Ajuste manual: el origen deja de ser GPS/geocoder.
+                  setSource('map_pin');
+                  setFarConfirmed(false);
+                }}
+                label={t('location.mapLabel')}
+                className="h-72 w-full overflow-hidden rounded-2xl border border-border"
+              />
+            </div>
+
+            {pinVerdict.level === 'blocked' && (
+              <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                <p className="text-sm font-medium text-destructive">{t('location.pinTooFar')}</p>
+                <p className="mt-1 text-xs text-secondary">{t('location.pinTooFarHelp')}</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => mapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+                    className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+                  >
+                    {t('location.fixMarker')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatus(null);
+                      setStep(1);
+                    }}
+                    className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+                  >
+                    {t('location.changeDistrict')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {pinVerdict.level === 'review' && (
+              <div className="rounded-xl border border-warning/50 bg-warning/10 p-3">
+                <p className="text-sm text-warning">
+                  {t('location.pinReview', { km: Math.round(pinVerdict.km) })}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFarConfirmed(true)}
+                  className="mt-3 h-11 w-full rounded-xl border border-warning/60 px-3 text-sm font-medium text-primary"
+                >
+                  {t('location.pinReviewConfirm')}
+                </button>
+              </div>
+            )}
+
+            {pinVerdict.level === 'ok' && farConfirmed && (
+              <p className="text-xs text-secondary">{t('location.pinReviewConfirmed')}</p>
+            )}
 
             {!hideSubmit && (
               <button
@@ -510,7 +694,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 disabled={saving || !value}
                 className="h-12 w-full rounded-xl bg-brand px-4 text-base font-semibold text-background disabled:opacity-50"
               >
-                {saving ? t('location.saving') : (submitLabel ?? t('location.confirm'))}
+                {saving ? t('location.saving') : (submitLabel ?? t('location.summaryConfirm'))}
               </button>
             )}
 
@@ -531,6 +715,35 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
           </div>
         )}
       </div>
+
+      {suggestion && (
+        <div
+          role="status"
+          className="mt-4 rounded-xl border border-warning/50 bg-warning/10 p-3"
+        >
+          <p className="text-sm text-primary">
+            {suggestion.source === 'gps'
+              ? t('location.gpsOtherDistrict', { place: suggestion.label })
+              : t('location.geocoderOtherDistrict', { place: suggestion.label })}
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => chooseSuggestion('use')}
+              className="h-11 flex-1 rounded-xl bg-brand px-3 text-sm font-semibold text-background"
+            >
+              {t('location.useThisLocation')}
+            </button>
+            <button
+              type="button"
+              onClick={() => chooseSuggestion('keep')}
+              className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+            >
+              {t('location.keepMySelection')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {status && (
         <p

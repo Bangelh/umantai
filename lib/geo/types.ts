@@ -70,6 +70,12 @@ export interface GeocodeHit {
   districtCandidates: string[];
   /** Precisión declarada por el proveedor (no se inventa). */
   precision: GeocodePrecision;
+  /**
+   * Código UBIGEO resuelto por el SERVIDOR contra el catálogo INEI.
+   * El proveedor nunca lo aporta y el cliente no lo puede imponer: sirve para
+   * que la UI pueda PROPONER un cambio de distrito, nunca para aplicarlo sola.
+   */
+  ubigeo?: string | null;
 }
 
 export interface ReverseHit extends GeocodeHit {

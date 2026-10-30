@@ -108,6 +108,8 @@ export async function POST(request: Request) {
               point: hit.point,
               formatted: hit.formatted,
               confidence: hit.confidence,
+              // Código canónico resuelto en el servidor: la UI solo lo PROPONE.
+              ubigeo: hit.ubigeo ?? null,
               district: hit.district,
               province: hit.province,
               department: hit.department,

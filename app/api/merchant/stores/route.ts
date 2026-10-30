@@ -12,11 +12,15 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser, resolveAuthBaseUrl } from '@/lib/auth.server';
 import { buildStoreCreatedEmail, sendTransactionalEmail } from '@/lib/email.server';
-import { distanceKm } from '@/lib/geo/peru';
 import { getUbigeoChain } from '@/lib/geo/ubigeo.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
-import { validateStoreLocation, type StoreLocationWarning } from '@/lib/store-location';
+import {
+  evaluatePinDistance,
+  readFarPinConfirmation,
+  validateStoreLocation,
+  type StoreLocationWarning,
+} from '@/lib/store-location';
 import { createStoreForOwner, listStoresForUser } from '@/lib/stores.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
 
@@ -132,17 +136,20 @@ export async function POST(request: Request) {
           { status: 400 },
         );
       }
-      warnings.push(...validation.warnings);
-      if (
-        chain.centroid &&
-        distanceKm(chain.centroid, {
-          latitude: validation.value.latitude,
-          longitude: validation.value.longitude,
-        }) > 60 &&
-        !warnings.includes('pin_far_from_district')
-      ) {
-        warnings.push('pin_far_from_district');
+      // Misma guarda que en la edición: lejos → confirmación explícita;
+      // a cientos de km → no se crea la tienda.
+      const pin = evaluatePinDistance(
+        chain.centroid,
+        { latitude: validation.value.latitude, longitude: validation.value.longitude },
+        { confirmed: readFarPinConfirmation(body.location) },
+      );
+      if (pin.level !== 'ok') {
+        return NextResponse.json(
+          { error: pin.message, code: pin.code, field: 'pin' },
+          { status: 400 },
+        );
       }
+      warnings.push(...validation.warnings, ...pin.warnings);
     }
     structured = validation.value;
   }

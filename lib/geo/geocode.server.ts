@@ -95,6 +95,7 @@ async function canonicalizeHit(
   const sameDistrict = !requested || resolved.code === requested.code;
   return {
     ...hit,
+    ubigeo: resolved.code,
     department: resolved.department,
     province: resolved.province,
     district: resolved.district,

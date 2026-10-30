@@ -19,13 +19,16 @@
 import { NextResponse } from 'next/server';
 
 import { getSessionUser } from '@/lib/auth.server';
-import { distanceKm } from '@/lib/geo/peru';
 import { getUbigeoChain } from '@/lib/geo/ubigeo.server';
 import { logEvent } from '@/lib/observability.server';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { requirePlatformSql } from '@/lib/platform-db.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
-import { validateStoreLocation } from '@/lib/store-location';
+import {
+  evaluatePinDistance,
+  readFarPinConfirmation,
+  validateStoreLocation,
+} from '@/lib/store-location';
 import { requireStoreAccess } from '@/lib/stores.server';
 
 export const runtime = 'nodejs';
@@ -81,17 +84,21 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    // Advertencia, no bloqueo: un centroide no son los límites del distrito.
-    const warnings = [...validation.warnings];
-    if (chain.centroid) {
-      const km = distanceKm(chain.centroid, {
-        latitude: location.latitude,
-        longitude: location.longitude,
-      });
-      if (km > 60 && !warnings.includes('pin_far_from_district')) {
-        warnings.push('pin_far_from_district');
-      }
+    // Guarda de cordura UBIGEO ↔ pin. Un centroide no son los límites del
+    // distrito, pero a cientos de km el error es obvio: se frena acá en vez de
+    // guardar una tienda "en Máncora" apuntando a otra región.
+    const pin = evaluatePinDistance(
+      chain.centroid,
+      { latitude: location.latitude, longitude: location.longitude },
+      { confirmed: readFarPinConfirmation(body?.location) },
+    );
+    if (pin.level !== 'ok') {
+      return NextResponse.json(
+        { error: pin.message, code: pin.code, field: 'pin' },
+        { status: 400 },
+      );
     }
+    const warnings = [...validation.warnings, ...pin.warnings];
 
     const sql = requirePlatformSql();
     const rows = await sql`

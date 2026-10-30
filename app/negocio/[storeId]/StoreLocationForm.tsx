@@ -53,5 +53,13 @@ export function StoreLocationForm({ storeId, initial }: Props) {
     }
   };
 
-  return <LocationPicker initial={initial ?? null} onSubmit={submit} submitLabel={t('location.confirm')} />;
+  // El paso 3 muestra siempre el resumen antes de confirmar: el CTA dice
+  // «Confirmar esta ubicación», no un genérico «Confirmar ubicación».
+  return (
+    <LocationPicker
+      initial={initial ?? null}
+      onSubmit={submit}
+      submitLabel={t('location.summaryConfirm')}
+    />
+  );
 }

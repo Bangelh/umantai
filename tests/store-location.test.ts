@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { distanceKm, foldGeoText, isPointInPeru, sanitizeAddress } from '../lib/geo/peru';
-import { validateStoreLocation } from '../lib/store-location';
+import { evaluatePinDistance, PIN_MAX_KM, PIN_REVIEW_KM, validateStoreLocation } from '../lib/store-location';
 
 const UBIGEO_MANCORA = '200706';
 const PIN_MANCORA = { latitude: -4.1069, longitude: -81.0539 };
@@ -95,10 +95,63 @@ test('un origen de ubicación desconocido no se acepta', () => {
   if (!result.ok) assert.equal(result.code, 'invalid_source');
 });
 
-test('la distancia al centroide es advertencia, no bloqueo', () => {
-  const result = validateStoreLocation(valid, { nearCentroidKm: 200 });
+test('la validación de forma no opina sobre la distancia', () => {
+  // La distancia se evalúa aparte, cuando la ruta ya resolvió el UBIGEO.
+  const result = validateStoreLocation(valid);
   assert.equal(result.ok, true);
-  if (result.ok) assert.deepEqual(result.warnings, ['pin_far_from_district']);
+  if (result.ok) assert.deepEqual(result.warnings, []);
+});
+
+const CENTROID = { latitude: -4.1069, longitude: -81.0539 };
+/** Punto a `km` al norte del centroide (1° de latitud ≈ 111.19 km). */
+const atKm = (km: number) => ({
+  latitude: CENTROID.latitude + km / 111.19,
+  longitude: CENTROID.longitude,
+});
+
+test('distancia razonable al centroide: se guarda sin fricción', () => {
+  for (const km of [0, 2, PIN_REVIEW_KM - 1]) {
+    const verdict = evaluatePinDistance(CENTROID, atKm(km));
+    assert.equal(verdict.level, 'ok', `${km} km`);
+    assert.deepEqual(verdict.warnings, []);
+  }
+});
+
+test('distancia sospechosa: exige confirmación explícita', () => {
+  const verdict = evaluatePinDistance(CENTROID, atKm(30));
+  assert.equal(verdict.level, 'review');
+  if (verdict.level === 'review') {
+    assert.equal(verdict.code, 'pin_confirmation_required');
+    assert.ok(verdict.km > 29 && verdict.km < 31, `km inesperado: ${verdict.km}`);
+    assert.deepEqual(verdict.warnings, ['pin_far_from_district']);
+  }
+
+  const confirmed = evaluatePinDistance(CENTROID, atKm(30), { confirmed: true });
+  assert.equal(confirmed.level, 'ok');
+  assert.deepEqual(confirmed.warnings, ['pin_far_from_district']);
+});
+
+test('distancia extrema: no se guarda, ni siquiera confirmando', () => {
+  for (const km of [PIN_MAX_KM + 1, 200, 640]) {
+    for (const confirmed of [false, true]) {
+      const verdict = evaluatePinDistance(CENTROID, atKm(km), { confirmed });
+      assert.equal(verdict.level, 'blocked', `${km} km (confirmed=${confirmed})`);
+      if (verdict.level === 'blocked') assert.equal(verdict.code, 'pin_too_far_from_district');
+    }
+  }
+});
+
+test('Máncora con pin en Trujillo queda bloqueado', () => {
+  // El caso real: se eligió Máncora y el pin quedó en La Libertad.
+  const trujillo = { latitude: -8.1089557, longitude: -79.0179336 };
+  const verdict = evaluatePinDistance(CENTROID, trujillo);
+  assert.equal(verdict.level, 'blocked');
+});
+
+test('sin centroide la guarda no bloquea (no hay con qué comparar)', () => {
+  const verdict = evaluatePinDistance(null, atKm(500));
+  assert.equal(verdict.level, 'ok');
+  assert.equal(verdict.km, null);
 });
 
 test('Haversine coincide con distancias conocidas del Perú', () => {
