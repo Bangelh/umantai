@@ -296,7 +296,7 @@ export default function CartPage() {
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className="font-monotext-body-lg font-semibold tabular-nums">
+                  <div className="font-mono text-body-lg font-semibold tabular-nums">
                     {money(item.price * item.quantity)}
                   </div>
                 </div>
@@ -315,7 +315,7 @@ export default function CartPage() {
                   </button>
                   <div
                     aria-live="polite"
-                    className="w-12 text-center font-monotext-body-lg tabular-nums"
+                    className="w-12 text-center font-mono text-body-lg tabular-nums"
                   >
                     {item.quantity}
                   </div>
@@ -353,7 +353,7 @@ export default function CartPage() {
           Las etiquetas son visibles y permanentes: el placeholder no reemplaza a
           un label (desaparece al escribir y el campo deja de tener nombre). */}
       <div className="mt-8 border-t border-border pt-6">
-        <h2 className="mb-3text-body-lg font-semibold">{t("cart.contact")}</h2>
+        <h2 className="mb-3 text-body-lg font-semibold">{t("cart.contact")}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="block sm:col-span-2">
             <label htmlFor="cart-email" className="mb-1 block text-body font-medium text-primary">
@@ -407,13 +407,13 @@ export default function CartPage() {
           type="button"
           onClick={handleOpenConfirmation}
           disabled={isSubmitting}
-          className="h-14 flex-1 rounded-xl bg-brandtext-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-14 flex-1 rounded-xl bg-brand text-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {t("cart.review")}
         </button>
         <Link
           href="/"
-          className="flex h-14 flex-1 items-center justify-center rounded-xl border border-border-strong text-body font-medium hover:bg-surface-raised"
+          className="flex min-h-14 flex-1 items-center justify-center rounded-xl border border-border-strong text-body font-medium hover:bg-surface-raised"
         >
           {t("cart.continue")}
         </Link>
@@ -497,7 +497,7 @@ export default function CartPage() {
               <span>{t("cart.subtotal")}</span>
               <span className="font-mono tabular-nums">{money(summary.subtotal)}</span>
             </div>
-            <div className="mt-2 flex justify-betweentext-body-lg font-medium">
+            <div className="mt-2 flex justify-between text-body-lg font-medium">
               <span>{t("cart.total")}</span>
               <span className="font-mono tabular-nums tracking-tight">{money(summary.total)}</span>
             </div>
@@ -546,7 +546,7 @@ export default function CartPage() {
                 type="button"
                 onClick={handleCancelConfirmation}
                 disabled={isSubmitting}
-                className="h-12 flex-1 rounded-xl border border-border-strong font-medium hover:bg-surface-raised disabled:opacity-40"
+                className="min-h-12 flex-1 rounded-xl border border-border-strong font-medium hover:bg-surface-raised disabled:opacity-40"
               >
                 {t("cart.backToCart")}
               </button>
@@ -555,7 +555,7 @@ export default function CartPage() {
                 type="button"
                 onClick={() => void handleConfirmPurchase()}
                 disabled={isSubmitting}
-                className="h-12 flex-1 rounded-xl bg-brand font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-12 flex-1 rounded-xl bg-brand font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSubmitting ? t("cart.creating") : t("cart.confirm")}
               </button>

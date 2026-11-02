@@ -419,7 +419,7 @@ export default async function OrderStatusPage({
               key={item.id}
               className="flex items-center gap-5 border border-border bg-surface p-5 rounded-3xl"
             >
-              <div className="w-16 h-16 rounded-2xl bg-surface-raised flex-shrink-0 flex items-center justify-centertext-body-lg font-semibold text-secondary">
+              <div className="w-16 h-16 rounded-2xl bg-surface-raised flex-shrink-0 flex items-center justify-center text-body-lg font-semibold text-secondary">
                 {item.productName.slice(0, 1).toUpperCase()}
               </div>
 

@@ -276,7 +276,7 @@ export function StoreProductActions({ product }: Props) {
               }}
               inputMode="numeric"
               aria-label={t('product.quantity')}
-              className="h-12 w-14 border-x border-border bg-transparent text-centertext-body-lg font-mono tabular-nums"
+              className="h-12 w-14 border-x border-border bg-transparent text-center text-body-lg font-mono tabular-nums"
             />
             <button
               type="button"
@@ -296,7 +296,7 @@ export function StoreProductActions({ product }: Props) {
             type="button"
             onClick={handleAdd}
             disabled={disabled}
-            className="h-14 flex-1 rounded-xl bg-brand px-6text-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-14 flex-1 rounded-xl bg-brand px-6 text-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {disabled ? t('product.unavailable') : t('product.addToCart')}
           </button>
