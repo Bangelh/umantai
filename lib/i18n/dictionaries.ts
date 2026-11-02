@@ -515,6 +515,27 @@ export const MESSAGES = {
     'merchant.topProducts': 'Más vendidos (30 días)',
     'merchant.itemsShort': '{count} art.',
 
+    'merchant.orderDetailTitle': 'Pedido {number}',
+    'merchant.orderPlaced': 'Creado el {date}',
+    'merchant.orderStatus': 'Estado',
+    'merchant.paymentStatus': 'Pago',
+    'merchant.customer': 'Cliente',
+    'merchant.lines': 'Productos',
+    'merchant.lineTotal': 'Subtotal',
+    'merchant.fulfillment': 'Entrega',
+    'merchant.reservation': 'Reserva',
+    'merchant.reservationUntil': 'Los productos están reservados hasta: {date}',
+    'merchant.reservationReleased': 'La reserva de stock ya se liberó.',
+    'merchant.nextAction': 'Siguiente acción',
+    'merchant.backToStore': 'Volver a la tienda',
+    'merchant.ordersAttention': 'Requieren atención',
+    'merchant.ordersHistory': 'Historial',
+    'merchant.openOrder': 'Ver pedido',
+    'merchant.orderNotFound': 'Ese pedido no pertenece a esta tienda.',
+    'merchant.waitingPayment': 'Esperando pago',
+    'merchant.waitingPaymentWarning': 'No prepares este pedido todavía.',
+    'merchant.variantLabel': 'Variante',
+
     'merchant.catalogSearch': 'Buscar en mi catálogo…',
     'merchant.filterCategory': 'Filtrar por categoría',
     'merchant.allCategories': 'Todas las categorías',
@@ -1061,10 +1082,46 @@ export const MESSAGES = {
     'admin.openPanel': 'Entrar al panel',
     'admin.signedOut': 'Sesión de administrador cerrada.',
 
+    'orderStatus.pending_payment.explanation':
+      'El pedido se creó, pero el pago todavía no se acreditó.',
+    'orderStatus.pending_payment.action':
+      'No prepares este pedido todavía. Espera la confirmación del pago.',
+    'orderStatus.confirmed.explanation': 'El pago se acreditó y el pedido está en la tienda.',
+    'orderStatus.confirmed.action':
+      'Prepara el pedido y márcalo como listo desde el kiosco cuando esté completo.',
+    'orderStatus.preparing.explanation': 'El pedido se está preparando en la tienda.',
+    'orderStatus.preparing.action': 'Márcalo como listo desde el kiosco cuando esté completo.',
+    'orderStatus.ready_for_pickup.explanation':
+      'El pedido está listo y espera que el cliente lo recoja.',
+    'orderStatus.ready_for_pickup.action':
+      'Entrégalo cuando el cliente te muestre su código de recojo.',
+    'orderStatus.picked_up.explanation': 'El cliente ya recogió el pedido.',
+    'orderStatus.picked_up.action': 'No hay nada más que hacer.',
+    'orderStatus.out_for_delivery.explanation': 'El pedido está en camino al cliente.',
+    'orderStatus.out_for_delivery.action': 'Márcalo como entregado cuando llegue.',
+    'orderStatus.delivered.explanation': 'El pedido se entregó al cliente.',
+    'orderStatus.delivered.action': 'No hay nada más que hacer.',
+    'orderStatus.completed.explanation': 'El pedido está cerrado.',
+    'orderStatus.completed.action': 'No hay nada más que hacer.',
+    'orderStatus.cancelled.explanation': 'El pedido se canceló.',
+    'orderStatus.cancelled.action': 'No hay nada más que hacer.',
+    'orderStatus.expired.explanation':
+      'La reserva venció antes del pago y el stock volvió a la tienda.',
+    'orderStatus.expired.action':
+      'No hay nada más que hacer. Si el cliente vuelve a comprar, será un pedido nuevo.',
+    'orderStatus.refunded.explanation': 'El dinero se devolvió al cliente.',
+    'orderStatus.refunded.action': 'No hay nada más que hacer.',
+    'paymentStatus.pending': 'Pago pendiente',
+    'paymentStatus.authorized': 'Pago autorizado',
+    'paymentStatus.paid': 'Pagado',
+    'paymentStatus.failed': 'Pago fallido',
+    'paymentStatus.partially_refunded': 'Devolución parcial',
+    'paymentStatus.refunded': 'Devuelto',
+
     'order.loadFailedTitle': 'No pudimos cargar este pedido',
     'order.loadFailedBody': 'Suele ser temporal. Inténtalo de nuevo en un momento.',
     'order.backToCollection': 'Volver a la tienda',
-    'order.continueShopping': '← Seguir comprando',
+    'order.continueShopping': 'Seguir comprando',
     'order.simulatedBadge': 'Pago simulado — QA',
     'order.simulatedTitle': 'Pago aprobado por el simulador de QA, no por Mercado Pago',
     'order.placedOn': 'Creado el {date}',
@@ -1077,7 +1134,9 @@ export const MESSAGES = {
       'Paga con Yape, Plin, tarjeta o tu saldo de Mercado Pago. El stock queda reservado hasta que venza la reserva.',
     'order.paymentUnavailableTitle': 'El pago online no está disponible por ahora',
     'order.paymentUnavailableBody':
-      'Estamos trabajando para restablecerlo. Tu pedido quedó registrado y no se realizó ningún cobro; la reserva de stock se mantiene hasta que venza. Cuando el pago vuelva a estar disponible, podrás completarlo desde este mismo enlace.',
+      'El pago online está temporalmente no disponible y no se realizó ningún cobro. La reserva de stock vence pronto: si vence antes de que el pago vuelva, el pedido se cierra y tendrás que hacer uno nuevo.',
+    'order.paymentUnavailableBodyUntil':
+      'El pago online está temporalmente no disponible y no se realizó ningún cobro. Tus productos están reservados hasta el {date}. Si la reserva vence, el pedido se cierra y tendrás que hacer uno nuevo.',
     'order.subtotal': 'Subtotal',
     'order.discount': 'Descuento',
     'order.tax': 'Impuestos',
@@ -1089,9 +1148,11 @@ export const MESSAGES = {
     'order.yourNote': 'TU NOTA',
     'order.complaintsLink': '¿Problemas con tu pedido? Libro de Reclamaciones',
     'order.saveLink': 'Guarda este enlace: es tu referencia de pedido.',
-    'order.fulfillment.pickup_locker': 'Retiro en casillero',
-    'order.fulfillment.pickup_counter': 'Retiro en mostrador',
+    'order.fulfillment.pickup_locker': 'Recojo en tienda',
+    'order.fulfillment.pickup_counter': 'Recojo en tienda',
     'order.fulfillment.delivery': 'Entrega a domicilio',
+    'order.pickupHint':
+      'Cuando tu pedido esté listo recibirás un código de recojo para indicárselo al personal de la tienda.',
     'order.notice.expiredReservation':
       'La reserva de stock venció. No se cobró nada. Vuelve a hacer el pedido para reservar los artículos.',
     'order.notice.expiredReservationAt':
@@ -1112,7 +1173,7 @@ export const MESSAGES = {
     'order.pickupAt': 'RETIRA EN',
     'order.pickupValidUntil': 'CÓDIGO VÁLIDO HASTA',
     'order.askStore': 'Pregunta en la tienda',
-    'order.locker': 'Casillero {slot}',
+    'order.locker': 'Recojo en tienda',
     'order.storeCounter': 'Mostrador de la tienda',
     'order.return.exitoso':
       'Mercado Pago aprobó tu pago. Estamos confirmándolo con este pedido; si el estado aún no cambió, vuelve a consultar en unos segundos.',
@@ -1836,6 +1897,27 @@ export const MESSAGES = {
     'merchant.topProducts': 'Best sellers (30 days)',
     'merchant.itemsShort': '{count} items',
 
+    'merchant.orderDetailTitle': 'Order {number}',
+    'merchant.orderPlaced': 'Placed on {date}',
+    'merchant.orderStatus': 'Status',
+    'merchant.paymentStatus': 'Payment',
+    'merchant.customer': 'Customer',
+    'merchant.lines': 'Products',
+    'merchant.lineTotal': 'Subtotal',
+    'merchant.fulfillment': 'Fulfillment',
+    'merchant.reservation': 'Reservation',
+    'merchant.reservationUntil': 'The items are reserved until: {date}',
+    'merchant.reservationReleased': 'The stock reservation has already been released.',
+    'merchant.nextAction': 'Next action',
+    'merchant.backToStore': 'Back to the store',
+    'merchant.ordersAttention': 'Needs attention',
+    'merchant.ordersHistory': 'History',
+    'merchant.openOrder': 'View order',
+    'merchant.orderNotFound': 'That order does not belong to this store.',
+    'merchant.waitingPayment': 'Waiting for payment',
+    'merchant.waitingPaymentWarning': 'Do not prepare this order yet.',
+    'merchant.variantLabel': 'Variant',
+
     'merchant.catalogSearch': 'Search my catalog…',
     'merchant.filterCategory': 'Filter by category',
     'merchant.allCategories': 'All categories',
@@ -2379,10 +2461,46 @@ export const MESSAGES = {
     'admin.openPanel': 'Enter the panel',
     'admin.signedOut': 'Administrator session closed.',
 
+    'orderStatus.pending_payment.explanation':
+      'The order was created, but the payment has not been confirmed yet.',
+    'orderStatus.pending_payment.action':
+      'Do not prepare this order yet. Wait for the payment confirmation.',
+    'orderStatus.confirmed.explanation': 'The payment cleared and the order is at the store.',
+    'orderStatus.confirmed.action':
+      'Prepare the order and mark it ready from the kiosk once it is complete.',
+    'orderStatus.preparing.explanation': 'The order is being prepared at the store.',
+    'orderStatus.preparing.action': 'Mark it ready from the kiosk once it is complete.',
+    'orderStatus.ready_for_pickup.explanation':
+      'The order is ready and waiting for the customer to pick it up.',
+    'orderStatus.ready_for_pickup.action':
+      'Hand it over when the customer shows you their pickup code.',
+    'orderStatus.picked_up.explanation': 'The customer has already picked up the order.',
+    'orderStatus.picked_up.action': 'There is nothing else to do.',
+    'orderStatus.out_for_delivery.explanation': 'The order is on its way to the customer.',
+    'orderStatus.out_for_delivery.action': 'Mark it delivered when it arrives.',
+    'orderStatus.delivered.explanation': 'The order was delivered to the customer.',
+    'orderStatus.delivered.action': 'There is nothing else to do.',
+    'orderStatus.completed.explanation': 'The order is closed.',
+    'orderStatus.completed.action': 'There is nothing else to do.',
+    'orderStatus.cancelled.explanation': 'The order was cancelled.',
+    'orderStatus.cancelled.action': 'There is nothing else to do.',
+    'orderStatus.expired.explanation':
+      'The reservation expired before payment and the stock went back to the store.',
+    'orderStatus.expired.action':
+      'There is nothing else to do. If the customer buys again, it will be a new order.',
+    'orderStatus.refunded.explanation': 'The money was refunded to the customer.',
+    'orderStatus.refunded.action': 'There is nothing else to do.',
+    'paymentStatus.pending': 'Payment pending',
+    'paymentStatus.authorized': 'Payment authorized',
+    'paymentStatus.paid': 'Paid',
+    'paymentStatus.failed': 'Payment failed',
+    'paymentStatus.partially_refunded': 'Partially refunded',
+    'paymentStatus.refunded': 'Refunded',
+
     'order.loadFailedTitle': 'We could not load this order',
     'order.loadFailedBody': 'This is usually temporary. Please try again in a moment.',
     'order.backToCollection': 'Back to the collection',
-    'order.continueShopping': '← Continue shopping',
+    'order.continueShopping': 'Continue shopping',
     'order.simulatedBadge': 'Simulated payment — QA',
     'order.simulatedTitle': 'Payment approved by the QA simulator, not by Mercado Pago',
     'order.placedOn': 'Placed on {date}',
@@ -2395,7 +2513,9 @@ export const MESSAGES = {
       'Pay with Yape, Plin, card or your Mercado Pago balance. The stock stays reserved for you until the reservation expires.',
     'order.paymentUnavailableTitle': 'Online payment is unavailable right now',
     'order.paymentUnavailableBody':
-      'We are working to restore it. Your order has been recorded and no charge was made; the stock reservation stays active until it expires. Once online payment is available again, you can complete it from this same link.',
+      'Online payment is temporarily unavailable and no charge was made. The stock reservation expires soon: if it expires before payment is back, the order closes and you will need to place a new one.',
+    'order.paymentUnavailableBodyUntil':
+      'Online payment is temporarily unavailable and no charge was made. Your items are reserved until {date}. If the reservation expires, the order closes and you will need to place a new one.',
     'order.subtotal': 'Subtotal',
     'order.discount': 'Discount',
     'order.tax': 'Tax',
@@ -2407,9 +2527,11 @@ export const MESSAGES = {
     'order.yourNote': 'YOUR NOTE',
     'order.complaintsLink': 'Issues with your order? Complaints Book',
     'order.saveLink': 'Save this link: it is your order reference.',
-    'order.fulfillment.pickup_locker': 'Pickup at locker',
-    'order.fulfillment.pickup_counter': 'Pickup at counter',
+    'order.fulfillment.pickup_locker': 'Store pickup',
+    'order.fulfillment.pickup_counter': 'Store pickup',
     'order.fulfillment.delivery': 'Home delivery',
+    'order.pickupHint':
+      'When your order is ready you will receive a pickup code to show the store staff.',
     'order.notice.expiredReservation':
       'The stock reservation for this order expired. Nothing was charged. Start the checkout again to reserve the items.',
     'order.notice.expiredReservationAt':
@@ -2430,7 +2552,7 @@ export const MESSAGES = {
     'order.pickupAt': 'PICK UP AT',
     'order.pickupValidUntil': 'CODE VALID UNTIL',
     'order.askStore': 'Ask the store',
-    'order.locker': 'Locker {slot}',
+    'order.locker': 'Store pickup',
     'order.storeCounter': 'Store counter',
     'order.return.exitoso':
       'Mercado Pago approved your payment. We are confirming it against this order — if the status has not changed yet, check again in a few seconds.',

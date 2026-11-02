@@ -13,8 +13,10 @@ import { MerchantCatalog } from './MerchantCatalog';
 import { StoreBilling } from './StoreBilling';
 import { StoreIdentityForm } from './StoreIdentityForm';
 import { StoreLocationForm } from './StoreLocationForm';
+import { OrderStatusBadge } from '@/components/orders/OrderStatusBadge';
 import { resolveAnalyticsRange } from '@/lib/analytics';
-import { orderStatusLabel } from '@/lib/i18n/status';
+import type { MessageKey } from '@/lib/i18n/dictionaries';
+import { merchantOrderStatusKey, orderStatusCopy } from '@/lib/order-status-copy';
 import { storeStatusLabel } from '@/lib/i18n/store-status';
 import { canEditStoreIdentity, publicStoreUrl } from '@/lib/store-identity';
 import { resolveMerchantStoreStatus } from '@/lib/store-status';
@@ -74,6 +76,22 @@ export default async function MerchantStorePage({ params }: PageProps) {
     : null;
 
   const sales = summary?.sales;
+
+  // Los pedidos vivos van primero y con más contraste; el historial (expirados,
+  // cancelados, ya retirados) queda atenuado y después. El orden lo define
+  // `lib/order-status-copy.ts`, no cada pantalla.
+  const groupedOrders = [
+    {
+      key: 'attention',
+      titleKey: 'merchant.ordersAttention' as const,
+      orders: orders.filter((order) => !orderStatusCopy(order.status).secondary),
+    },
+    {
+      key: 'history',
+      titleKey: 'merchant.ordersHistory' as const,
+      orders: orders.filter((order) => orderStatusCopy(order.status).secondary),
+    },
+  ].filter((group) => group.orders.length > 0);
 
   return (
     <main className="mx-auto max-w-5xl px-4 pb-12 pt-6 sm:px-6">
@@ -251,35 +269,64 @@ export default async function MerchantStorePage({ params }: PageProps) {
         {orders.length === 0 ? (
           <p className="py-4 text-sm text-tertiary">{t('merchant.noOrders')}</p>
         ) : (
-          <ul className="divide-y divide-border">
-            {orders.map((order) => (
-              <li key={order.id} className="py-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="font-mono text-sm">{order.orderNumber}</span>
-                      <span className="text-xs text-secondary">
-                        {orderStatusLabel(t, order.status)}
-                      </span>
-                      <span className="text-xs text-muted">
-                        {formatDateLocale(order.createdAt, locale, {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
-                      </span>
-                    </div>
-                    <p className="truncate text-xs text-tertiary">
-                      {order.contactEmail} · {t('merchant.itemsShort', { count: order.itemCount })} ·{' '}
-                      {order.items.map((item) => `${item.quantity}× ${item.name}`).join(', ')}
-                    </p>
-                  </div>
-                  <div className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                    {formatMoney(unitsToCents(order.total), order.currency, locale)}
-                  </div>
-                </div>
-              </li>
+          <div className="mt-3 space-y-5">
+            {groupedOrders.map((group) => (
+              <div key={group.key}>
+                <h3 className="text-[11px] font-semibold uppercase tracking-[2px] text-tertiary">
+                  {t(group.titleKey)}
+                </h3>
+                <ul className="mt-2 space-y-2">
+                  {group.orders.map((order) => {
+                    const copy = orderStatusCopy(order.status);
+                    return (
+                      <li key={order.id}>
+                        {/* Fila entera tappable: el número de pedido, el estado y el total
+                            son lo que el comerciante busca; el resto queda secundario. */}
+                        <Link
+                          href={`/negocio/${storeId}/pedidos/${order.id}`}
+                          className={`flex min-h-16 items-center gap-3 rounded-2xl border px-4 py-3 hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+                            copy.secondary
+                              ? 'border-border bg-surface'
+                              : 'border-border-strong bg-surface'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className={`font-mono text-body font-semibold tabular-nums ${copy.secondary ? 'text-secondary' : 'text-primary'}`}>
+                                {order.orderNumber}
+                              </span>
+                              <OrderStatusBadge
+                                status={order.status}
+                                label={t(merchantOrderStatusKey(order.status) as MessageKey)}
+                              />
+                            </div>
+                            <p className="mt-1 truncate text-xs text-tertiary">
+                              {formatDateLocale(order.createdAt, locale, {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}{' '}
+                              · {order.contactEmail}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className={`font-mono text-body font-semibold tabular-nums ${copy.secondary ? 'text-secondary' : 'text-primary'}`}>
+                              {formatMoney(unitsToCents(order.total), order.currency, locale)}
+                            </div>
+                            <div className="text-xs text-tertiary">
+                              {t('merchant.itemsShort', { count: order.itemCount })}
+                            </div>
+                          </div>
+                          <span aria-hidden="true" className="shrink-0 text-base text-tertiary">
+                            ›
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 

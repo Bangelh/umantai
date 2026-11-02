@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import { expireStaleOrders, getIssuedPickupCode, getOrderByPublicToken } from "@/lib/commerce.server";
 import {
   evaluateOrderPayability,
-  type OrderStatus,
   type OrderWithItems,
   type PickupCode,
 } from "@/lib/commerce";
+import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { orderStatusCopy } from "@/lib/order-status-copy";
 import { PayButton } from "./PayButton";
 import { isOnlinePaymentEnabled } from "@/lib/online-payments";
 import { formatMoneyUnits } from "@/lib/format";
@@ -33,21 +34,9 @@ import type { MessageKey } from "@/lib/i18n/dictionaries";
  * descarta los PIN vencidos— y se renderiza en grande, tipo ticket.
  */
 
-// Tonos con tokens del sistema (funcionan igual en claro y oscuro). Antes usaban
-// `text-success` / `bg-surface` fijos: en tema claro quedaban ilegibles.
-const STATUS_TONES: Record<OrderStatus, string> = {
-  pending_payment: "border-warning/40 bg-warning/10 text-warning",
-  confirmed: "border-success/40 bg-success/10 text-success",
-  preparing: "border-success/40 bg-success/10 text-success",
-  ready_for_pickup: "border-success/40 bg-success/10 text-success",
-  picked_up: "border-border-strong bg-surface-raised text-secondary",
-  out_for_delivery: "border-border-strong bg-surface-raised text-secondary",
-  delivered: "border-border-strong bg-surface-raised text-secondary",
-  completed: "border-border-strong bg-surface-raised text-secondary",
-  cancelled: "border-destructive/40 bg-destructive/10 text-destructive",
-  expired: "border-destructive/40 bg-destructive/10 text-destructive",
-  refunded: "border-destructive/40 bg-destructive/10 text-destructive",
-};
+// El tono del badge ya NO se define acá: vive en `lib/order-status-copy.ts` y lo
+// pinta `components/orders/OrderStatusBadge.tsx`, compartido con el panel del
+// merchant. Así un cambio de criterio no deja dos pantallas contradiciéndose.
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -156,9 +145,7 @@ function Notice({
     // "Ready for pickup" y ningún código. Hay que decirle que no venga y que pregunte.
     return (
       <p className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4 text-body text-warning">
-        {order.lockerCode
-          ? t("order.notice.readyAt", { location: order.lockerCode })
-          : t("order.notice.ready")}
+        {t("order.notice.ready")}
       </p>
     );
   }
@@ -173,19 +160,11 @@ function Notice({
  * tiene que poder leerlo o dictarlo en voz alta a la operaria, y esconderlo no protegería
  * nada (quien tiene el enlace ya tiene el pedido).
  */
-function PickupCodeTicket({
-  order,
-  code,
-  t,
-}: {
-  order: OrderWithItems;
-  code: PickupCode;
-  t: Translator;
-}) {
+function PickupCodeTicket({ code, t }: { code: PickupCode; t: Translator }) {
   const expiresAt = formatDateTime(code.expiresAt);
-  const location = code.lockerSlot
-    ? t("order.locker", { slot: code.lockerSlot })
-    : code.lockerCode ?? order.lockerCode ?? t("order.storeCounter");
+  // No hay compartimento físico en el MVP: se ignora el slot a propósito para no
+  // mostrar ubicaciones que no existen. El recojo es asistido en tienda.
+  const location = t("order.storeCounter");
 
   return (
     <section
@@ -307,9 +286,10 @@ export default async function OrderStatusPage({
   }
 
   const statusLabel = t(`status.${order.status}` as MessageKey);
-  const statusTone = STATUS_TONES[order.status];
+  const statusCopy = orderStatusCopy(order.status);
   const fulfillmentLabel = t(`order.fulfillment.${order.fulfillmentType}` as MessageKey);
   const placedAt = formatDateTime(order.createdAt);
+  const reservationExpiresAt = formatDateTime(order.reservationExpiresAt);
 
   // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
   const payability = evaluateOrderPayability(order);
@@ -345,7 +325,7 @@ export default async function OrderStatusPage({
           <h1 className="text-4xl sm:text-5xl tracking-tighter font-semibold">
             {order.orderNumber}
           </h1>
-          <span className={`rounded-full border px-4 py-1 text-body ${statusTone}`}>{statusLabel}</span>
+          <OrderStatusBadge status={order.status} label={statusLabel} size="lg" />
           {simulated && (
             <span
               className="rounded-full border border-warning/40 bg-warning/10 px-4 py-1 text-body text-warning"
@@ -356,7 +336,11 @@ export default async function OrderStatusPage({
           )}
         </div>
 
-        <p className="mt-3 text-body text-tertiary">
+        <p className="mt-3 text-body text-secondary">
+          {t(statusCopy.explanationKey as MessageKey)}
+        </p>
+
+        <p className="mt-1 text-body text-tertiary">
           {placedAt ? t("order.placedOn", { date: placedAt }) : t("order.justPlaced")}
           {order.itemCount > 0
             ? ` · ${t(
@@ -377,7 +361,7 @@ export default async function OrderStatusPage({
           </div>
         )}
 
-        {pickupCode && <PickupCodeTicket order={order} code={pickupCode} t={t} />}
+        {pickupCode && <PickupCodeTicket code={pickupCode} t={t} />}
 
         {canPay && (
           <div
@@ -404,7 +388,9 @@ export default async function OrderStatusPage({
                   {t("order.paymentUnavailableTitle")}
                 </p>
                 <p className="mt-2 text-body text-secondary">
-                  {t("order.paymentUnavailableBody")}
+                  {reservationExpiresAt
+                    ? t("order.paymentUnavailableBodyUntil", { date: reservationExpiresAt })
+                    : t("order.paymentUnavailableBody")}
                 </p>
               </>
             )}
@@ -491,11 +477,11 @@ export default async function OrderStatusPage({
               {t("order.fulfillment")}
             </div>
             <div className="font-medium">{fulfillmentLabel}</div>
-            {order.lockerCode && (
-              <div className="text-body text-secondary mt-1">
-                {t("order.location", { location: order.lockerCode })}
-              </div>
-            )}
+            {/* El MVP no tiene compartimento físico: el recojo es asistido en tienda. */}
+            {order.fulfillmentType !== "delivery" &&
+              (order.status === "confirmed" || order.status === "preparing") && (
+                <p className="mt-2 text-body text-secondary">{t("order.pickupHint")}</p>
+              )}
           </div>
 
           <div className="border border-border bg-surface rounded-3xl p-5">

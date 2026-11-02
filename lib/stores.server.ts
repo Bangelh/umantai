@@ -1145,6 +1145,122 @@ export async function listStoreOrders(
   }));
 }
 
+export interface StoreOrderLine {
+  id: string;
+  productName: string;
+  productBrand: string | null;
+  variantKey: string;
+  variant: Record<string, string>;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+/** Pedido completo de UNA tienda, para el detalle del panel del merchant. */
+export interface StoreOrderDetail {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  fulfillmentType: string;
+  contactEmail: string;
+  contactPhone: string | null;
+  customerNote: string | null;
+  currency: string;
+  subtotal: number;
+  discountTotal: number;
+  shippingTotal: number;
+  total: number;
+  itemCount: number;
+  createdAt: string;
+  reservationExpiresAt: string | null;
+  reservationReleased: boolean;
+  lines: StoreOrderLine[];
+}
+
+/**
+ * Pedido + líneas, filtrado por tienda.
+ *
+ * `requireStoreAccess` corre ANTES del SELECT y la consulta filtra `o.store_id`:
+ * pedir el ID de un pedido de otra tienda devuelve `null` (404), nunca el pedido.
+ */
+export async function getStoreOrderDetail(
+  userId: string,
+  storeId: string,
+  orderId: string,
+): Promise<StoreOrderDetail | null> {
+  await requireStoreAccess(userId, storeId);
+  const sql = requirePlatformSql();
+
+  const rows = (await sql`
+    SELECT o.id, o.order_number, o.status, o.payment_status, o.fulfillment_type,
+           o.contact_email, o.contact_phone, o.customer_note, o.currency,
+           o.subtotal, o.discount_total, o.shipping_total, o.total, o.item_count,
+           o.created_at, o.reservation_expires_at, o.reservation_released,
+           COALESCE(
+             json_agg(
+               json_build_object(
+                 'id', oi.id,
+                 'productName', oi.product_name,
+                 'productBrand', oi.product_brand,
+                 'variantKey', oi.variant_key,
+                 'variant', oi.variant,
+                 'quantity', oi.quantity,
+                 'unitPrice', oi.unit_price,
+                 'lineTotal', oi.line_total
+               )
+               ORDER BY oi.line_number
+             ) FILTER (WHERE oi.id IS NOT NULL),
+             '[]'::json
+           ) AS lines
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+     WHERE o.id = ${orderId}::uuid
+       AND o.store_id = ${storeId}::uuid
+     GROUP BY o.id
+  `) as Row[];
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: String(row.id),
+    orderNumber: String(row.order_number),
+    status: String(row.status),
+    paymentStatus: String(row.payment_status),
+    fulfillmentType: String(row.fulfillment_type),
+    contactEmail: String(row.contact_email),
+    contactPhone: (row.contact_phone as string | null) ?? null,
+    customerNote: (row.customer_note as string | null) ?? null,
+    currency: String(row.currency ?? 'PEN'),
+    subtotal: toNumber(row.subtotal),
+    discountTotal: toNumber(row.discount_total),
+    shippingTotal: toNumber(row.shipping_total),
+    total: toNumber(row.total),
+    itemCount: toNumber(row.item_count),
+    createdAt: toIsoString(row.created_at),
+    reservationExpiresAt: row.reservation_expires_at
+      ? toIsoString(row.reservation_expires_at)
+      : null,
+    reservationReleased: row.reservation_released === true,
+    lines: Array.isArray(row.lines)
+      ? (row.lines as Array<Record<string, unknown>>).map((line) => ({
+          id: String(line.id),
+          productName: String(line.productName),
+          productBrand: (line.productBrand as string | null) ?? null,
+          variantKey: String(line.variantKey ?? ''),
+          variant:
+            line.variant && typeof line.variant === 'object'
+              ? (line.variant as Record<string, string>)
+              : {},
+          quantity: toNumber(line.quantity),
+          unitPrice: toNumber(line.unitPrice),
+          lineTotal: toNumber(line.lineTotal),
+        }))
+      : [],
+  };
+}
+
 // =============================================================================
 //  CUENTA DE CLIENTE
 // =============================================================================
