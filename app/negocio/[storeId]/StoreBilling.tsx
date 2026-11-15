@@ -118,7 +118,10 @@ export function StoreBilling({ storeId, initialBilling }: Props) {
   const cancellationPending = billing.subscription.cancelAtPeriodEnd || billing.status === 'cancelled';
 
   return (
-    <section className="mt-8 rounded-2xl border border-border bg-surface p-4" aria-label={t('billing.title')}>
+    <section
+      className="rounded-2xl border border-border bg-surface-raised/30 p-4 sm:p-5"
+      aria-label={t('billing.title')}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">

@@ -7,6 +7,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Store } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { storeStatusLabel } from '@/lib/i18n/store-status';
 import { getTranslator } from '@/lib/i18n/server';
@@ -27,6 +29,11 @@ export default async function MerchantHomePage() {
 
   const stores = await listStoresForUser(user.id);
 
+  // Con una sola tienda, la lista es un paso de más: el botón "Mis tiendas"
+  // debe dejar al comerciante dentro de su panel. La lista solo aparece cuando
+  // de verdad hay varias tiendas entre las que elegir.
+  if (stores.length === 1) redirect(`/negocio/${stores[0]!.id}`);
+
   return (
     <main className="mx-auto max-w-3xl px-4 pb-12 pt-6 sm:px-6">
       <div className="border-b border-border pb-4">
@@ -36,16 +43,17 @@ export default async function MerchantHomePage() {
       </div>
 
       {stores.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
-          <h2 className="text-lg font-semibold">{t('merchant.noStoreTitle')}</h2>
-          <p className="mt-1 text-sm text-secondary">{t('merchant.noStoreBody')}</p>
-          <Link
-            href="/vender"
-            className="mt-4 inline-flex h-11 items-center rounded-xl bg-brand px-5 text-sm font-semibold text-background"
-          >
-            {t('merchant.createStore')}
-          </Link>
-        </div>
+        <EmptyState
+          icon={Store}
+          title={t('merchant.noStoreTitle')}
+          description={t('merchant.noStoreBody')}
+          action={
+            <Link href="/vender" className="btn-primary text-sm">
+              {t('merchant.createStore')}
+            </Link>
+          }
+          className="mt-6"
+        />
       ) : (
         <ul className="mt-4 divide-y divide-border">
           {stores.map((store) => {

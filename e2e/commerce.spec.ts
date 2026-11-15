@@ -65,27 +65,17 @@ test.describe('home y búsqueda', () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
-  test('ubicación manual y radio actualizan el contexto de búsqueda', async ({ page }) => {
+  test('el radio actualiza el contexto de búsqueda', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /Elegir zona manualmente/ }).click();
-    const zone = page.getByLabel('Zona');
-    await zone.selectOption({ index: 1 });
-    await page.getByRole('button', { name: /Usar zona/ }).click();
-    await expect(page.getByText(/Cerca de/)).toBeVisible();
 
     const radius = page.getByRole('group', { name: /Ubicación y radio|Radio de búsqueda/i });
     await radius.getByRole('button', { name: '10 km' }).click();
     await expect(radius.getByRole('button', { name: '10 km' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('coordenadas inválidas muestran error de validación', async ({ page }) => {
+  test('no ofrece selección manual de zona', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /Elegir zona manualmente/ }).click();
-    await page.getByText(/O escribir coordenadas/).click();
-    await page.getByLabel('Latitud').fill('999');
-    await page.getByLabel('Longitud').fill('-77');
-    await page.getByRole('button', { name: /^Aplicar$/ }).click();
-    await expect(page.getByRole('alert').filter({ hasText: /Coordenadas inválidas/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Elegir zona manualmente/ })).toHaveCount(0);
   });
 });
 
@@ -111,15 +101,15 @@ test.describe.serial('carrito y checkout', () => {
     await addFirstProductToCart(page, `/${product.storeSlug}/p/${product.productSlug}`);
     await page.goto('/cart');
     await page.getByLabel(/Correo/).fill(uniqueEmail('e2e-guest'));
-    await page.getByRole('button', { name: /Revisar pedido/ }).click();
+    await page.getByRole('button', { name: 'Confirmar compra', exact: true }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('button', { name: /Confirmar compra/ }).click();
+    await page.getByRole('button', { name: 'Sí, confirmar compra', exact: true }).click();
     await page.waitForURL(/\/pedido\//, { timeout: 30_000 });
     await expect(page.getByText(/UM-\d{4}-\d+/).first()).toBeVisible();
 
-    // Mercado Pago está congelado: el pedido se crea igual, pero no se ofrece cobro
-    // online. Cuando se reabra el cobro hay que actualizar este test junto con el flag.
-    await expect(page.getByText(/pago online no está disponible/i)).toBeVisible();
+    // Sin pasarela: el pago es manual contra la tienda y el comprobante se sube
+    // en esta misma página.
+    await expect(page.getByText(/Paga por Yape o Plin directo a la tienda/i)).toBeVisible();
     await expect(page.getByRole('button', { name: /Pagar .* con Mercado Pago/i })).toHaveCount(0);
   });
 
@@ -131,8 +121,8 @@ test.describe.serial('carrito y checkout', () => {
     await addFirstProductToCart(page, `/${product.storeSlug}/p/${product.productSlug}`);
     await page.goto('/cart');
     await page.getByLabel(/Correo/).fill(email);
-    await page.getByRole('button', { name: /Revisar pedido/ }).click();
-    await page.getByRole('button', { name: /Confirmar compra/ }).click();
+    await page.getByRole('button', { name: 'Confirmar compra', exact: true }).click();
+    await page.getByRole('button', { name: 'Sí, confirmar compra', exact: true }).click();
     await page.waitForURL(/\/pedido\//, { timeout: 30_000 });
 
     await page.goto('/cuenta');

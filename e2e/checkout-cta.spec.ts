@@ -80,7 +80,7 @@ async function seedCartWithOneProduct(page: Page): Promise<void> {
 
 for (const viewport of VIEWPORTS) {
   for (const theme of THEMES) {
-    test(`CTA "Revisar pedido" visible y con contraste · ${theme} · ${viewport.name}`, async ({
+    test(`CTA "Confirmar compra" visible y con contraste · ${theme} · ${viewport.name}`, async ({
       page,
       context,
       baseURL,
@@ -102,9 +102,9 @@ for (const viewport of VIEWPORTS) {
       await page.goto('/cart');
       await page.getByLabel(/Correo/).fill(EMAIL);
 
-      const cta = page.getByRole('button', { name: 'Revisar pedido', exact: true });
+      const cta = page.getByRole('button', { name: 'Confirmar compra', exact: true });
       await expect(cta).toBeVisible();
-      await expect(cta).toHaveAccessibleName('Revisar pedido');
+      await expect(cta).toHaveAccessibleName('Confirmar compra');
       await cta.scrollIntoViewIfNeeded();
 
       const box = await cta.boundingBox();

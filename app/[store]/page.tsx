@@ -9,12 +9,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { Package, Search } from 'lucide-react';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { StoreCatalog } from './StoreCatalog';
 import { normalizeSearchText } from '@/lib/catalog';
-import { formatMoney } from '@/lib/format';
 import { getStorefront } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
 import { getTranslator } from '@/lib/i18n/server';
+import { whatsappUrl } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,7 +53,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function StorePage({ params, searchParams }: PageProps) {
-  const { locale, t } = await getTranslator();
+  const { t } = await getTranslator();
   const { store: storeSlug } = await params;
   const slugCheck = validateStoreSlug(storeSlug);
   if (!slugCheck.ok) notFound();
@@ -110,6 +113,19 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         </div>
       </header>
 
+      {store.whatsapp && (
+        <div className="mt-3">
+          <a
+            href={whatsappUrl(store.whatsapp, t('store.whatsappMessage', { store: store.name })) ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
+          >
+            {t('store.whatsapp')}
+          </a>
+        </div>
+      )}
+
       <section aria-label={t('store.products')} className="mt-5">
         <form action={`/${store.slug}`} method="get" role="search" className="mb-4 flex gap-2">
           <label htmlFor="store-search" className="sr-only">
@@ -150,63 +166,20 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         </div>
 
         {products.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-body text-secondary">
-              {query
-                ? t('store.noResults', { query })
-                : t('store.empty')}
-            </p>
-            <Link
-              href={query ? `/${store.slug}` : '/'}
-              className="mt-4 inline-flex min-h-11 items-center text-base text-primary underline underline-offset-4"
-            >
-              {query ? t('store.viewAll') : t('store.backToSearch')}
-            </Link>
-          </div>
+          <EmptyState
+            align="center"
+            icon={query ? Search : Package}
+            title={query ? t('store.noResultsTitle') : t('store.emptyTitle')}
+            description={query ? t('store.noResults', { query }) : t('store.empty')}
+            action={
+              <Link href={query ? `/${store.slug}` : '/'} className="btn-secondary text-sm">
+                {query ? t('store.viewAll') : t('store.backToSearch')}
+              </Link>
+            }
+            className="mt-4"
+          />
         ) : (
-          <ul className="divide-y divide-border">
-            {products.map((product) => (
-              <li key={product.id}>
-                <Link
-                  href={`/${store.slug}/p/${product.slug}`}
-                  className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-surface-raised/60"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[17px] font-medium leading-snug">{product.name}</span>
-                    <span className="mt-0.5 block truncate text-sm text-tertiary">
-                      {[product.brand, product.category].filter(Boolean).join(' · ') || t('store.noBrand')}
-                      {product.unit !== 'unidad' && ` · ${t('store.perUnit', { unit: product.unit })}`}
-                      {product.variants.length > 0 &&
-                        ` · ${t('store.variants', { count: product.variants.length })}`}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-mono text-[17px] font-semibold tabular-nums">
-                      {product.variants.length > 0 && (
-                        <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
-                      )}
-                      {formatMoney(
-                        product.variants.length > 0
-                          ? Math.min(...product.variants.map((variant) => variant.priceCents ?? product.priceCents))
-                          : product.priceCents,
-                        product.currency,
-                        locale,
-                      )}
-                    </span>
-                    <span
-                      className={`mt-0.5 block text-[13px] font-medium ${
-                        product.inStock ? 'text-success' : 'text-destructive'
-                      }`}
-                    >
-                      {product.inStock
-                        ? t('store.available', { count: product.available })
-                        : t('store.outOfStock')}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <StoreCatalog store={{ id: store.id, slug: store.slug, name: store.name }} products={products} />
         )}
       </section>
 

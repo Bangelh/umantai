@@ -145,6 +145,13 @@ export interface DiscoveryProduct {
   brand: string | null;
   category: string | null;
   description: string | null;
+  /** Imagen del comercio. Puede faltar: la lista no la muestra, la vista previa sí. */
+  imageUrl: string | null;
+  /** Dirección de retiro publicada por la tienda (nunca coordenadas exactas). */
+  storeAddress: string | null;
+  storeDistrict: string | null;
+  /** Unidades vendidas en pedidos no cancelados; alimenta el orden "Más vendidos". */
+  soldCount: number;
   priceCents: number;
   currency: string;
   unit: string;

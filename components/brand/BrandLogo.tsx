@@ -1,23 +1,16 @@
 /**
- * components/brand/BrandLogo.tsx — slot del logo oficial de UMANTAI.
+ * components/brand/BrandLogo.tsx — logo oficial de UMANTAI.
  *
- * El cliente todavía no entregó el archivo definitivo. NO se inventa un logo:
- *   1. Si existe `public/brand/umantai-logo.svg`, se usa ese archivo.
- *   2. Si no, se muestra el wordmark tipográfico actual ("umantai").
- *
- * Para publicar el logo definitivo alcanza con copiar el SVG a
- * `public/brand/umantai-logo.svg` (ver public/brand/README.md). No hay que tocar
- * componentes ni estilos.
- *
- * Funciona en claro y oscuro: el SVG debe usar `currentColor` o tener sus
- * propios contrastes; el wordmark hereda el color del texto.
+ * El archivo vive en `public/brand/umantai-logo.png` (convertido desde el SVG
+ * entregado por el cliente). Es negro sobre fondo transparente, así que en el
+ * tema oscuro se invierte con la clase `brand-logo-img` definida en globals.css.
  */
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-const LOGO_FILE = path.join(process.cwd(), 'public', 'brand', 'umantai-logo.svg');
-const LOGO_URL = '/brand/umantai-logo.svg';
+const LOGO_FILE = path.join(process.cwd(), 'public', 'brand', 'umantai-logo.png');
+const LOGO_URL = '/brand/umantai-logo.png';
 
 export function BrandLogo({
   className = '',
@@ -26,17 +19,16 @@ export function BrandLogo({
   className?: string;
   size?: 'sm' | 'md' | 'lg';
 }) {
-  const height = size === 'lg' ? 40 : size === 'sm' ? 22 : 28;
-  const hasLogo = existsSync(LOGO_FILE);
+  const height = size === 'lg' ? 56 : size === 'sm' ? 28 : 48;
 
-  if (hasLogo) {
+  if (existsSync(LOGO_FILE)) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- asset local del cliente, sin dimensiones conocidas
       <img
         src={LOGO_URL}
         alt="UMANTAI"
         height={height}
-        className={`w-auto ${className}`}
+        className={`brand-logo-img w-auto ${className}`}
         style={{ height }}
       />
     );

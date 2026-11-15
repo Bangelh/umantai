@@ -12,6 +12,7 @@ import { StoreProductActions } from './StoreProductActions';
 import { getStoreProductDetail } from '@/lib/stores.server';
 import { validateStoreSlug } from '@/lib/tenancy';
 import { getTranslator } from '@/lib/i18n/server';
+import { whatsappUrl } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,6 +136,16 @@ export default async function StoreProductPage({ params }: PageProps) {
             : t('product.pickupCoordinate')}
         </p>
         <p className="mt-1 text-sm text-tertiary">{t('product.stockNote')}</p>
+        {shop.whatsapp && (
+          <a
+            href={whatsappUrl(shop.whatsapp, t('store.whatsappMessage', { store: shop.name })) ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
+          >
+            {t('store.whatsapp')}
+          </a>
+        )}
       </section>
     </main>
   );

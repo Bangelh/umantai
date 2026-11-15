@@ -22,7 +22,7 @@
  */
 
 import Link from 'next/link';
-import { ArrowUpRight, MessageCircle, Store } from 'lucide-react';
+import { ArrowUpRight, MessageCircle, Search, Store } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -42,6 +42,7 @@ import { useCartStore, type CartConflict } from '@/lib/cartStore';
 import type { Product } from '@/lib/products';
 import { flyToCart } from '@/lib/fly-to-cart';
 import { useI18n } from '@/components/i18n/I18nProvider';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const GEO_STORAGE_KEY = 'umantai:geo';
 const DEBOUNCE_MS = 300;
@@ -520,9 +521,24 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             ))}
           </ul>
         ) : results.products.length === 0 ? (
-          <p className="py-6 text-sm text-tertiary">
-            {location ? t('search.noResultsRadius') : t('search.noResults')}
-          </p>
+          <EmptyState
+            align="center"
+            icon={Search}
+            title={t('search.noResultsTitle')}
+            description={location ? t('search.noResultsRadius') : t('search.noResults')}
+            action={
+              q.trim() ? (
+                <button type="button" onClick={() => setQ('')} className="btn-secondary text-sm">
+                  {t('search.clearQuery')}
+                </button>
+              ) : location ? (
+                <button type="button" onClick={clearLocation} className="btn-secondary text-sm">
+                  {t('search.clearLocation')}
+                </button>
+              ) : undefined
+            }
+            className="mt-3"
+          />
         ) : (
           <ul className="divide-y divide-border">
             {sortedProducts.map((product) => (
@@ -600,7 +616,20 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         </div>
 
         {results.stores.length === 0 ? (
-          <p className="py-5 text-sm text-tertiary">{t('search.noStores')}</p>
+          <EmptyState
+            compact
+            icon={Store}
+            title={t('search.noStoresTitle')}
+            description={t('search.noStores')}
+            action={
+              location ? (
+                <button type="button" onClick={clearLocation} className="btn-secondary text-sm">
+                  {t('search.clearLocation')}
+                </button>
+              ) : undefined
+            }
+            className="mt-3"
+          />
         ) : (
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {results.stores.map((store) => (

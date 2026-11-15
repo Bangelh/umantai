@@ -125,8 +125,8 @@ test.describe.serial('detalle de pedido del merchant', () => {
     await page.getByRole('button', { name: /Agregar al carrito/ }).click();
     await page.goto('/cart');
     await page.getByLabel(/Correo/).fill(uniqueEmail('e2e-orders-buyer'));
-    await page.getByRole('button', { name: /Revisar pedido/ }).click();
-    await page.getByRole('button', { name: /Confirmar compra/ }).click();
+    await page.getByRole('button', { name: 'Confirmar compra', exact: true }).click();
+    await page.getByRole('button', { name: 'Sí, confirmar compra', exact: true }).click();
     await page.waitForURL(/\/pedido\//, { timeout: 30_000 });
 
     const orderNumber = (

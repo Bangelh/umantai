@@ -70,7 +70,7 @@ export const LEGAL_DOCUMENTS: Record<string, LegalDocument> = {
           'Preferencias de interfaz: tema (claro/oscuro/sistema) e idioma (español/inglés) en cookies propias. No identifican a la persona ni se usan para publicidad.',
           'Formulario de contacto: nombre, correo, teléfono opcional y el mensaje que nos escribes.',
           'Libro de Reclamaciones: nombre, documento de identidad, teléfono y correo de la persona reclamante; datos del padre, madre o tutor cuando corresponda; producto o servicio, monto cuando corresponda, detalle del reclamo o queja y pedido concreto. También se guardan el estado, la fecha límite de respuesta, la respuesta del proveedor y la fecha en que se emitió. No se solicita información distinta a la necesaria para atender el reclamo.',
-          'Ubicación (opcional): si pulsas “Usar mi ubicación”, el navegador te pide permiso y nos envía coordenadas aproximadas para mostrar productos y comercios cercanos. No se guarda una ubicación precisa en la base de datos ni se crea un historial de ubicaciones: se mantiene solo en la sesión del navegador y se descarta al cerrar la pestaña. Puedes rechazar el permiso o revocarlo en la configuración del navegador; el buscador sigue funcionando con una zona elegida manualmente.',
+          'Ubicación (opcional): si pulsas “Usar mi ubicación”, el navegador te pide permiso y nos envía coordenadas aproximadas para mostrar productos y comercios cercanos. No se guarda una ubicación precisa en la base de datos ni se crea un historial de ubicaciones: se mantiene solo en la sesión del navegador y se descarta al cerrar la pestaña. Puedes rechazar el permiso o revocarlo en la configuración del navegador; el buscador sigue funcionando sin ubicación.',
         ],
       },
       {

@@ -39,16 +39,28 @@ export const HELP_NAV_LINKS: readonly NavLink[] = [
   { href: '/legal', labelKey: 'navLink.legalDocuments' },
 ];
 
-export const ADMIN_NAV_LINKS: readonly NavLink[] = [
-  { href: '/admin', labelKey: 'adminNav.dashboard' },
-  { href: '/admin/tiendas', labelKey: 'adminNav.stores' },
-  { href: '/admin/catalogo', labelKey: 'adminNav.catalog' },
-  { href: '/admin/productos', labelKey: 'adminNav.siteCatalog' },
-  { href: '/admin/inventario', labelKey: 'adminNav.inventory' },
-  { href: '/admin/reclamaciones', labelKey: 'adminNav.complaints' },
-  { href: '/admin/analytics', labelKey: 'adminNav.analytics' },
-  { href: '/admin/planes', labelKey: 'adminNav.plans' },
-  { href: '/admin/kiosco', labelKey: 'adminNav.kiosk' },
+/**
+ * Enlaces del panel de la plataforma.
+ *
+ * `main` es lo que el dueño usa en el día: ver el negocio, aprobar tiendas y
+ * responder reclamos. `tools` son tareas técnicas (catálogos, inventario,
+ * planes, la tablet del kiosco) que no deberían competir por atención en el
+ * menú principal.
+ */
+export interface AdminNavLink extends NavLink {
+  group: 'main' | 'tools';
+}
+
+export const ADMIN_NAV_LINKS: readonly AdminNavLink[] = [
+  { href: '/admin', labelKey: 'adminNav.dashboard', group: 'main' },
+  { href: '/admin/tiendas', labelKey: 'adminNav.stores', group: 'main' },
+  { href: '/admin/reclamaciones', labelKey: 'adminNav.complaints', group: 'main' },
+  { href: '/admin/analytics', labelKey: 'adminNav.analytics', group: 'main' },
+  { href: '/admin/catalogo', labelKey: 'adminNav.catalog', group: 'tools' },
+  { href: '/admin/productos', labelKey: 'adminNav.siteCatalog', group: 'tools' },
+  { href: '/admin/inventario', labelKey: 'adminNav.inventory', group: 'tools' },
+  { href: '/admin/planes', labelKey: 'adminNav.plans', group: 'tools' },
+  { href: '/admin/kiosco', labelKey: 'adminNav.kiosk', group: 'tools' },
   // `/admin/notes` queda fuera del menú: es una demo de notas Supabase que no
   // forma parte del producto y sólo agrega una opción que nadie opera.
 ];

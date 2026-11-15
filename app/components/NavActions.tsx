@@ -33,8 +33,9 @@ export function NavActions() {
       {/* El enlace a /kiosk se retiró: era una demo del template, no el retiro
           real. La pantalla operativa vive en /admin/kiosco. */}
       <Link
+        id="cart-target"
         href="/cart"
-        className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+        className="inline-flex items-center gap-2 rounded-full bg-brand px-4 py-1.5 text-sm font-medium text-background transition-transform hover:opacity-90 data-[bump=true]:scale-110"
         aria-label={
           hydrated && cartCount > 0
             ? t('nav.cartAriaCount', { count: cartCount })

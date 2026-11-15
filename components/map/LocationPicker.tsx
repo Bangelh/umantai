@@ -425,12 +425,12 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
   return (
     <section
       aria-label={t('location.title')}
-      className="rounded-2xl border border-border bg-surface p-4"
+      className="rounded-2xl border border-border bg-surface p-4 sm:p-5"
     >
       <header>
-        <h3 className="text-base font-semibold text-primary">{t('location.title')}</h3>
-        <p className="mt-1 text-sm text-secondary">{t('location.intro')}</p>
-        <p className="mt-2 text-xs uppercase tracking-[2px] text-tertiary">
+        <h3 className="text-body-lg font-semibold text-primary">{t('location.title')}</h3>
+        <p className="mt-1 text-sm leading-relaxed text-secondary">{t('location.intro')}</p>
+        <p className="mt-2 text-[11px] font-semibold uppercase tracking-[2px] text-muted">
           {t('location.stepCounter', { current: step, total: 3 })}
         </p>
       </header>
@@ -438,10 +438,10 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
       <div className="mt-4">
         {step === 1 && (
           <div className="space-y-4">
-            <h4 className="text-sm font-medium text-primary">{t('location.step1Title')}</h4>
+            <h4 className="text-body font-semibold text-primary">{t('location.step1Title')}</h4>
 
-            <label className="block text-xs text-tertiary">
-              {t('location.department')}
+            <label className="block">
+              <span className="field-label">{t('location.department')}</span>
               <select
                 value={department}
                 onChange={(event) => {
@@ -453,7 +453,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setSuggestion(null);
                   setFarConfirmed(false);
                 }}
-                className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary"
+                className="field-input mt-1 h-12 text-body"
               >
                 <option value="">{t('location.selectDepartment')}</option>
                 {departments.map((item) => (
@@ -464,8 +464,8 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               </select>
             </label>
 
-            <label className="block text-xs text-tertiary">
-              {t('location.province')}
+            <label className="block">
+              <span className="field-label">{t('location.province')}</span>
               <select
                 value={province}
                 disabled={!department}
@@ -476,7 +476,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setSuggestion(null);
                   setFarConfirmed(false);
                 }}
-                className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary disabled:opacity-50"
+                className="field-input mt-1 h-12 text-body disabled:opacity-50"
               >
                 <option value="">{t('location.selectProvince')}</option>
                 {provinces.map((item) => (
@@ -487,8 +487,8 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               </select>
             </label>
 
-            <label className="block text-xs text-tertiary">
-              {t('location.district')}
+            <label className="block">
+              <span className="field-label">{t('location.district')}</span>
               <select
                 value={district}
                 disabled={!province}
@@ -497,7 +497,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setSuggestion(null);
                   setFarConfirmed(false);
                 }}
-                className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary disabled:opacity-50"
+                className="field-input mt-1 h-12 text-body disabled:opacity-50"
               >
                 <option value="">{t('location.selectDistrict')}</option>
                 {districts.map((item) => (
@@ -515,7 +515,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 setStatus(null);
                 setStep(2);
               }}
-              className="h-12 w-full rounded-xl bg-brand px-4 text-base font-semibold text-background disabled:opacity-50"
+              className="btn-primary h-12 w-full text-base"
             >
               {t('location.next')}
             </button>
@@ -524,15 +524,15 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
 
         {step === 2 && (
           <div className="space-y-4">
-            <h4 className="text-sm font-medium text-primary">{t('location.step2Title')}</h4>
+            <h4 className="text-body font-semibold text-primary">{t('location.step2Title')}</h4>
             {selectedDistrict && (
               <p className="text-xs text-tertiary">
                 {selectedDistrict.name} · {province ? provinces.find((p) => p.code === province)?.name : ''}
               </p>
             )}
 
-            <label className="block text-xs text-tertiary">
-              {t('location.address')}
+            <label className="block">
+              <span className="field-label">{t('location.address')}</span>
               <input
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
@@ -540,18 +540,18 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 maxLength={160}
                 inputMode="text"
                 autoComplete="street-address"
-                className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary"
+                className="field-input mt-1 h-12 text-body"
               />
             </label>
 
-            <label className="block text-xs text-tertiary">
-              {t('location.reference')}
+            <label className="block">
+              <span className="field-label">{t('location.reference')}</span>
               <input
                 value={reference}
                 onChange={(event) => setReference(event.target.value)}
                 placeholder={t('location.referencePlaceholder')}
                 maxLength={120}
-                className="mt-1 h-12 w-full rounded-xl border border-border-strong bg-background px-3 text-base text-primary"
+                className="field-input mt-1 h-12 text-body"
               />
             </label>
 
@@ -559,7 +559,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               type="button"
               onClick={() => void takeGpsLocation()}
               disabled={gpsBusy}
-              className="h-12 w-full rounded-xl border border-border-strong px-4 text-base font-medium text-primary disabled:opacity-50"
+              className="btn-secondary h-12 w-full text-base"
             >
               {gpsBusy ? t('location.gpsLoading') : t('location.useGps')}
             </button>
@@ -568,7 +568,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
               type="button"
               onClick={() => void locateOnMap()}
               disabled={!canContinueStep2 || geocodeBusy}
-              className="h-12 w-full rounded-xl bg-brand px-4 text-base font-semibold text-background disabled:opacity-50"
+              className="btn-primary h-12 w-full text-base"
             >
               {geocodeBusy ? t('location.locating') : t('location.locateOnMap')}
             </button>
@@ -589,11 +589,11 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
 
         {step === 3 && (
           <div className="space-y-4">
-            <h4 className="text-sm font-medium text-primary">{t('location.step3Title')}</h4>
+            <h4 className="text-body font-semibold text-primary">{t('location.step3Title')}</h4>
 
             {/* Resumen: lo que se va a guardar, antes de confirmar. */}
-            <div className="rounded-xl border border-border bg-surface-raised p-3">
-              <h5 className="text-xs uppercase tracking-[2px] text-tertiary">
+            <div className="rounded-xl border border-border bg-surface-raised/60 p-3">
+              <h5 className="text-[11px] font-semibold uppercase tracking-[2px] text-muted">
                 {t('location.summaryTitle')}
               </h5>
               <dl className="mt-2 space-y-1 text-sm">
@@ -665,14 +665,14 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   <button
                     type="button"
                     onClick={() => mapRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
-                    className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+                    className="btn-secondary h-11 flex-1 text-sm"
                   >
                     {t('location.reviewLocation')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setFarConfirmed(true)}
-                    className="h-11 flex-1 rounded-xl bg-brand px-3 text-sm font-semibold text-background"
+                    className="btn-primary h-11 flex-1 text-sm"
                   >
                     {pinVerdict.severity === 'critical'
                       ? t('location.pinCriticalConfirm')
@@ -691,7 +691,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 type="button"
                 onClick={() => void submit()}
                 disabled={saving || !value}
-                className="h-12 w-full rounded-xl bg-brand px-4 text-base font-semibold text-background disabled:opacity-50"
+                className="btn-primary h-12 w-full text-base"
               >
                 {saving ? t('location.saving') : (submitLabel ?? t('location.summaryConfirm'))}
               </button>
@@ -729,14 +729,14 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
             <button
               type="button"
               onClick={() => chooseSuggestion('use')}
-              className="h-11 flex-1 rounded-xl bg-brand px-3 text-sm font-semibold text-background"
+              className="btn-primary h-11 flex-1 text-sm"
             >
               {t('location.useThisLocation')}
             </button>
             <button
               type="button"
               onClick={() => chooseSuggestion('keep')}
-              className="h-11 flex-1 rounded-xl border border-border-strong px-3 text-sm font-medium text-primary"
+              className="btn-secondary h-11 flex-1 text-sm"
             >
               {t('location.keepMySelection')}
             </button>

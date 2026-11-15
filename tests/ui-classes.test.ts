@@ -7,7 +7,7 @@
  *  En una pasada de tipografía se reemplazó `text-sm` por `text-body-lg` sin
  *  respetar el espacio anterior. El resultado fueron clases inexistentes:
  *
- *      bg-brandtext-body-lg          (CTA "Revisar pedido": sin fondo)
+ *      bg-brandtext-body-lg          (CTA "Confirmar compra": sin fondo)
  *      font-monotext-body-lg         (importes sin la escala correcta)
  *      justify-betweentext-body-lg
  *
@@ -93,13 +93,13 @@ test('el CTA principal del checkout pinta fondo de marca y tamaño táctil', () 
   assert.match(
     source,
     /bg-brand text-body-lg font-semibold text-background/,
-    'el CTA "Revisar pedido" perdió su fondo de marca o su color de contraste',
+    'el CTA "Confirmar compra" perdió su fondo de marca o su color de contraste',
   );
   // `flex-1` sobre una columna anula `h-14`: el alto táctil debe venir de min-h.
   assert.match(
     source,
     /min-h-14 flex-1 rounded-xl bg-brand text-body-lg/,
-    'el CTA "Revisar pedido" volvió a un alto que colapsa en móvil',
+    'el CTA "Confirmar compra" volvió a un alto que colapsa en móvil',
   );
   assert.doesNotMatch(source, /bg-brandtext-/, 'clase concatenada reintroducida');
 });

@@ -103,24 +103,23 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
   };
 
   return (
-    <form onSubmit={submit} className="mt-3 space-y-3">
+    <form onSubmit={submit} className="space-y-4">
       <label className="block">
-        <span className="text-xs font-medium text-tertiary">{t('merchant.identityName')}</span>
+        <span className="field-label">{t('merchant.identityName')}</span>
         <input
           type="text"
           value={name}
           onChange={(event) => setName(event.target.value)}
           maxLength={80}
           required
-          className="mt-1 h-10 w-full rounded-xl border border-border bg-transparent px-3 text-sm text-primary outline-none focus:border-border-strong"
+          autoComplete="organization"
+          className="field-input h-11 text-body"
         />
       </label>
 
       <label className="block">
-        <span className="text-xs font-medium text-tertiary">
-          {t('merchant.identityPublicAddress')}
-        </span>
-        <div className="mt-1 flex h-10 items-center rounded-xl border border-border px-3">
+        <span className="field-label">{t('merchant.identityPublicAddress')}</span>
+        <div className="flex h-11 items-center rounded-xl border border-border-strong bg-background px-3 transition-colors focus-within:border-primary">
           <span className="shrink-0 font-mono text-sm text-muted">{PUBLIC_STORE_HOST}/</span>
           <input
             type="text"
@@ -130,25 +129,31 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
             required
             spellCheck={false}
             autoCapitalize="none"
-            className="h-full min-w-0 flex-1 bg-transparent font-mono text-sm text-primary outline-none"
+            autoComplete="off"
+            className="h-full min-w-0 flex-1 bg-transparent font-mono text-body text-primary outline-none"
           />
         </div>
       </label>
 
-      <p className="text-xs text-secondary">{t('merchant.identityPublicHelp')}</p>
-      <p className="text-xs text-muted">{t('merchant.identitySlugHint')}</p>
-      <p className="text-xs text-muted">{t('merchant.identityNote')}</p>
+      <div className="space-y-1">
+        <p className="text-sm leading-relaxed text-secondary">{t('merchant.identityPublicHelp')}</p>
+        <p className="text-sm leading-relaxed text-muted">{t('merchant.identitySlugHint')}</p>
+        <p className="text-sm leading-relaxed text-muted">{t('merchant.identityNote')}</p>
+      </div>
 
-      <div className="rounded-xl border border-border bg-surface-raised/60 p-3">
-        <p className="text-[11px] uppercase tracking-wide text-muted">
+      <div className="rounded-xl border border-border bg-surface-raised/40 p-3 sm:p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[2px] text-muted">
           {t('merchant.identityPreview')}
         </p>
-        <p className="mt-1 text-sm text-primary">{name.trim() || '—'}</p>
+        <p className="mt-1 text-body font-medium text-primary">{name.trim() || '—'}</p>
         <p className="mt-0.5 break-all font-mono text-sm text-secondary">{previewUrl}</p>
       </div>
 
       {error && (
-        <p role="alert" className="text-sm text-warning">
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
           {error}
         </p>
       )}
@@ -156,7 +161,7 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
       <button
         type="submit"
         disabled={saving || !dirty}
-        className="inline-flex h-10 items-center rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-50"
+        className="btn-primary w-full text-sm sm:w-auto"
       >
         {saving ? t('merchant.identitySaving') : t('merchant.identitySave')}
       </button>
