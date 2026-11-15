@@ -1,46 +1,63 @@
 'use client';
 
 /**
- * app/components/discovery/DiscoveryHome.tsx — buscador local de la home.
+ * app/components/discovery/DiscoveryHome.tsx — buscador y vidriera del home.
  *
- * PRIORIDADES DE DISEÑO
- *   · Densidad: filas compactas, SIN fotografía de producto.
- *   · Precio muy visible, tipografía monoespaciada y tabular.
- *   · Uso con una mano: controles grandes arriba, resultados debajo.
- *   · Velocidad: una sola API (`/api/search`), debounce de 300 ms y
- *     `AbortController` para descartar respuestas viejas.
+ * MODO: Operate. El comprador viene a resolver una compra, no a mirar una
+ * landing. La jerarquía es: buscar → ubicación → productos → tiendas → vender.
+ *
+ * DECISIONES DE DISEÑO
+ *   · La lista NO lleva foto: densidad y precio comparables de un vistazo.
+ *   · La foto aparece en la vista previa, donde sí ayuda a decidir.
+ *   · La ubicación se ofrece como tarjeta al entrar, pero NUNCA se pide sola:
+ *     el permiso del navegador lo dispara un clic explícito.
+ *   · El radio se aplica a la búsqueda; el orden se puede cambiar entre
+ *     cercanía y más vendidos sin volver a pedir datos.
+ *   · Agregar desde la lista o la vista previa lanza una animación al carrito
+ *     del header. El estado real sigue siendo el carrito de zustand.
  *
  * PRIVACIDAD
- *   · La geolocalización NO se pide sola: el usuario pulsa "Usar mi ubicación".
- *   · La coordenada se guarda en `sessionStorage` (se borra al cerrar la
- *     pestaña), nunca en localStorage ni en el servidor.
- *   · Si rechaza el GPS, hay selección manual de zona/coordenadas.
+ *   · La coordenada vive en `sessionStorage` (se borra al cerrar la pestaña) y
+ *     nunca se envía a un endpoint que la persista.
  */
 
 import Link from 'next/link';
+import { ArrowUpRight, MessageCircle, Store } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   DEFAULT_RADIUS_KM,
   RADIUS_OPTIONS_KM,
   formatDistanceKm,
   type GeoPoint,
 } from '@/lib/geo';
-import { formatCoordinates } from '@/lib/format';
-import { formatPriceCents, type DiscoveryResponse } from '@/lib/discovery';
-import { LOCATION_PRESETS, nearestLocationLabel } from '@/lib/locations';
+import { centsToUnits, formatCoordinates } from '@/lib/format';
+import {
+  formatPriceCents,
+  type DiscoveryProduct,
+  type DiscoveryResponse,
+} from '@/lib/discovery';
+import { nearestLocationLabel } from '@/lib/locations';
+import { useCartStore, type CartConflict } from '@/lib/cartStore';
+import type { Product } from '@/lib/products';
+import { flyToCart } from '@/lib/fly-to-cart';
 import { useI18n } from '@/components/i18n/I18nProvider';
 
 const GEO_STORAGE_KEY = 'umantai:geo';
+const LOCATION_PROMPT_KEY = 'umantai:location-prompt';
 const DEBOUNCE_MS = 300;
 
 interface Props {
   initial: DiscoveryResponse;
+  businessWhatsAppUrl: string | null;
 }
 
 interface GeoSession {
   latitude: number;
   longitude: number;
 }
+
+type SortMode = 'nearby' | 'best';
 
 function readSessionGeo(): GeoSession | null {
   try {
@@ -70,7 +87,23 @@ function writeSessionGeo(point: GeoSession | null): void {
   }
 }
 
-export function DiscoveryHome({ initial }: Props) {
+function readPromptDismissed(): boolean {
+  try {
+    return window.sessionStorage.getItem(LOCATION_PROMPT_KEY) === 'dismissed';
+  } catch {
+    return false;
+  }
+}
+
+function writePromptDismissed(): void {
+  try {
+    window.sessionStorage.setItem(LOCATION_PROMPT_KEY, 'dismissed');
+  } catch {
+    /* sin almacenamiento: se vuelve a ofrecer en la próxima visita */
+  }
+}
+
+export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   const { locale, t } = useI18n();
   const [q, setQ] = useState('');
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
@@ -79,14 +112,25 @@ export function DiscoveryHome({ initial }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geoStatus, setGeoStatus] = useState<'idle' | 'asking' | 'denied' | 'unavailable'>('idle');
-  const [showManual, setShowManual] = useState(false);
-  const [manualId, setManualId] = useState('');
-  const [manualLat, setManualLat] = useState('');
-  const [manualLng, setManualLng] = useState('');
+  const [sort, setSort] = useState<SortMode>('best');
+  const [promptDismissed, setPromptDismissed] = useState(true);
+  const [preview, setPreview] = useState<DiscoveryProduct | null>(null);
+  const [cartConflict, setCartConflict] = useState<
+    { conflict: CartConflict; product: DiscoveryProduct } | null
+  >(null);
+
+  const addItem = useCartStore((state) => state.addItem);
+  const switchStore = useCartStore((state) => state.switchStore);
+  const cartItems = useCartStore((state) => state.items);
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const initialRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
   const requestSeq = useRef(0);
+  const keepCartRef = useRef<HTMLButtonElement>(null);
+  const closePreviewRef = useRef<HTMLButtonElement>(null);
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const marqueeTrackRef = useRef<HTMLUListElement>(null);
 
   const locationLabel = useMemo(() => {
     if (!location) return null;
@@ -94,12 +138,16 @@ export function DiscoveryHome({ initial }: Props) {
   }, [location]);
 
   // Restaura la ubicación de ESTA pestaña (si el usuario ya la eligió).
-  // Se difiere al siguiente tick para que la hidratación termine antes de
-  // cambiar el estado (evita mismatch server/cliente y renders en cascada).
   useEffect(() => {
     const stored = readSessionGeo();
-    if (!stored) return;
-    const timer = window.setTimeout(() => setLocation(stored), 0);
+    if (stored) {
+      const timer = window.setTimeout(() => {
+        setLocation(stored);
+        setSort('nearby');
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    const timer = window.setTimeout(() => setPromptDismissed(readPromptDismissed()), 0);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -143,7 +191,7 @@ export function DiscoveryHome({ initial }: Props) {
     [t],
   );
 
-  // Debounce: primera renderización ya trae datos del servidor; no se repite.
+  // Debounce: la primera pintura ya trae datos del servidor.
   useEffect(() => {
     if (initialRef.current) {
       initialRef.current = false;
@@ -158,7 +206,6 @@ export function DiscoveryHome({ initial }: Props) {
   const useMyLocation = () => {
     if (!('geolocation' in navigator)) {
       setGeoStatus('unavailable');
-      setShowManual(true);
       return;
     }
 
@@ -170,14 +217,12 @@ export function DiscoveryHome({ initial }: Props) {
           longitude: position.coords.longitude,
         };
         setLocation(point);
+        setSort('nearby');
         writeSessionGeo(point);
         setGeoStatus('idle');
-        setShowManual(false);
       },
       () => {
-        // Permiso denegado, timeout o GPS apagado: NUNCA se bloquea la app.
         setGeoStatus('denied');
-        setShowManual(true);
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300_000 },
     );
@@ -189,27 +234,164 @@ export function DiscoveryHome({ initial }: Props) {
     setGeoStatus('idle');
   };
 
-  const applyManualPreset = () => {
-    const preset = LOCATION_PRESETS.find((item) => item.id === manualId);
-    if (!preset) return;
-    const point = { latitude: preset.latitude, longitude: preset.longitude };
-    setLocation(point);
-    writeSessionGeo(point);
-    setShowManual(false);
+  const dismissPrompt = () => {
+    setPromptDismissed(true);
+    writePromptDismissed();
   };
 
-  const applyManualCoords = () => {
-    const lat = Number(manualLat);
-    const lng = Number(manualLng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      setError(t('geo.invalidCoords'));
+  useEffect(() => {
+    if (!preview) return;
+    closePreviewRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreview(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previous;
+    };
+  }, [preview]);
+
+  useEffect(() => {
+    if (!cartConflict) return;
+    keepCartRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCartConflict(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cartConflict]);
+
+  const snapshot = (product: DiscoveryProduct): Product => ({
+    slug: product.productSlug,
+    name: product.name,
+    brand: product.brand ?? '',
+    price: centsToUnits(product.priceCents),
+    category: product.category ?? '',
+    description: product.description ?? '',
+    specs: [],
+    inStock: product.available,
+    rating: 0,
+    reviewCount: 0,
+    images: product.imageUrl ? [product.imageUrl] : [],
+    storeId: product.storeId,
+    storeSlug: product.storeSlug,
+    storeName: product.storeName,
+  });
+
+  const add = (product: DiscoveryProduct, source: HTMLElement | null) => {
+    if (!product.inStock || product.hasVariants) return;
+    const result = addItem(snapshot(product), 1);
+    if (result.status === 'conflict') {
+      setCartConflict({ conflict: result, product });
       return;
     }
-    const point = { latitude: lat, longitude: lng };
-    setLocation(point);
-    writeSessionGeo(point);
-    setShowManual(false);
+    flyToCart(source, product.imageUrl, product.name);
+    toast.success(t('product.added', { quantity: 1, name: product.name }));
   };
+
+  const confirmSwitch = () => {
+    if (!cartConflict) return;
+    const { product } = cartConflict;
+    switchStore(snapshot(product), 1);
+    toast.success(t('product.switched', { store: product.storeName }));
+    setCartConflict(null);
+  };
+
+  const sortedProducts = useMemo(() => {
+    const list = [...results.products];
+    if (sort === 'best') {
+      list.sort((a, b) => {
+        if (b.soldCount !== a.soldCount) return b.soldCount - a.soldCount;
+        if (a.inStock !== b.inStock) return a.inStock ? -1 : 1;
+        return 0;
+      });
+    }
+    return list;
+  }, [results.products, sort]);
+
+  const previewInCart = preview
+    ? cartItems
+        .filter(
+          (item) => item.storeSlug === preview.storeSlug && item.slug === preview.productSlug,
+        )
+        .reduce((sum, item) => sum + item.quantity, 0)
+    : 0;
+
+  const previewAddress = preview
+    ? [preview.storeAddress, preview.storeDistrict].filter(Boolean).join(', ')
+    : '';
+
+  // Dos copias exactas del grupo: el riel avanza -50% y vuelve a empezar sin
+  // salto. Si hay pocas tiendas, se repiten dentro del grupo para cubrir el
+  // ancho visible. El movimiento lo controla requestAnimationFrame, no una
+  // animación CSS: así no depende de `prefers-reduced-motion` para arrancar.
+  const storesPerGroup = Math.max(1, Math.ceil(6 / Math.max(results.stores.length, 1)));
+  const groupStores = Array.from({ length: storesPerGroup }, () => results.stores).flat();
+  const trackStores = [...groupStores, ...groupStores];
+
+  useEffect(() => {
+    const viewport = marqueeRef.current;
+    const track = marqueeTrackRef.current;
+    if (!viewport || !track || results.stores.length === 0) return;
+
+    let frame = 0;
+    let last = 0;
+    let offset = 0;
+    let half = 0;
+    let visible = true;
+
+    // Con movimiento reducido igual avanza, pero más despacio: el usuario pidió
+    // que el carrusel nunca dependa de arrastre manual.
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const speed = reduceMotion ? 30 : 54;
+
+    const apply = () => {
+      track.style.transform = `translate3d(${-offset}px, 0, 0)`;
+    };
+
+    const measure = () => {
+      half = track.scrollWidth / 2;
+      if (!half) return;
+      offset = ((offset % half) + half) % half;
+      apply();
+    };
+
+    const tick = (now: number) => {
+      if (!last) last = now;
+      const delta = Math.min(64, now - last);
+      last = now;
+
+      if (visible && !document.hidden && half > 0) {
+        offset += (speed * delta) / 1000;
+        if (offset >= half) offset -= half;
+        apply();
+      }
+
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
+    resizeObserver.observe(track);
+    const intersectionObserver = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+        last = 0;
+      },
+      { rootMargin: '120px' },
+    );
+    intersectionObserver.observe(viewport);
+    frame = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      intersectionObserver.disconnect();
+    };
+  }, [results.stores.length]);
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6">
@@ -257,153 +439,144 @@ export function DiscoveryHome({ initial }: Props) {
         </form>
       </section>
 
-      {/* Ubicación + radio */}
-      <section aria-label={t('search.locationSection')} className="mt-3">
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <button
-            type="button"
-            onClick={useMyLocation}
-            disabled={geoStatus === 'asking'}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border-strong px-3 py-1.5 text-secondary hover:bg-surface-raised disabled:opacity-60"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
-              <circle cx="12" cy="10" r="2.5" />
-            </svg>
-            {geoStatus === 'asking' ? t('geo.locating') : location ? t('geo.update') : t('geo.use')}
-          </button>
-
-          {location && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-success">
+      {/* Ubicación: oferta proactiva, permiso solo con clic */}
+      {!promptDismissed && !location ? (
+        <section
+          aria-labelledby="location-prompt-title"
+          className="mt-4 overflow-hidden rounded-2xl border border-border-strong bg-surface"
+        >
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex min-w-0 items-start gap-3">
+              <span
+                aria-hidden="true"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-secondary"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+              </span>
+              <div className="min-w-0">
+                <h2 id="location-prompt-title" className="text-body-lg font-semibold leading-tight">
+                  {t('home.locationTitle')}
+                </h2>
+                <p className="mt-0.5 text-sm text-secondary">{t('home.locationBody')}</p>
+                <p className="mt-1 text-xs text-muted">{t('home.locationPrivacy')}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={useMyLocation}
+                disabled={geoStatus === 'asking'}
+                className="h-11 flex-1 rounded-xl bg-brand px-4 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-60 sm:flex-none"
+              >
+                {geoStatus === 'asking' ? t('geo.locating') : t('home.locationEnable')}
+              </button>
+              <button
+                type="button"
+                onClick={dismissPrompt}
+                className="h-11 flex-1 rounded-xl border border-border-strong px-4 text-sm font-medium text-secondary hover:bg-surface-raised sm:flex-none"
+              >
+                {t('home.locationLater')}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : !location ? (
+        <section aria-label={t('search.locationSection')} className="mt-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <button
+              type="button"
+              onClick={useMyLocation}
+              disabled={geoStatus === 'asking'}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border-strong px-3 py-1.5 text-secondary hover:bg-surface-raised disabled:opacity-60"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+              {geoStatus === 'asking' ? t('geo.locating') : t('geo.use')}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section aria-label={t('search.locationSection')} className="mt-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/10 px-3 py-1.5 text-success">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
               {t('geo.near', { place: locationLabel ?? '' })}
               <button
                 type="button"
                 onClick={clearLocation}
                 aria-label={t('geo.remove')}
-                className="text-success/70 hover:text-success"
+                className="ml-1 text-success/70 hover:text-success"
               >
                 ×
               </button>
             </span>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowManual((value) => !value)}
-            aria-expanded={showManual}
-            className="rounded-full px-2 py-1.5 text-tertiary underline-offset-2 hover:text-primary hover:underline"
-          >
-            {t('geo.manual')}
-          </button>
-        </div>
-
-        {geoStatus === 'denied' && (
-          <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
-        )}
-
-        {/* Los radios van en UNA línea con scroll horizontal: al envolver, en un
-            celular de 390 px el 20 km quedaba solo en una segunda fila. */}
-        <div
-          className="mt-3 -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
-          role="group"
-          aria-label={t('search.locationSection')}
-        >
-          <span className="mr-1 shrink-0 text-xs uppercase tracking-[1.5px] text-muted">
-            {t('geo.radius')}
-          </span>
-          {RADIUS_OPTIONS_KM.map((option) => (
             <button
-              key={option}
               type="button"
-              onClick={() => setRadiusKm(option)}
-              aria-pressed={radiusKm === option}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
-                radiusKm === option
-                  ? 'border-brand bg-brand text-background'
-                  : 'border-border text-secondary hover:border-border-strong'
-              }`}
+              onClick={useMyLocation}
+              disabled={geoStatus === 'asking'}
+              className="rounded-full px-2 py-1.5 text-xs text-tertiary underline-offset-4 hover:text-primary hover:underline disabled:opacity-60"
             >
-              {option} km
+              {geoStatus === 'asking' ? t('geo.locating') : t('geo.update')}
             </button>
-          ))}
-        </div>
-
-        {showManual && (
-          <div className="mt-3 rounded-2xl border border-border bg-surface p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <label className="flex-1 text-xs text-tertiary">
-                {t('geo.zone')}
-                <select
-                  value={manualId}
-                  onChange={(event) => setManualId(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm text-primary"
-                >
-                  <option value="">{t('geo.selectZone')}</option>
-                  {LOCATION_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label} · {preset.region}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                onClick={applyManualPreset}
-                disabled={!manualId}
-                className="h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-40"
-              >
-                {t('geo.useZone')}
-              </button>
-            </div>
-
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-tertiary hover:text-primary">
-                {t('geo.coords')}
-              </summary>
-              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
-                <label className="flex-1 text-xs text-tertiary">
-                  {t('geo.latitude')}
-                  <input
-                    value={manualLat}
-                    onChange={(event) => setManualLat(event.target.value)}
-                    inputMode="decimal"
-                    placeholder="-12.0464"
-                    className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm"
-                  />
-                </label>
-                <label className="flex-1 text-xs text-tertiary">
-                  {t('geo.longitude')}
-                  <input
-                    value={manualLng}
-                    onChange={(event) => setManualLng(event.target.value)}
-                    inputMode="decimal"
-                    placeholder="-77.0428"
-                    className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={applyManualCoords}
-                  className="h-10 rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
-                >
-                  {t('geo.apply')}
-                </button>
-              </div>
-            </details>
           </div>
-        )}
-      </section>
+
+          <div
+            className="mt-3 -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
+            role="group"
+            aria-label={t('search.locationSection')}
+          >
+            <span className="mr-1 shrink-0 text-xs uppercase tracking-[1.5px] text-muted">
+              {t('geo.radius')}
+            </span>
+            {RADIUS_OPTIONS_KM.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setRadiusKm(option)}
+                aria-pressed={radiusKm === option}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
+                  radiusKm === option
+                    ? 'border-brand bg-brand text-background'
+                    : 'border-border text-secondary hover:border-border-strong'
+                }`}
+              >
+                {option} km
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {geoStatus === 'denied' && (
+        <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
+      )}
+      {geoStatus === 'unavailable' && (
+        <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
+      )}
 
       {/* Resultados */}
-      <section aria-label={t('search.resultsSection')} className="mt-6">
-        <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
-            {q.trim()
-              ? t('search.resultsFor', { query: q.trim() })
-              : location
-                ? t('search.productsNearby')
-                : t('search.allProducts')}
-          </h2>
+      <section aria-label={t('search.resultsSection')} className="mt-7">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+              {q.trim()
+                ? t('search.resultsFor', { query: q.trim() })
+                : location
+                  ? t('search.productsNearby')
+                  : t('search.allProducts')}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              {sort === 'best' ? t('home.sortBestNote') : t('home.sortNearbyNote')}
+            </p>
+          </div>
           <span className="text-xs text-muted tabular-nums">
             {loading
               ? t('search.searching')
@@ -412,6 +585,36 @@ export function DiscoveryHome({ initial }: Props) {
                 })}
           </span>
         </div>
+
+        {results.products.length > 1 && (
+          <div
+            className="mt-3 inline-flex rounded-full border border-border bg-surface p-0.5"
+            role="group"
+            aria-label={t('home.sortLabel')}
+          >
+            <button
+              type="button"
+              onClick={() => setSort('nearby')}
+              aria-pressed={sort === 'nearby'}
+              disabled={!location}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                sort === 'nearby' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              {t('home.sortNearby')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSort('best')}
+              aria-pressed={sort === 'best'}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                sort === 'best' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
+              }`}
+            >
+              {t('home.sortBest')}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
@@ -437,11 +640,16 @@ export function DiscoveryHome({ initial }: Props) {
           </p>
         ) : (
           <ul className="divide-y divide-border">
-            {results.products.map((product) => (
-              <li key={`${product.storeId}:${product.productSlug}`}>
-                <Link
-                  href={`/${product.storeSlug}/p/${product.productSlug}`}
-                  className="flex items-center justify-between gap-3 py-2.5 transition-colors hover:bg-surface-raised/60"
+            {sortedProducts.map((product) => (
+              <li
+                key={`${product.storeId}:${product.productSlug}`}
+                className="flex items-center gap-2 py-2.5"
+              >
+                <button
+                  type="button"
+                  onClick={() => setPreview(product)}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg py-1 text-left transition-colors hover:bg-surface-raised/60"
+                  aria-label={t('home.previewAria', { name: product.name })}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-medium leading-tight text-primary">
@@ -464,7 +672,28 @@ export function DiscoveryHome({ initial }: Props) {
                       {product.inStock ? t('search.available') : t('search.outOfStock')}
                     </span>
                   </span>
-                </Link>
+                </button>
+
+                {product.hasVariants ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreview(product)}
+                    aria-label={`${t('store.chooseShort')}: ${product.name}`}
+                    className="min-h-11 shrink-0 rounded-xl border border-border-strong px-3 text-sm font-semibold text-primary transition-colors hover:bg-surface-raised"
+                  >
+                    {t('store.chooseShort')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => add(product, event.currentTarget)}
+                    disabled={!product.inStock}
+                    aria-label={`${t('store.addShort')}: ${product.name}`}
+                    className="min-h-11 shrink-0 rounded-xl bg-brand px-3 text-sm font-semibold text-background transition-transform hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {t('store.addShort')}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -477,62 +706,291 @@ export function DiscoveryHome({ initial }: Props) {
         )}
       </section>
 
-      {/* Tiendas cercanas */}
-      <section aria-label={t('search.storesSection')} className="mt-8">
-        <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+      {/* Tiendas: carrusel automático en bucle para no alargar la página */}
+      <section aria-label={t('search.storesSection')} className="mt-9">
+        <div className="border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
             {location ? t('search.storesNearby') : t('search.storesAll')}
           </h2>
-          <span className="text-xs text-muted tabular-nums">{results.stores.length}</span>
         </div>
 
         {results.stores.length === 0 ? (
           <p className="py-5 text-sm text-tertiary">{t('search.noStores')}</p>
         ) : (
-          <ul className="divide-y divide-border">
-            {results.stores.map((store) => (
-              <li key={store.id}>
-                <Link
-                  href={`/${store.slug}`}
-                  className="flex items-center gap-3 py-2.5 transition-colors hover:bg-surface-raised/60"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-raised text-sm font-semibold text-secondary">
-                    {store.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- logo remoto del comercio
-                      <img src={store.logoUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      store.name.slice(0, 1).toUpperCase()
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium leading-tight">{store.name}</span>
-                    <span className="mt-0.5 block truncate text-xs text-tertiary">
-                      {store.category ?? t('search.merchantFallback')}
-                      {store.distanceKm !== null && ` · ${formatDistanceKm(store.distanceKm, locale)}`}
-                      {store.district && ` · ${store.district}`}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-right text-xs text-tertiary">
-                    <span className="block tabular-nums">
-                      {t('search.storeAvailable', { count: store.inStockCount })}
-                    </span>
-                    <span className="block text-muted">
-                      {t('search.storeProducts', { count: store.productCount })}
-                    </span>
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div ref={marqueeRef} className="store-marquee -mx-4 mt-3 overflow-hidden sm:-mx-6">
+            <ul ref={marqueeTrackRef} className="store-marquee-track flex w-max pb-2">
+              {trackStores.map((store, index) => {
+                // Solo la primera copia de cada tienda queda en el árbol de
+                // accesibilidad y en el orden de tabulación. Las demás son
+                // visuales: evitan huecos cuando el carril da la vuelta.
+                const hidden = index >= results.stores.length;
+                return (
+                  <li
+                    key={`${index}-${store.id}`}
+                    aria-hidden={hidden || undefined}
+                    className="mr-3 w-[248px] shrink-0"
+                  >
+                    <Link
+                      href={`/${store.slug}`}
+                      tabIndex={hidden ? -1 : undefined}
+                      className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-raised"
+                    >
+                      <span className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised text-base font-semibold text-secondary">
+                          {store.logoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- logo remoto del comercio
+                            <img src={store.logoUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            store.name.slice(0, 1).toUpperCase()
+                          )}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-[15px] font-semibold leading-tight">
+                            {store.name}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-tertiary">
+                            {store.category ?? t('search.merchantFallback')}
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className="mt-3 flex items-center justify-between text-xs text-tertiary">
+                        <span className="tabular-nums">
+                          {t('search.storeAvailable', { count: store.inStockCount })}
+                        </span>
+                        {store.distanceKm !== null && (
+                          <span className="tabular-nums">
+                            {formatDistanceKm(store.distanceKm, locale)}
+                          </span>
+                        )}
+                      </span>
+                      {store.district && (
+                        <span className="mt-1 block truncate text-xs text-muted">
+                          {store.district}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         )}
       </section>
+
+      {/* Vista previa del producto */}
+      {preview && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/65 backdrop-blur-sm sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreview(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-preview-title"
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface sm:max-w-lg sm:rounded-3xl"
+          >
+            <div className="relative">
+              {preview.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- imagen cargada por el comercio
+                <img
+                  src={preview.imageUrl}
+                  alt={preview.name}
+                  className="h-48 w-full object-cover sm:h-56"
+                />
+              ) : (
+                <div
+                  aria-hidden="true"
+                  className="flex h-36 w-full items-center justify-center bg-surface-raised text-4xl font-semibold text-tertiary sm:h-44"
+                >
+                  {preview.name.slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <button
+                ref={closePreviewRef}
+                type="button"
+                onClick={() => setPreview(null)}
+                aria-label={t('cart.closeConfirm')}
+                className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-background/85 text-xl text-primary backdrop-blur hover:bg-background"
+              >
+                ×
+              </button>
+              {previewInCart > 0 && (
+                <span className="absolute left-3 top-3 rounded-full bg-success px-3 py-1 text-xs font-semibold text-background">
+                  {t('home.previewInCart', { count: previewInCart })}
+                </span>
+              )}
+            </div>
+
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 id="home-preview-title" className="text-2xl font-semibold leading-tight tracking-tight">
+                    {preview.name}
+                  </h2>
+                  <Link
+                    href={`/${preview.storeSlug}`}
+                    className="group mt-2 inline-flex max-w-full items-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-brand hover:bg-surface"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-background text-secondary">
+                      <Store className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="truncate">{preview.storeName}</span>
+                    <span className="shrink-0 text-tertiary" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="shrink-0 font-semibold underline decoration-border underline-offset-4 group-hover:decoration-brand">
+                      {t('home.previewVisitStore')}
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  </Link>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-2xl font-semibold tabular-nums">
+                    {preview.hasVariants && (
+                      <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
+                    )}
+                    {formatPriceCents(preview.priceCents, preview.currency, locale)}
+                  </div>
+                  <div
+                    className={`mt-1 text-sm font-medium ${
+                      preview.inStock ? 'text-success' : 'text-destructive'
+                    }`}
+                  >
+                    {preview.inStock
+                      ? t('store.available', { count: preview.available })
+                      : t('search.outOfStock')}
+                  </div>
+                </div>
+              </div>
+
+              {preview.description && (
+                <p className="mt-4 whitespace-pre-line text-body leading-relaxed text-secondary">
+                  {preview.description}
+                </p>
+              )}
+
+              {preview.hasVariants && (
+                <p className="mt-4 rounded-xl border border-border bg-surface-raised px-4 py-3 text-sm text-secondary">
+                  {t('home.previewVariants', { count: preview.variantCount })}
+                </p>
+              )}
+
+              <div className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-background px-4 py-3">
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="mt-0.5 h-4 w-4 shrink-0 text-tertiary"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-[1.5px] text-muted">
+                    {t('home.previewPickup')}
+                  </p>
+                  <p className="mt-0.5 text-sm text-secondary">
+                    {previewAddress || t('home.previewNoAddress')}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                {preview.hasVariants ? (
+                  <Link
+                    href={`/${preview.storeSlug}/p/${preview.productSlug}`}
+                    className="flex min-h-12 flex-1 items-center justify-center rounded-xl bg-brand px-4 text-body font-semibold text-background hover:opacity-90"
+                  >
+                    {t('home.previewChoose')}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => add(preview, event.currentTarget)}
+                    disabled={!preview.inStock}
+                    className="min-h-12 flex-1 rounded-xl bg-brand px-4 text-body font-semibold text-background transition-transform hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {preview.inStock
+                      ? previewInCart > 0
+                        ? t('home.previewAddAnother')
+                        : t('product.addToCart')
+                      : t('search.outOfStock')}
+                  </button>
+                )}
+                <Link
+                  href="/cart"
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-border-strong px-4 text-body font-medium hover:bg-surface-raised"
+                >
+                  {t('product.viewCart')}
+                  {cartCount > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-semibold tabular-nums text-background">
+                      {cartCount}
+                    </span>
+                  )}
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cartConflict && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCartConflict(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="home-cart-conflict-title"
+            className="w-full max-w-md rounded-t-3xl border border-border bg-surface p-6 sm:rounded-3xl"
+          >
+            <h2 id="home-cart-conflict-title" className="text-xl font-semibold">
+              {t('product.conflictTitle')}
+            </h2>
+            <p className="mt-2 text-body text-secondary">
+              {t('product.conflictBody', {
+                current: cartConflict.conflict.current.storeName ?? t('product.otherStore'),
+                next: cartConflict.conflict.next.storeName ?? t('product.thisStore'),
+              })}
+            </p>
+            <p className="mt-2 text-sm text-tertiary">{t('product.conflictNote')}</p>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row-reverse">
+              <button
+                type="button"
+                onClick={confirmSwitch}
+                className="h-12 rounded-xl bg-brand px-4 text-body font-semibold text-background hover:opacity-90"
+              >
+                {t('product.switchStore')}
+              </button>
+              <button
+                ref={keepCartRef}
+                type="button"
+                onClick={() => setCartConflict(null)}
+                className="h-12 rounded-xl border border-border-strong px-4 text-body font-medium hover:bg-surface-raised"
+              >
+                {t('product.keepCart')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CTA comercios */}
       <section className="my-10 rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <p className="text-xs uppercase tracking-[2px] text-muted">{t('home.businessKicker')}</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">{t('home.businessTitle')}</h2>
         <p className="mt-1 max-w-2xl text-sm text-secondary">{t('home.businessBody')}</p>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Link
             href="/vender"
             className="inline-flex h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-background hover:opacity-90"
@@ -545,6 +1003,17 @@ export function DiscoveryHome({ initial }: Props) {
           >
             {t('home.seePlans')}
           </Link>
+          {businessWhatsAppUrl && (
+            <a
+              href={businessWhatsAppUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-success/40 bg-success/10 px-5 text-sm font-semibold text-success transition-colors hover:bg-success/15"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              {t('home.businessWhatsApp')}
+            </a>
+          )}
         </div>
       </section>
     </div>

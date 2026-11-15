@@ -13,8 +13,8 @@ import { usePathname } from 'next/navigation';
  * Las páginas del panel (`/admin/...`) conservan el encabezado: el logo lleva al
  * inicio y no estorba. El footer comercial (tienda / ayuda / legales) no: en un
  * celular empujaba el panel 700 px hacia arriba con enlaces del comprador. El
- * botón flotante de WhatsApp también se oculta en todo `/admin`.
- * Ver `FloatingWhatsApp`.
+ * acceso a WhatsApp vive en el bloque "Para negocios" del inicio, no como
+ * botón flotante global.
  *
  * Recibe los nodos ya renderizados en el servidor: no importa componentes de
  * servidor dentro de un componente de cliente.

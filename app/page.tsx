@@ -16,6 +16,7 @@ import { DEFAULT_RADIUS_KM } from '@/lib/geo';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { searchDiscovery } from '@/lib/stores.server';
 import { getTranslator } from '@/lib/i18n/server';
+import { whatsappUrl } from '@/config/business';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +83,7 @@ async function loadInitial(): Promise<DiscoveryResponse> {
 
 export default async function HomePage() {
   const [{ t }, initial] = await Promise.all([getTranslator(), loadInitial()]);
+  const businessWhatsAppUrl = whatsappUrl(t('home.businessWhatsAppMessage'));
 
   return (
     <main className="min-h-screen">
@@ -94,7 +96,7 @@ export default async function HomePage() {
         <p className="mt-2 max-w-xl text-body text-secondary">{t('home.subtitle')}</p>
       </section>
 
-      <DiscoveryHome initial={initial} />
+      <DiscoveryHome initial={initial} businessWhatsAppUrl={businessWhatsAppUrl} />
 
       <div className="h-6" />
     </main>
