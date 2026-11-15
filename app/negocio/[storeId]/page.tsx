@@ -258,12 +258,15 @@ export default async function MerchantStorePage({ params }: PageProps) {
         </div>
       )}
 
-      <nav aria-label={t('merchant.quickNav')} className="mt-4 flex gap-2 overflow-x-auto pb-1">
+      <nav
+        aria-label={t('merchant.quickNav')}
+        className="sticky top-20 z-30 -mx-4 mt-4 flex gap-2 overflow-x-auto border-b border-border bg-background/95 px-4 py-2 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:bg-surface/95 sm:px-2"
+      >
         {quickLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
-            className="inline-flex h-10 shrink-0 items-center rounded-full border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-raised"
+            className="inline-flex h-10 shrink-0 items-center rounded-full border border-border-strong bg-surface px-3 text-sm font-medium hover:bg-surface-raised"
           >
             {link.label}
           </a>
@@ -294,12 +297,12 @@ export default async function MerchantStorePage({ params }: PageProps) {
           <a
             key={card.label}
             href={card.href}
-            className={`rounded-2xl border p-4 transition-colors hover:bg-surface-raised ${
+            className={`rounded-2xl border p-3 transition-colors hover:bg-surface-raised sm:p-4 ${
               card.value > 0 ? 'border-warning/40 bg-warning/5' : 'border-border bg-surface'
             }`}
           >
-            <span className="block font-mono text-4xl font-semibold tabular-nums">{card.value}</span>
-            <span className="mt-1 block text-sm leading-snug text-secondary">{card.label}</span>
+            <span className="block font-mono text-3xl font-semibold tabular-nums sm:text-4xl">{card.value}</span>
+            <span className="mt-1 block text-xs leading-snug text-secondary sm:text-sm">{card.label}</span>
           </a>
         ))}
       </section>
@@ -329,7 +332,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
       </section>
 
       {/* Pedidos: lo primero después de los números. */}
-      <section id="pedidos" className="mt-8 scroll-mt-4">
+      <section id="pedidos" className="mt-8 scroll-mt-[9rem]">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
             {t('merchant.orders')}
@@ -428,7 +431,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
       <section
         id="pagos"
         aria-labelledby="payments-title"
-        className="surface-card mt-8 scroll-mt-4 p-4 sm:p-5"
+        className="surface-card mt-8 scroll-mt-[9rem] p-4 sm:p-5"
       >
         <div className="flex items-start gap-3">
           <span
@@ -463,7 +466,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
       </section>
 
       {/* Inventario: qué se está agotando y cómo gestionarlo. */}
-      <section id="inventario" className="mt-8 scroll-mt-4">
+      <section id="inventario" className="mt-8 scroll-mt-[9rem]">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
             {t('merchant.inventoryTitle')}
@@ -500,7 +503,7 @@ export default async function MerchantStorePage({ params }: PageProps) {
       </section>
 
       {/* Productos + ajustes de stock. */}
-      <section id="productos" className="mt-8 scroll-mt-4">
+      <section id="productos" className="mt-8 scroll-mt-[9rem]">
         <div className="flex items-baseline justify-between border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
             {t('merchant.products')}

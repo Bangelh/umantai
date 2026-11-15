@@ -441,13 +441,15 @@ export function MerchantCatalog({
   };
 
   return (
-    <div className="mt-3">
+    <div className="mt-3" aria-busy={busy}>
       <div className="surface-card p-3">
         <div className="flex flex-wrap items-center gap-2">
           <input
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t('merchant.catalogSearch')}
+            aria-label={t('merchant.catalogSearch')}
             className="h-11 min-w-40 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
           />
           {categories.length > 0 && (
@@ -473,6 +475,10 @@ export function MerchantCatalog({
           </button>
         </div>
       </div>
+
+      <p role="status" className="mt-2 text-xs text-tertiary tabular-nums">
+        {t('merchant.catalogResults', { count: filtered.length })}
+      </p>
 
       {mode && (
         <form onSubmit={submit} className="surface-card relative mt-3 overflow-hidden p-4 sm:p-5">
@@ -808,8 +814,9 @@ export function MerchantCatalog({
                             </button>
                             <button
                               type="button"
+                              disabled={busy}
                               onClick={() => archiveVariant(product, variant)}
-                              className="text-[10px] text-destructive/80"
+                              className="text-[10px] text-destructive/80 disabled:opacity-50"
                             >
                               {t('merchant.archive')}
                             </button>
@@ -838,8 +845,9 @@ export function MerchantCatalog({
                   </button>
                   <button
                     type="button"
+                    disabled={busy}
                     onClick={() => void patchProduct(product.id, { visible: !product.visible }, product.visible ? t('merchant.productHidden') : t('merchant.productPublished'))}
-                    className="inline-flex h-9 items-center rounded-full border border-border-strong px-3 text-xs font-medium transition-colors hover:bg-surface-raised"
+                    className="inline-flex h-9 items-center rounded-full border border-border-strong px-3 text-xs font-medium transition-colors hover:bg-surface-raised disabled:opacity-50"
                   >
                     {product.visible ? t('merchant.unpublish') : t('merchant.publish')}
                   </button>
@@ -870,6 +878,7 @@ export function MerchantCatalog({
                             t('merchant.productUpdated'),
                           )
                         }
+                        disabled={busy}
                         className="inline-flex h-9 items-center rounded-full bg-brand px-3 text-xs font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-50"
                       >
                         {t('merchant.saveChanges')}
@@ -956,7 +965,7 @@ export function MerchantCatalog({
                             {t('merchant.stockQty')}
                             <input value={stockQty} onChange={(event) => setStockQty(event.target.value)} inputMode="numeric" className="mt-1 block h-9 w-24 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                           </label>
-                          <button type="button" onClick={() => void adjustStock(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background">
+                          <button type="button" disabled={busy} onClick={() => void adjustStock(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background disabled:opacity-50">
                             {t('merchant.apply')}
                           </button>
                         </div>
@@ -995,6 +1004,7 @@ export function MerchantCatalog({
                                 priceCents: parseMoneyInputToCents(variantEdit.price),
                               })
                             }
+                            disabled={busy}
                             className="inline-flex h-9 items-center rounded-full bg-brand px-3 text-xs font-semibold text-background transition-opacity hover:opacity-90 disabled:opacity-50"
                           >
                             {t('merchant.saveVariant')}
@@ -1049,7 +1059,7 @@ export function MerchantCatalog({
                             {t('merchant.stock')}
                             <input value={variantStock} onChange={(event) => setVariantStock(event.target.value)} inputMode="numeric" className="mt-1 block h-9 w-20 rounded-lg border border-border-strong bg-background px-2 text-xs" />
                           </label>
-                          <button type="button" onClick={() => void addVariant(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background">
+                          <button type="button" disabled={busy} onClick={() => void addVariant(product)} className="h-9 rounded-lg bg-brand px-3 text-xs font-semibold text-background disabled:opacity-50">
                             {t('merchant.add')}
                           </button>
                         </div>
