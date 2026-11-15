@@ -8,10 +8,13 @@ import {
 } from "@/lib/commerce";
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
 import { orderStatusCopy } from "@/lib/order-status-copy";
-import { PayButton } from "./PayButton";
-import { isOnlinePaymentEnabled } from "@/lib/online-payments";
+import { ReservationCountdown } from "@/components/orders/ReservationCountdown";
+import { PaymentProofUpload } from "@/components/orders/PaymentProofUpload";
+import { PaymentMethods } from "@/components/orders/PaymentMethods";
 import { formatMoneyUnits } from "@/lib/format";
 import { getTranslator } from "@/lib/i18n/server";
+import { getOrderStorePublicInfo, parseOrderPaymentMethod } from "@/lib/stores.server";
+import { whatsappUrl } from "@/lib/whatsapp";
 import type { Translator } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/dictionaries";
 
@@ -47,19 +50,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * comprador por la URL de pago aprobado. La verdad la dice el pedido cuando llega la
  * confirmación desde MP, no el query param.
  */
-type PaymentReturnFlag = "exitoso" | "pendiente" | "fallido";
-
-const PAYMENT_RETURN_TONES: Record<PaymentReturnFlag, string> = {
-  exitoso: "border-info/40 bg-info/10 text-info",
-  pendiente: "border-warning/40 bg-warning/10 text-warning",
-  fallido: "border-destructive/40 bg-destructive/10 text-destructive",
-};
-
-function readPaymentReturnFlag(value: string | string[] | undefined): PaymentReturnFlag | null {
-  const flag = Array.isArray(value) ? value[0] : value;
-  if (flag === "exitoso" || flag === "pendiente" || flag === "fallido") return flag;
-  return null;
-}
 
 /**
  * Los importes del pedido están en UNIDADES (NUMERIC(10,2)), no en centavos.
@@ -79,6 +69,28 @@ function money(amount: number, currency: string): string {
  * `applyApprovedPayment`). Sin cambios de esquema: reutiliza la estructura de
  * metadata que ya existe. Nunca se muestra como un pago real de Mercado Pago.
  */
+type PaymentProofStatus = "submitted" | "approved" | "rejected";
+type PaymentProofMeta = {
+  url: string;
+  status: PaymentProofStatus;
+} | null;
+
+/**
+ * Comprobante que subió el comprador, desde `orders.metadata.paymentProof`.
+ * Un JSON viejo o incompleto no rompe la pantalla: sin URL no hay comprobante.
+ */
+function readPaymentProof(order: Pick<OrderWithItems, "metadata">): PaymentProofMeta {
+  const proof = order.metadata?.paymentProof;
+  if (!proof || typeof proof !== "object" || Array.isArray(proof)) return null;
+  const record = proof as Record<string, unknown>;
+  if (typeof record.url !== "string" || !record.url) return null;
+  const status =
+    record.status === "approved" || record.status === "rejected"
+      ? record.status
+      : "submitted";
+  return { url: record.url, status };
+}
+
 function isSimulatedPayment(order: Pick<OrderWithItems, 'metadata'>): boolean {
   const payment = order.metadata?.payment;
   if (!payment || typeof payment !== "object" || Array.isArray(payment)) return false;
@@ -100,12 +112,29 @@ function formatDateTime(value: string | null): string | null {
 function Notice({
   order,
   hasPickupCode,
+  proofStatus,
   t,
 }: {
   order: OrderWithItems;
   hasPickupCode: boolean;
+  proofStatus: PaymentProofStatus | null;
   t: Translator;
 }) {
+  if (proofStatus === "rejected") {
+    return (
+      <p
+        role="status"
+        className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/10 px-5 py-4 text-body text-destructive"
+      >
+        {t("order.notice.proofRejected")}
+      </p>
+    );
+  }
+
+  if (order.status === "pending_payment" && proofStatus === "submitted") {
+    return null;
+  }
+
   if (order.status === "pending_payment") {
     const expiresAt = formatDateTime(order.reservationExpiresAt);
 
@@ -121,11 +150,10 @@ function Notice({
       );
     }
 
-    return (
-      <p className="mt-6 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4 text-body text-warning">
-        {expiresAt ? t("order.notice.holdingUntil", { date: expiresAt }) : t("order.notice.holding")}
-      </p>
-    );
+    // La reserva viva se comunica UNA sola vez, en el panel de urgencia con el
+    // contador al lado. Repetir "estamos guardando tus artículos" arriba y abajo
+    // era ruido y empujaba el pago fuera de pantalla.
+    return null;
   }
 
   if (order.status === "cancelled" || order.status === "expired") {
@@ -211,14 +239,11 @@ function PickupCodeTicket({ code, t }: { code: PickupCode; t: Translator }) {
 
 export default async function OrderStatusPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ pago?: string | string[] }>;
 }) {
   // En esta versión de Next `params` y `searchParams` son Promises: hay que esperarlas.
   const { token } = await params;
-  const { pago } = await searchParams;
   const { t } = await getTranslator();
 
   // Validación barata: evita mandar basura a Postgres con un cast ::uuid.
@@ -249,6 +274,8 @@ export default async function OrderStatusPage({
 
   if (!order) notFound();
 
+  let proof = readPaymentProof(order);
+
   // ── Expiración dirigida: el estado que se muestra tiene que ser el real ─────
   // El reaper ya no corre cada minuto (Vercel Hobby sólo admite un cron diario), así
   // que el pedido puede quedarse en `pending_payment` con la reserva ya vencida. Cuando
@@ -259,7 +286,13 @@ export default async function OrderStatusPage({
   // Se usa el MISMO motor que el cron (`expire_stale_orders`), sólo libera reservas
   // realmente vencidas (reloj de Postgres) y es idempotente: recargar la página no
   // vuelve a liberar nada ni suelta una reserva válida antes de tiempo.
-  if (order.status === "pending_payment" && evaluateOrderPayability(order) !== "payable") {
+  // Un comprobante enviado toma el control de la reserva: la tienda debe revisar
+  // el pago antes de que un barrido devuelva el stock. Por eso no se expira acá.
+  if (
+    order.status === "pending_payment" &&
+    proof?.status !== "submitted" &&
+    evaluateOrderPayability(order) !== "payable"
+  ) {
     try {
       const expired = await expireStaleOrders();
       // Sólo se relee si el barrido cambió algo: si no, el pedido sigue igual.
@@ -270,6 +303,7 @@ export default async function OrderStatusPage({
       console.error("Order page: no se pudieron expirar reservas vencidas", error);
     }
   }
+  proof = readPaymentProof(order);
 
   // Sólo se consulta el PIN cuando el pedido puede tener uno: una query de más en
   // cada visita a un pedido impago sería gratis de escribir y de pagar igual.
@@ -285,31 +319,27 @@ export default async function OrderStatusPage({
     }
   }
 
-  const statusLabel = t(`status.${order.status}` as MessageKey);
+  const storeInfo = await getOrderStorePublicInfo(order.id).catch(() => null);
+  const awaitingReview =
+    order.status === "pending_payment" && proof?.status === "submitted";
+  const paymentMethod = parseOrderPaymentMethod(order.metadata) ?? "yape";
+  const payments = storeInfo?.payments ?? null;
+  const hasPaymentDetails = Boolean(
+    payments && (payments.yape || payments.plin || payments.bankAccount),
+  );
+
+  const statusLabel = awaitingReview
+    ? t("order.reviewBadge")
+    : t(`status.${order.status}` as MessageKey);
   const statusCopy = orderStatusCopy(order.status);
   const fulfillmentLabel = t(`order.fulfillment.${order.fulfillmentType}` as MessageKey);
   const placedAt = formatDateTime(order.createdAt);
-  const reservationExpiresAt = formatDateTime(order.reservationExpiresAt);
 
   // Misma regla que aplica el endpoint de pago (una sola definición, en lib/commerce.ts).
   const payability = evaluateOrderPayability(order);
   const canPay = payability === "payable";
-  // Mercado Pago está congelado por decisión del negocio: el pedido se crea y la
-  // reserva corre igual, pero no se ofrece cobro online hasta habilitarlo por
-  // entorno (ver lib/online-payments.ts).
-  const onlinePaymentEnabled = isOnlinePaymentEnabled();
   const simulated = isSimulatedPayment(order);
 
-  // El aviso de regreso solo se muestra si el pago sigue pendiente: si el pedido ya
-  // está confirmado, el badge de estado cuenta la historia y el aviso sobra.
-  const returnFlag = readPaymentReturnFlag(pago);
-  const returnNotice =
-    returnFlag && order.status === "pending_payment"
-      ? {
-          tone: PAYMENT_RETURN_TONES[returnFlag],
-          messageKey: `order.return.${returnFlag}` as MessageKey,
-        }
-      : null;
 
   return (
     <div className="min-h-screen bg-background text-primary">
@@ -337,7 +367,7 @@ export default async function OrderStatusPage({
         </div>
 
         <p className="mt-3 text-body text-secondary">
-          {t(statusCopy.explanationKey as MessageKey)}
+          {awaitingReview ? t("order.reviewBody") : t(statusCopy.explanationKey as MessageKey)}
         </p>
 
         <p className="mt-1 text-body text-tertiary">
@@ -350,48 +380,137 @@ export default async function OrderStatusPage({
             : ""}
         </p>
 
-        <Notice order={order} hasPickupCode={pickupCode !== null} t={t} />
+        <Notice
+          order={order}
+          hasPickupCode={pickupCode !== null}
+          proofStatus={proof?.status ?? null}
+          t={t}
+        />
 
-        {returnNotice && (
-          <div className={`mt-4 rounded-2xl border px-5 py-4 text-body ${returnNotice.tone}`}>
-            <p>{t(returnNotice.messageKey)}</p>
-            <Link href={`/pedido/${order.publicToken}`} className="mt-2 inline-block underline underline-offset-4">
-              {t("order.checkAgain")}
-            </Link>
+        {awaitingReview && (
+          <section className="mt-6 rounded-3xl border border-info/40 bg-info/10 p-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[2px] text-info">
+              {t("order.reviewTitle")}
+            </p>
+            <p className="mt-2 text-body text-secondary">{t("order.reviewBody")}</p>
+            <div className="mt-4 flex items-baseline justify-between border-y border-info/30 py-3">
+              <span className="text-body font-medium">{t("order.total")}</span>
+              <span className="font-mono text-xl font-semibold tabular-nums">
+                {money(order.total, order.currency)}
+              </span>
+            </div>
+            {storeInfo?.whatsapp && (
+              <a
+                href={
+                  whatsappUrl(
+                    storeInfo.whatsapp,
+                    t("order.notifyStoreMessage", {
+                      store: storeInfo.name,
+                      order: order.orderNumber,
+                      total: money(order.total, order.currency),
+                    }),
+                  ) ?? "#"
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-body font-semibold text-background hover:opacity-90"
+              >
+                {t("order.notifyStore")}
+              </a>
+            )}
+          </section>
+        )}
+
+        {!awaitingReview && order.status === "pending_payment" && payability === "payable" && order.reservationExpiresAt && (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-warning/50 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[2px] text-warning">
+                {t("order.urgencyKicker")}
+              </p>
+              <p className="mt-1 text-body text-secondary">{t("order.urgencyCopy")}</p>
+            </div>
+            <div className="shrink-0 rounded-xl border border-warning/30 bg-background px-4 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-[1.5px] text-muted">
+                {t("order.timeLeft")}
+              </p>
+              <ReservationCountdown
+                expiresAt={order.reservationExpiresAt}
+                expiredLabel={t("order.expiredCountdown")}
+                className="mt-0.5 block font-mono text-3xl font-bold tabular-nums tracking-tight text-warning"
+                urgentClassName="text-destructive animate-pulse"
+              />
+            </div>
           </div>
         )}
 
+
         {pickupCode && <PickupCodeTicket code={pickupCode} t={t} />}
 
-        {canPay && (
-          <div
-            className={`mt-6 rounded-3xl border p-6 ${
-              onlinePaymentEnabled
-                ? "border-border bg-surface"
-                : "border-warning/40 bg-warning/10"
-            }`}
-          >
-            <div className="text-xs tracking-widest text-tertiary mb-2">
-              {t("order.paymentKicker")}
+        {canPay && !awaitingReview && (
+          <div className="mt-6 rounded-3xl border border-border bg-surface p-6">
+            <div className="mb-2 text-xs tracking-widest text-tertiary">{t("order.paymentKicker")}</div>
+            <p className="text-body text-secondary">{t("order.paymentManualBody")}</p>
+
+            <div className="mt-4 flex items-baseline justify-between border-y border-border py-3">
+              <span className="text-body font-medium">{t("order.total")}</span>
+              <span className="font-mono text-xl font-semibold tabular-nums">
+                {money(order.total, order.currency)}
+              </span>
             </div>
-            {onlinePaymentEnabled ? (
-              <>
-                <p className="text-body text-secondary mb-5">{t("order.paymentBody")}</p>
-                <PayButton
-                  publicToken={order.publicToken}
-                  amountLabel={money(order.total, order.currency)}
-                />
-              </>
+
+            {paymentMethod === "cash" ? (
+              <div className="mt-4 rounded-2xl border border-info/40 bg-info/10 p-4">
+                <p className="text-body font-semibold text-info">{t("order.payCashTitle")}</p>
+                <p className="mt-1 text-sm text-secondary">{t("order.payCashBody")}</p>
+                <p className="mt-2 text-sm font-medium text-info">{t("order.payCashPending")}</p>
+              </div>
             ) : (
+              <div className="mt-4">
+                <p className="text-[11px] uppercase tracking-[1.5px] text-muted">
+                  {t("order.payMethodsTitle")}
+                </p>
+
+                {hasPaymentDetails && payments ? (
+                  <PaymentMethods payments={payments} initialMethod={paymentMethod} />
+                ) : (
+                  <p className="mt-2 rounded-xl border border-border bg-background px-4 py-3 text-sm text-secondary">
+                    {t("order.payMissing")}
+                  </p>
+                )}
+
+                {hasPaymentDetails && (
+                  <p className="mt-2 text-xs text-muted">{t("order.payTapToCopy")}</p>
+                )}
+                <p className="mt-3 text-sm text-secondary">{t("order.proofOnly")}</p>
+              </div>
+            )}
+
+            {storeInfo?.whatsapp ? (
+              <a
+                href={
+                  whatsappUrl(
+                    storeInfo.whatsapp,
+                    t("order.notifyStoreMessage", {
+                      store: storeInfo.name,
+                      order: order.orderNumber,
+                      total: money(order.total, order.currency),
+                    }),
+                  ) ?? "#"
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-brand px-4 text-body font-semibold text-background hover:opacity-90"
+              >
+                {t("order.notifyStore")}
+              </a>
+            ) : (
+              <p className="mt-4 text-sm text-tertiary">{t("order.storeWhatsAppSoon")}</p>
+            )}
+
+            {paymentMethod !== "cash" && (
               <>
-                <p className="text-body font-medium text-warning">
-                  {t("order.paymentUnavailableTitle")}
-                </p>
-                <p className="mt-2 text-body text-secondary">
-                  {reservationExpiresAt
-                    ? t("order.paymentUnavailableBodyUntil", { date: reservationExpiresAt })
-                    : t("order.paymentUnavailableBody")}
-                </p>
+                <PaymentProofUpload publicToken={order.publicToken} status={proof?.status ?? null} />
+                <p className="mt-3 text-xs text-tertiary">{t("order.proofRule")}</p>
               </>
             )}
           </div>

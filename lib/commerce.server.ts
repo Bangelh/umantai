@@ -201,7 +201,7 @@ function rowAt<T>(results: TransactionResults, index: number): T | undefined {
 //  1. PEDIDOS — ESCRITURA
 // =============================================================================
 
-const DEFAULT_RESERVATION_TTL_MINUTES = 30;
+const DEFAULT_RESERVATION_TTL_MINUTES = 15;
 
 export interface CreateOrderOptions {
   /** Se guarda tal cual en `orders.metadata` (datos de invitado, DNI para Mercado Pago, etc.). */

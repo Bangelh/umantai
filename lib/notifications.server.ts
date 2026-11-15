@@ -45,6 +45,7 @@
 import { Resend } from 'resend';
 import { getPrefixedEnv } from './env';
 import { getInventoryItem, getOrderItemSkus, getOrderWithItems } from './commerce.server';
+import { getPlatformSql } from './platform-db.server';
 import type { OrderWithItems, PickupCode } from './commerce';
 
 /**
@@ -334,17 +335,78 @@ function buildPickupReadyEmail(order: OrderWithItems, pickupCode: PickupCode): P
 //  el pago ya está confirmado y un correo caído no puede revertirlo.
 // =============================================================================
 
-/** Correo de la tienda que recibe los avisos de pedidos nuevos. */
+/** Correo de respaldo para avisos internos (el de la tienda manda). */
 export function getStoreNotificationEmail(): string {
   return readEnv('ADMIN_NOTIFICATION_EMAIL');
 }
 
-/** ¿Se puede avisar a la tienda? Requiere Resend y un destinatario configurados. */
+/** ¿Se puede avisar a la tienda? Basta Resend: el destinatario sale de la tienda. */
 export function isStoreNotificationConfigured(): boolean {
-  return getResendApiKey().length > 0 && getStoreNotificationEmail().length > 0;
+  return getResendApiKey().length > 0;
 }
 
-function buildNewOrderEmail(order: OrderWithItems): PickupReadyEmail {
+function appBaseUrl(): string {
+  const raw =
+    readEnv('NEXT_PUBLIC_APP_URL') ||
+    (process.env.NEXT_PUBLIC_APP_URL ?? '').trim() ||
+    (process.env.NEXT_PUBLIC_SITE_URL ?? '').trim();
+  return (raw || 'https://umantai.com').replace(/\/+$/, '');
+}
+
+interface StoreOrderRecipient {
+  storeId: string;
+  storeName: string;
+  email: string | null;
+  contactPhone: string | null;
+}
+
+/**
+ * Destinatario de un pedido: el correo de contacto de la tienda y, si falta, el
+ * del dueño. NUNCA se usa el correo del comprador para avisar a la tienda.
+ */
+async function resolveStoreRecipient(orderId: string): Promise<StoreOrderRecipient | null> {
+  const sql = getPlatformSql();
+  if (!sql) return null;
+
+  const rows = await sql`
+    SELECT s.id AS store_id, s.name AS store_name, s.contact_email, s.contact_phone,
+           (
+             SELECT u.email
+               FROM store_members sm
+               JOIN users u ON u.id = sm.user_id
+              WHERE sm.store_id = s.id
+              ORDER BY (sm.role = 'owner') DESC, sm.created_at ASC
+              LIMIT 1
+           ) AS owner_email
+      FROM orders o
+      JOIN stores s ON s.id = o.store_id
+     WHERE o.id = ${orderId}::uuid
+     LIMIT 1
+  `;
+
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  const candidates = [row.contact_email, row.owner_email, getStoreNotificationEmail()];
+  const email =
+    candidates.find(
+      (value): value is string => typeof value === 'string' && EMAIL_PATTERN.test(value.trim()),
+    )?.trim() ?? null;
+
+  return {
+    storeId: String(row.store_id),
+    storeName: String(row.store_name),
+    email,
+    contactPhone: (row.contact_phone as string | null) ?? null,
+  };
+}
+
+function buildNewOrderEmail(
+  order: OrderWithItems,
+  storeId: string,
+  storeName: string,
+  paymentMethod: string | null,
+): PickupReadyEmail {
   const lines = order.items.map((item) => {
     const variant = Object.values(item.variant ?? {})
       .filter(Boolean)
@@ -356,13 +418,31 @@ function buildNewOrderEmail(order: OrderWithItems): PickupReadyEmail {
   const buyerName = readBuyerName(order) ?? 'Cliente sin nombre';
   const total = formatMoney(order.total, order.currency);
 
+  const proofUrl = readPaymentProofUrl(order.metadata);
+  const paymentLabel =
+    paymentMethod === 'cash'
+      ? 'Efectivo al retirar (confirma si lo aceptas)'
+      : paymentMethod === 'bank'
+        ? 'Transferencia bancaria'
+        : paymentMethod === 'plin'
+          ? 'Plin'
+          : 'Yape';
+
   const rows: Array<[string, string]> = [
+    ['Tienda', storeName],
     ['Pedido', order.orderNumber],
     ['Cliente', buyerName],
     ['Correo', order.contactEmail],
+    ['Pago', paymentLabel],
     ['Total', total],
   ];
   if (order.contactPhone) rows.push(['Teléfono', order.contactPhone]);
+
+  const proofStatus = proofUrl
+    ? 'El comprobante ya está en tu panel. Revísalo y confirma el pedido.'
+    : paymentMethod === 'cash'
+      ? 'El cliente pagará en efectivo al retirar.'
+      : 'Todavía no subió el comprobante de pago.';
 
   const rowsHtml = rows
     .map(
@@ -382,28 +462,100 @@ function buildNewOrderEmail(order: OrderWithItems): PickupReadyEmail {
 <html lang="es">
   <body style="margin:0;padding:24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;">
-      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#666666;">UMANTAI · NUEVO PEDIDO PAGADO</p>
-      <h1 style="margin:8px 0 16px;font-size:24px;color:#111111;">Hay un pedido para preparar</h1>
+      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#666666;">UMANTAI · PEDIDO NUEVO</p>
+      <h1 style="margin:8px 0 16px;font-size:24px;color:#111111;">Entró un pedido en ${escapeHtml(storeName)}</h1>
       <table style="border-collapse:collapse;width:100%;">${rowsHtml}</table>
+      <p style="margin:16px 0;font-size:15px;color:#444444;">${escapeHtml(proofStatus)}</p>
       <p style="margin:20px 0 6px;font-size:15px;color:#555555;">Productos:</p>
       <ul style="margin:0;padding-left:20px;">${itemsHtml}</ul>
+      <p style="margin:24px 0 0;">
+        <a href="${appBaseUrl()}/negocio/${escapeHtml(storeId)}/pedidos/${order.id}"
+           style="display:inline-block;background:#111111;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;">
+          Ver el pedido en mi panel
+        </a>
+      </p>
       <p style="margin:24px 0 0;font-size:13px;color:#888888;border-top:1px solid #e4e4e7;padding-top:16px;">
-        Ingresa al kiosco para marcarlo listo para retiro.
+        Desde el detalle puedes confirmar el pago y marcar el pedido listo para recoger.
       </p>
     </div>
   </body>
 </html>`;
 
   const text = [
-    `Nuevo pedido pagado ${order.orderNumber}`,
+    `Nuevo pedido ${order.orderNumber} en ${storeName}`,
     '',
     ...rows.map(([label, value]) => `${label}: ${value}`),
     '',
+    proofStatus,
+    '',
     'Productos:',
     ...lines.map((line) => `- ${line}`),
+    '',
+    `Ver en el panel: ${appBaseUrl()}/negocio/${storeId}/pedidos/${order.id}`,
   ].join('\n');
 
-  return { subject: `Nuevo pedido pagado ${order.orderNumber}`, html, text };
+  return { subject: `Nuevo pedido ${order.orderNumber} · ${storeName}`, html, text };
+}
+
+function readOrderPaymentMethod(metadata: Record<string, unknown> | undefined): string | null {
+  if (!metadata) return null;
+  const value = metadata.paymentMethod;
+  return value === 'yape' || value === 'plin' || value === 'bank' || value === 'cash'
+    ? value
+    : null;
+}
+
+function readPaymentProofUrl(metadata: Record<string, unknown> | undefined): string | null {
+  if (!metadata) return null;
+  const proof = metadata.paymentProof;
+  if (!proof || typeof proof !== 'object' || Array.isArray(proof)) return null;
+  const url = (proof as Record<string, unknown>).url;
+  return typeof url === 'string' && url.length > 0 ? url : null;
+}
+
+function buildPaymentProofEmail(
+  order: OrderWithItems,
+  storeId: string,
+  storeName: string,
+  proofUrl: string,
+): PickupReadyEmail {
+  const buyerName = readBuyerName(order) ?? 'tu cliente';
+  const total = formatMoney(order.total, order.currency);
+  const absoluteProof = proofUrl.startsWith('http') ? proofUrl : `${appBaseUrl()}${proofUrl}`;
+  const panelUrl = `${appBaseUrl()}/negocio/${storeId}/pedidos/${order.id}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+  <body style="margin:0;padding:24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;">
+      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#666666;">UMANTAI · COMPROBANTE RECIBIDO</p>
+      <h1 style="margin:8px 0 12px;font-size:24px;color:#111111;">${escapeHtml(buyerName)} subió su comprobante</h1>
+      <p style="margin:0 0 16px;font-size:16px;color:#444444;">
+        Pedido <strong>${escapeHtml(order.orderNumber)}</strong> · ${escapeHtml(total)} en ${escapeHtml(storeName)}.
+        Ábrelo, revisa la captura y confirma el pago para poder prepararlo.
+      </p>
+      <p style="margin:0 0 24px;"><img src="${escapeHtml(absoluteProof)}" alt="Comprobante de pago" style="max-width:100%;border-radius:12px;border:1px solid #e4e4e7;" /></p>
+      <p style="margin:0;">
+        <a href="${escapeHtml(panelUrl)}" style="display:inline-block;background:#111111;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;">
+          Revisar comprobante
+        </a>
+      </p>
+      <p style="margin:24px 0 0;font-size:13px;color:#888888;border-top:1px solid #e4e4e7;padding-top:16px;">
+        También puedes ver la captura con zoom dentro del detalle del pedido.
+      </p>
+    </div>
+  </body>
+</html>`;
+
+  const text = [
+    `${buyerName} subió el comprobante del pedido ${order.orderNumber}`,
+    '',
+    `Total: ${total}`,
+    `Comprobante: ${absoluteProof}`,
+    `Revisar: ${panelUrl}`,
+  ].join('\n');
+
+  return { subject: `Comprobante de pago · ${order.orderNumber}`, html, text };
 }
 
 // =============================================================================
@@ -485,13 +637,16 @@ export async function notifyLowStockAfterSale(orderId: string): Promise<LowStock
 
     if (low.length === 0) return { status: 'none_low', count: 0 };
 
+    const store = await resolveStoreRecipient(orderId);
+    if (!store?.email) return { status: 'failed', count: low.length, reason: 'store_email_missing' };
+
     const email = buildLowStockEmail(low);
 
     const { error } = await withTimeout(
       getResendClient().emails.send(
         {
           from: getNotificationSender(),
-          to: [getStoreNotificationEmail()],
+          to: [store.email],
           subject: email.subject,
           html: email.html,
           text: email.text,
@@ -531,8 +686,21 @@ export async function notifyNewOrderSafely(
     const order = await getOrderWithItems(orderId);
     if (!order) return { status: 'order_not_found' };
 
-    const recipient = getStoreNotificationEmail();
-    const email = buildNewOrderEmail(order);
+    const store = await resolveStoreRecipient(orderId);
+    const recipient = store?.email ?? null;
+    if (!store || !recipient) {
+      console.warn('[notificaciones] la tienda no tiene correo de aviso configurado', {
+        orderId,
+      });
+      return { status: 'invalid_recipient' };
+    }
+
+    const email = buildNewOrderEmail(
+      order,
+      store.storeId,
+      store.storeName,
+      readOrderPaymentMethod(order.metadata) ?? order.paymentMethod,
+    );
 
     const { data, error } = await withTimeout(
       getResendClient().emails.send(
@@ -562,6 +730,143 @@ export async function notifyNewOrderSafely(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.error('[notificaciones] no se pudo avisar a la tienda', { orderId, reason });
+    return { status: 'failed', reason };
+  }
+}
+
+/**
+ * Avisa a la tienda que el comprador subió (o reemplazó) la captura del pago.
+ * NUNCA lanza: la captura ya está guardada y el pedido sigue pendiente.
+ */
+export async function notifyPaymentProofSafely(
+  orderId: string,
+): Promise<CustomerNotificationResult> {
+  try {
+    if (!isStoreNotificationConfigured()) return { status: 'not_configured' };
+
+    const order = await getOrderWithItems(orderId);
+    if (!order) return { status: 'order_not_found' };
+
+    const proofUrl = readPaymentProofUrl(order.metadata);
+    if (!proofUrl) return { status: 'failed', reason: 'payment_proof_missing' };
+
+    const store = await resolveStoreRecipient(orderId);
+    if (!store?.email) return { status: 'invalid_recipient' };
+
+    const email = buildPaymentProofEmail(order, store.storeId, store.storeName, proofUrl);
+
+    const { data, error } = await withTimeout(
+      getResendClient().emails.send(
+        {
+          from: getNotificationSender(),
+          to: [store.email],
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
+          tags: [{ name: 'evento', value: 'comprobante_pago' }],
+        },
+        { idempotencyKey: `payment-proof-${order.id}-${order.updatedAt}` },
+      ),
+      SEND_TIMEOUT_MS,
+    );
+
+    if (error) {
+      console.error('[notificaciones] Resend rechazó el aviso de comprobante', {
+        orderId,
+        message: error.message,
+      });
+      return { status: 'failed', reason: error.message };
+    }
+
+    return { status: 'sent', messageId: data?.id };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error('[notificaciones] no se pudo avisar del comprobante', { orderId, reason });
+    return { status: 'failed', reason };
+  }
+}
+
+function escapeEmail(value: string): string {
+  return escapeHtml(value);
+}
+
+/**
+ * Avisa a los Platform Admin (tabla + correo de respaldo) que hay una tienda
+ * pendiente de aprobación. Best-effort: el alta ya ocurrió.
+ */
+export async function notifyAdminsNewStoreSafely(input: {
+  storeId: string;
+  storeName: string;
+  ownerEmail: string;
+  category: string | null;
+}): Promise<CustomerNotificationResult> {
+  try {
+    if (!getResendApiKey()) return { status: 'not_configured' };
+
+    const sql = getPlatformSql();
+    const recipients = new Set<string>();
+
+    if (sql) {
+      const rows = await sql`
+        SELECT u.email
+          FROM platform_admins pa
+          JOIN users u ON u.id = pa.user_id
+      `;
+      for (const row of rows as Array<Record<string, unknown>>) {
+        const email = typeof row.email === 'string' ? row.email.trim() : '';
+        if (EMAIL_PATTERN.test(email)) recipients.add(email);
+      }
+    }
+
+    const fallback = getStoreNotificationEmail();
+    if (EMAIL_PATTERN.test(fallback)) recipients.add(fallback);
+
+    if (recipients.size === 0) return { status: 'invalid_recipient' };
+
+    const panelUrl = `${appBaseUrl()}/admin/tiendas`;
+    const html = `<!DOCTYPE html>
+<html lang="es">
+  <body style="margin:0;padding:24px;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:28px;">
+      <p style="margin:0;font-size:14px;letter-spacing:2px;color:#b45309;">UMANTAI · TIENDA POR APROBAR</p>
+      <h1 style="margin:8px 0 12px;font-size:24px;color:#111111;">${escapeEmail(input.storeName)} necesita revisión</h1>
+      <p style="margin:0 0 16px;font-size:16px;color:#444444;">
+        La tienda se creó y está esperando aprobación. Entra al panel para revisarla y activarla.
+      </p>
+      <p style="margin:0 0 4px;font-size:14px;color:#555555;">Rubro: ${escapeEmail(input.category ?? 'sin especificar')}</p>
+      <p style="margin:0 0 24px;font-size:14px;color:#555555;">Cuenta: ${escapeEmail(input.ownerEmail)}</p>
+      <p style="margin:0;"><a href="${escapeHtml(panelUrl)}" style="display:inline-block;background:#111111;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:600;font-size:15px;">Revisar tiendas pendientes</a></p>
+    </div>
+  </body>
+</html>`;
+
+    let sent = 0;
+    let lastError: string | undefined;
+    for (const recipient of recipients) {
+      const { error } = await withTimeout(
+        getResendClient().emails.send(
+          {
+            from: getNotificationSender(),
+            to: [recipient],
+            subject: `Tienda por aprobar: ${input.storeName}`,
+            html,
+            text: `La tienda ${input.storeName} (${input.ownerEmail}) está pendiente de aprobación.\n${panelUrl}`,
+            tags: [{ name: 'evento', value: 'tienda_pendiente' }],
+          },
+          { idempotencyKey: `store-pending-${input.storeId}-${recipient}` },
+        ),
+        SEND_TIMEOUT_MS,
+      );
+      if (error) lastError = error.message;
+      else sent += 1;
+    }
+
+    return sent > 0
+      ? { status: 'sent' }
+      : { status: 'failed', reason: lastError ?? 'send_failed' };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error('[notificaciones] no se pudo avisar de la tienda pendiente', { reason });
     return { status: 'failed', reason };
   }
 }

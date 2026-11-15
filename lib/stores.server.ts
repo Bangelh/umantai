@@ -44,6 +44,7 @@ import {
   type StoreRole,
 } from './tenancy';
 import { validateStoreIdentity } from './store-identity';
+import { normalizeWhatsAppPhone } from './whatsapp';
 import {
   assertCanCreateStoreProduct,
   assertCanPublishStoreProduct,
@@ -80,6 +81,8 @@ export interface Store {
   longitude: number | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  /** WhatsApp público normalizado (`51` + 9 dígitos). Sale de `contact_phone`. */
+  whatsapp: string | null;
   active: boolean;
   /** Sello de publicación. NULL = la tienda nunca fue publicada. */
   approvedAt: string | null;
@@ -125,6 +128,8 @@ export interface Storefront {
 export interface StoreOrderSummary {
   id: string;
   orderNumber: string;
+  /** Nombre que dejó el comprador en el checkout, si lo escribió. */
+  buyerName: string | null;
   status: string;
   paymentStatus: string;
   total: number;
@@ -168,6 +173,7 @@ export function toStore(row: Row): Store {
     longitude: toNullableNumber(row.longitude),
     contactEmail: (row.contact_email as string | null) ?? null,
     contactPhone: (row.contact_phone as string | null) ?? null,
+    whatsapp: normalizeWhatsAppPhone(row.contact_phone as string | null),
     active: row.active === true,
     approvedAt: row.approved_at ? toIsoString(row.approved_at) : null,
     isDefault: row.is_default === true,
@@ -290,11 +296,14 @@ export async function searchDiscovery(
             s.slug                   AS store_slug,
             s.name                   AS store_name,
             s.category               AS store_category,
+            s.address                AS store_address,
+            s.district               AS store_district,
             sp.slug                  AS product_slug,
             sp.name                  AS name,
             sp.brand                 AS brand,
             sp.category              AS category,
             sp.description           AS description,
+            sp.image_url             AS image_url,
             CASE WHEN COALESCE(variants.variant_count, 0) > 0
               THEN variants.min_price ELSE sp.price_cents END AS price_cents,
             sp.currency              AS currency,
@@ -352,6 +361,17 @@ export async function searchDiscovery(
              WHERE v.store_product_id = sp.id
                AND v.archived_at IS NULL AND v.is_active
           ) variants ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS sold_count
+              FROM order_items oi
+              JOIN orders o ON o.id = oi.order_id
+             WHERE o.store_id = sp.store_id
+               AND oi.product_slug = sp.slug
+               AND o.status IN (
+                 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up',
+                 'out_for_delivery', 'delivered', 'completed'
+               )
+          ) sales ON TRUE
           WHERE sp.visible = TRUE
             AND sp.archived_at IS NULL
             AND (
@@ -478,6 +498,10 @@ export async function searchDiscovery(
     brand: (row.brand as string | null) ?? null,
     category: (row.category as string | null) ?? null,
     description: (row.description as string | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
+    storeAddress: (row.store_address as string | null) ?? null,
+    storeDistrict: (row.store_district as string | null) ?? null,
+    soldCount: toNumber(row.sold_count),
     priceCents: toNumber(row.price_cents),
     currency: String(row.currency ?? 'PEN'),
     unit: String(row.unit ?? 'unidad'),
@@ -1094,6 +1118,15 @@ export async function updateStoreProduct(
   return toStoreProduct({ ...row, available: 0 });
 }
 
+function readBuyerName(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const buyer = (metadata as Record<string, unknown>).buyer;
+  if (!buyer || typeof buyer !== 'object' || Array.isArray(buyer)) return null;
+  const name = (buyer as Record<string, unknown>).fullName;
+  if (typeof name !== 'string') return null;
+  return name.trim() || null;
+}
+
 export async function listStoreOrders(
   userId: string,
   storeId: string,
@@ -1104,7 +1137,7 @@ export async function listStoreOrders(
 
   const rows = await sql`
     SELECT o.id, o.order_number, o.status, o.payment_status, o.total, o.currency,
-           o.item_count, o.contact_email, o.fulfillment_type, o.created_at,
+           o.item_count, o.contact_email, o.fulfillment_type, o.created_at, o.metadata,
            COALESCE(
              json_agg(
                json_build_object(
@@ -1127,6 +1160,7 @@ export async function listStoreOrders(
   return (rows as Row[]).map((row) => ({
     id: String(row.id),
     orderNumber: String(row.order_number),
+    buyerName: readBuyerName(row.metadata),
     status: String(row.status),
     paymentStatus: String(row.payment_status),
     total: toNumber(row.total),
@@ -1145,6 +1179,255 @@ export async function listStoreOrders(
   }));
 }
 
+export interface StorePayments {
+  /** Número de Yape (solo dígitos o con espacios, tal como lo cargó la tienda). */
+  yape: string | null;
+  plin: string | null;
+  /** Cuenta bancaria / CCI en texto libre, con el banco incluido por la tienda. */
+  bankAccount: string | null;
+  /** Titular de la cuenta. */
+  holder: string | null;
+  /** La tienda acepta efectivo al retirar (solo compradores con cuenta). */
+  cash: boolean;
+}
+
+const EMPTY_PAYMENTS: StorePayments = {
+  yape: null,
+  plin: null,
+  bankAccount: null,
+  holder: null,
+  cash: false,
+};
+
+/**
+ * Datos de pago públicos de una tienda. Viven en `stores.metadata.payments`
+ * para no migrar `stores` por una configuración que la tienda edita sola.
+ *
+ * Un JSON viejo o incompleto no rompe nada: cada campo se lee por separado y
+ * el efectivo queda deshabilitado salvo que esté explícitamente en `true`.
+ */
+/**
+ * Valida los datos de pago que llegan del navegador (panel o alta de tienda).
+ * Devuelve `null` si la forma es inválida; los campos vacíos quedan en `null`.
+ */
+export function readStorePaymentsInput(value: unknown): StorePayments | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+
+  const optionalText = (raw: unknown): string | null | undefined => {
+    if (raw === undefined) return undefined;
+    if (raw === null) return null;
+    if (typeof raw !== 'string') return undefined;
+    return raw.trim() || null;
+  };
+
+  const yape = optionalText(record.yape);
+  const plin = optionalText(record.plin);
+  const bankAccount = optionalText(record.bankAccount);
+  const holder = optionalText(record.holder);
+  if (yape === undefined || plin === undefined || bankAccount === undefined || holder === undefined) {
+    return null;
+  }
+
+  const phonePattern = /^[0-9+\s-]{6,20}$/;
+  if (yape && !phonePattern.test(yape)) return null;
+  if (plin && !phonePattern.test(plin)) return null;
+  if (bankAccount && bankAccount.length > 60) return null;
+  if (holder && holder.length > 80) return null;
+
+  return { yape, plin, bankAccount, holder, cash: record.cash === true };
+}
+
+export function parseStorePayments(metadata: unknown): StorePayments {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return EMPTY_PAYMENTS;
+  }
+  const raw = (metadata as Record<string, unknown>).payments;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return EMPTY_PAYMENTS;
+
+  const record = raw as Record<string, unknown>;
+  const text = (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+
+  return {
+    yape: text(record.yape),
+    plin: text(record.plin),
+    bankAccount: text(record.bankAccount),
+    holder: text(record.holder),
+    cash: record.cash === true,
+  };
+}
+
+export interface OrderStorePublicInfo {
+  id: string;
+  name: string;
+  slug: string;
+  whatsapp: string | null;
+  address: string | null;
+  district: string | null;
+  payments: StorePayments;
+}
+
+/**
+ * Tienda a la que pertenece un pedido, para la página pública del comprador.
+ *
+ * Solo devuelve datos que el comprador ya conoce (nombre, ubicación, WhatsApp
+ * de atención). No expone membresías, correo interno ni configuración.
+ */
+export async function getOrderStorePublicInfo(
+  orderId: string,
+): Promise<OrderStorePublicInfo | null> {
+  const sql = requirePlatformSql();
+  const rows = (await sql`
+    SELECT s.id, s.name, s.slug, s.contact_phone, s.address, s.district, s.metadata
+      FROM orders o
+      JOIN stores s ON s.id = o.store_id
+     WHERE o.id = ${orderId}::uuid
+     LIMIT 1
+  `) as Row[];
+
+  const row = rows[0];
+  if (!row) return null;
+
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    slug: String(row.slug),
+    whatsapp: normalizeWhatsAppPhone(row.contact_phone as string | null),
+    address: (row.address as string | null) ?? null,
+    district: (row.district as string | null) ?? null,
+    payments: parseStorePayments(row.metadata),
+  };
+}
+
+/** Datos de pago de una tienda activa, para el checkout del comprador. */
+export async function getStorePaymentInfoBySlug(slug: string): Promise<StorePayments | null> {
+  const sql = getPlatformSql();
+  if (!sql) return null;
+
+  const rows = (await sql`
+    SELECT metadata FROM stores
+     WHERE lower(slug) = lower(${normalizeStoreSlug(slug)})
+       AND active = TRUE
+     LIMIT 1
+  `) as Row[];
+  const row = rows[0];
+  return row ? parseStorePayments(row.metadata) : null;
+}
+
+/** Lectura de pagos para el panel: exige membresía de la tienda. */
+export async function getStorePaymentsForOwner(
+  userId: string,
+  storeId: string,
+): Promise<StorePayments> {
+  await requireStoreAccess(userId, storeId);
+  const sql = requirePlatformSql();
+  const rows = (await sql`
+    SELECT metadata FROM stores WHERE id = ${storeId}::uuid LIMIT 1
+  `) as Row[];
+  return rows[0] ? parseStorePayments(rows[0].metadata) : EMPTY_PAYMENTS;
+}
+
+/** Guarda los datos de pago (Yape, Plin, cuenta y efectivo). */
+export async function updateStorePayments(
+  userId: string,
+  storeId: string,
+  payments: StorePayments,
+): Promise<StorePayments> {
+  await requireStoreAccess(userId, storeId, 'admin');
+  const sql = requirePlatformSql();
+
+  const clean: StorePayments = {
+    yape: payments.yape?.trim() || null,
+    plin: payments.plin?.trim() || null,
+    bankAccount: payments.bankAccount?.trim() || null,
+    holder: payments.holder?.trim() || null,
+    cash: payments.cash === true,
+  };
+
+  await sql`
+    UPDATE stores
+       SET metadata = COALESCE(metadata, '{}'::jsonb)
+                      || jsonb_build_object('payments', ${JSON.stringify(clean)}::jsonb),
+           updated_at = NOW()
+     WHERE id = ${storeId}::uuid
+  `;
+
+  return clean;
+}
+
+/**
+ * Actualiza el WhatsApp de atención de la tienda (`stores.contact_phone`).
+ * El número llega ya normalizado desde la ruta; `null` lo borra.
+ */
+export async function updateStoreContactPhone(
+  userId: string,
+  storeId: string,
+  phone: string | null,
+): Promise<Store> {
+  await requireStoreAccess(userId, storeId, 'admin');
+  const sql = requirePlatformSql();
+
+  const rows = (await sql`
+    UPDATE stores
+       SET contact_phone = ${phone}, updated_at = NOW()
+     WHERE id = ${storeId}::uuid
+     RETURNING *
+  `) as Row[];
+
+  const row = rows[0];
+  if (!row) throw new Error('store_not_found');
+  return toStore(row);
+}
+
+/**
+ * Comprobante de pago que subió el comprador.
+ *
+ * Vive en `orders.metadata.paymentProof` para no cambiar el esquema: el pedido
+ * ya guarda ahí los datos del comprador y del pago simulado.
+ */
+export interface StoreOrderPaymentProof {
+  url: string;
+  uploadedAt: string | null;
+  status: 'submitted' | 'approved' | 'rejected';
+  note: string | null;
+}
+
+export function parseStoreOrderPaymentProof(
+  metadata: unknown,
+): StoreOrderPaymentProof | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const proof = (metadata as Record<string, unknown>).paymentProof;
+  if (!proof || typeof proof !== 'object' || Array.isArray(proof)) return null;
+
+  const record = proof as Record<string, unknown>;
+  const url = typeof record.url === 'string' ? record.url : null;
+  if (!url) return null;
+
+  const status =
+    record.status === 'approved' || record.status === 'rejected'
+      ? record.status
+      : 'submitted';
+
+  return {
+    url,
+    uploadedAt: typeof record.uploadedAt === 'string' ? record.uploadedAt : null,
+    status,
+    note: typeof record.note === 'string' ? record.note : null,
+  };
+}
+
+export type OrderPaymentMethod = 'yape' | 'plin' | 'bank' | 'cash';
+
+/** Método de pago elegido al confirmar la compra (`orders.metadata.paymentMethod`). */
+export function parseOrderPaymentMethod(metadata: unknown): OrderPaymentMethod | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const value = (metadata as Record<string, unknown>).paymentMethod;
+  return value === 'yape' || value === 'plin' || value === 'bank' || value === 'cash'
+    ? value
+    : null;
+}
+
 export interface StoreOrderLine {
   id: string;
   productName: string;
@@ -1160,6 +1443,7 @@ export interface StoreOrderLine {
 export interface StoreOrderDetail {
   id: string;
   orderNumber: string;
+  buyerName: string | null;
   status: string;
   paymentStatus: string;
   fulfillmentType: string;
@@ -1175,6 +1459,9 @@ export interface StoreOrderDetail {
   createdAt: string;
   reservationExpiresAt: string | null;
   reservationReleased: boolean;
+  paymentProof: StoreOrderPaymentProof | null;
+  /** Método elegido por el comprador; `null` en pedidos anteriores. */
+  paymentMethod: 'yape' | 'plin' | 'bank' | 'cash' | null;
   lines: StoreOrderLine[];
 }
 
@@ -1196,7 +1483,7 @@ export async function getStoreOrderDetail(
     SELECT o.id, o.order_number, o.status, o.payment_status, o.fulfillment_type,
            o.contact_email, o.contact_phone, o.customer_note, o.currency,
            o.subtotal, o.discount_total, o.shipping_total, o.total, o.item_count,
-           o.created_at, o.reservation_expires_at, o.reservation_released,
+           o.created_at, o.reservation_expires_at, o.reservation_released, o.metadata,
            COALESCE(
              json_agg(
                json_build_object(
@@ -1226,6 +1513,7 @@ export async function getStoreOrderDetail(
   return {
     id: String(row.id),
     orderNumber: String(row.order_number),
+    buyerName: readBuyerName(row.metadata),
     status: String(row.status),
     paymentStatus: String(row.payment_status),
     fulfillmentType: String(row.fulfillment_type),
@@ -1243,6 +1531,8 @@ export async function getStoreOrderDetail(
       ? toIsoString(row.reservation_expires_at)
       : null,
     reservationReleased: row.reservation_released === true,
+    paymentProof: parseStoreOrderPaymentProof(row.metadata),
+    paymentMethod: parseOrderPaymentMethod(row.metadata),
     lines: Array.isArray(row.lines)
       ? (row.lines as Array<Record<string, unknown>>).map((line) => ({
           id: String(line.id),
@@ -1271,7 +1561,7 @@ export async function listCustomerOrders(userId: string, limit = 50): Promise<St
 
   const rows = await sql`
     SELECT o.id, o.order_number, o.public_token, o.status, o.payment_status, o.total, o.currency,
-           o.item_count, o.contact_email, o.fulfillment_type, o.created_at,
+           o.item_count, o.contact_email, o.fulfillment_type, o.created_at, o.metadata,
            s.slug AS store_slug, s.name AS store_name,
            COALESCE(
              json_agg(
@@ -1296,6 +1586,7 @@ export async function listCustomerOrders(userId: string, limit = 50): Promise<St
   return (rows as Row[]).map((row) => ({
     id: String(row.id),
     orderNumber: String(row.order_number),
+    buyerName: readBuyerName(row.metadata),
     publicToken: String(row.public_token),
     status: String(row.status),
     paymentStatus: String(row.payment_status),
