@@ -19,10 +19,20 @@ import { useI18n } from "@/components/i18n/I18nProvider";
 import { toast } from "sonner";
 
 /**
- * UUID v4 para la idempotencia del checkout.
- * `crypto.randomUUID()` solo existe en contextos seguros (https / localhost), así
- * que hay un respaldo por si pruebas desde una IP de la LAN por http.
+ * /cart — carrito y confirmación de compra.
+ *
+ * Decisiones de esta versión:
+ *   · El correo y el nombre se completan con la cuenta iniciada; el invitado
+ *     puede escribirlos a mano.
+ *   · El botón "−" quita la línea cuando la cantidad ya es 1: llegar a cero es
+ *     la forma natural de sacar un producto.
+ *   · Hay UN solo paso: "Confirmar compra" abre una pregunta explícita con el
+ *     total y el método de pago. Antes había un "Revisar pedido" que repetía el
+ *     carrito y no agregaba información.
+ *   · Efectivo solo aparece con sesión y si la tienda lo aceptó. El servidor
+ *     vuelve a validar ambas cosas.
  */
+
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -30,12 +40,20 @@ function newIdempotencyKey(): string {
   return `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+type StorePayments = {
+  yape: string | null;
+  plin: string | null;
+  bankAccount: string | null;
+  holder: string | null;
+  cash: boolean;
+};
+
+type PaymentChoice = "yape" | "cash";
+
 export default function CartPage() {
   const { locale, t } = useI18n();
   const { items, removeItem, updateQuantity, clearCart, getTotalPrice } = useCartStore();
   const router = useRouter();
-  // Ver `lib/useHydrated.ts`: el carrito vive en localStorage, así que no se puede
-  // pintar hasta después del montaje sin romper la hidratación.
   const hydrated = useHydrated();
 
   const money = useCallback(
@@ -47,32 +65,84 @@ export default function CartPage() {
   const [fullName, setFullName] = useState("");
   const [docNumber, setDocNumber] = useState("");
   const [phase, setPhase] = useState<CheckoutPhase>("cart");
-  // El error se guarda junto a la firma del carrito: si el carrito cambia, el
-  // error viejo deja de mostrarse sin necesidad de un setState dentro de un effect.
+  const [prefilled, setPrefilled] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<StorePayments | null>(null);
+  const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("yape");
   const [orderErrorState, setOrderErrorState] = useState<{
     signature: string;
     error: ParsedOrderError;
   } | null>(null);
 
   const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  /**
-   * Una clave por INTENTO de pago, no por render.
-   *
-   * Se crea recién al confirmar y se reutiliza mientras el envío falle, así un
-   * reintento devuelve el MISMO pedido en vez de crear dos. Se descarta cuando el
-   * carrito cambia, porque eso ya es otra intención de pago.
-   */
   const idempotencyKeyRef = useRef<string | null>(null);
+  const prefillDone = useRef(false);
 
   const cartSignature = items
     .map((item) => `${cartLineKey(item)}x${item.quantity}`)
     .sort()
     .join("|");
 
+  const storeSlug = items[0]?.storeSlug;
+
   useEffect(() => {
     idempotencyKeyRef.current = null;
   }, [cartSignature]);
+
+  // Cuenta: correo y nombre se completan solos. Un 401 significa invitado.
+  useEffect(() => {
+    if (prefillDone.current) return;
+    prefillDone.current = true;
+
+    void (async () => {
+      const response = await fetch("/api/account/profile", {
+        headers: { accept: "application/json" },
+      }).catch(() => null);
+      if (!response || !response.ok) return;
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            profile?: {
+              email?: string;
+              name?: string;
+              fullName?: string | null;
+              docNumber?: string | null;
+            } | null;
+          }
+        | null;
+      const profile = payload?.profile;
+      if (!profile) return;
+
+      setLoggedIn(true);
+      if (profile.email) {
+        setEmail((current) => current || profile.email || "");
+        setPrefilled(true);
+      }
+      setFullName((current) => current || profile.fullName || profile.name || "");
+      setDocNumber((current) => current || profile.docNumber || "");
+    })();
+  }, []);
+
+  // Datos de pago de la tienda del carrito (Yape/Plin/efectivo).
+  useEffect(() => {
+    if (!hydrated || !storeSlug) return;
+    let cancelled = false;
+
+    void (async () => {
+      const response = await fetch(`/api/stores/${encodeURIComponent(storeSlug)}/payment`, {
+        headers: { accept: "application/json" },
+      }).catch(() => null);
+      if (!response || !response.ok) return;
+      const payload = (await response.json().catch(() => null)) as
+        | { payments?: StorePayments }
+        | null;
+      if (!cancelled && payload?.payments) setPaymentInfo(payload.payments);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, storeSlug]);
 
   const orderError =
     orderErrorState && orderErrorState.signature === cartSignature ? orderErrorState.error : null;
@@ -85,9 +155,13 @@ export default function CartPage() {
   const isConfirming = phase === "confirming";
   const total = getTotalPrice();
 
-  // Un pedido pertenece a UNA tienda. Se puede llenar el carrito desde varias
-  // vitrinas, pero el checkout exige comprar una a la vez; el servidor también
-  // rechaza productos que no sean de la tienda declarada.
+  // Derivado, no un efecto: si el efectivo deja de estar disponible (la tienda
+  // lo desactiva o la sesión no existe), la UI vuelve a Yape/Plin sin un render
+  // en cascada ni un estado intermedio inválido.
+  const cashAvailable = loggedIn && Boolean(paymentInfo?.cash);
+  const effectivePaymentChoice: PaymentChoice =
+    paymentChoice === "cash" && !cashAvailable ? "yape" : paymentChoice;
+
   const cartStores = new Set(items.map((item) => item.storeSlug ?? "umantai"));
   const isMixedStores = cartStores.size > 1;
 
@@ -109,7 +183,6 @@ export default function CartPage() {
     setPhase((current) => transitionCheckout(current, event));
   }, []);
 
-  // Escape cierra la confirmación, salvo que la petición esté en vuelo.
   useEffect(() => {
     if (!isConfirming) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -144,9 +217,13 @@ export default function CartPage() {
   };
 
   const handleConfirmPurchase = async () => {
-    // Doble candado: el reducer ignora `confirm` fuera de `confirming` y el estado
-    // deshabilita el botón. Un doble clic no dispara dos POST.
     if (phase !== "confirming") return;
+
+    if (effectivePaymentChoice === "cash" && !cashAvailable) {
+      toast.error(t("cart.paymentCashUnavailable"));
+      return;
+    }
+
     advance("confirm");
 
     const contactEmail = email.trim();
@@ -161,21 +238,15 @@ export default function CartPage() {
           idempotencyKey,
           contactEmail,
           fullName: fullName.trim() || undefined,
-          // DNI: Mercado Pago lo pide para el cobro con Yape/Plin (sin RUC).
           docType: docNumber.trim() ? "DNI" : undefined,
           docNumber: docNumber.trim() || undefined,
-          // El negocio opera con retiro en Locker. El locker/slot concreto lo asigna
-          // operación al marcar el pedido como listo, no el checkout.
           fulfillmentType: "pickup_locker",
-          // Todas las líneas deben ser de la misma tienda. La UI bloquea el
-          // checkout mixto; el servidor igual valida producto por producto.
+          paymentMethod: effectivePaymentChoice,
           storeSlug: items[0]?.storeSlug,
           items: items.map((item) => ({
             productSlug: item.slug,
             storeSlug: item.storeSlug,
             quantity: item.quantity,
-            // Solo opciones: el servidor valida la combinación y recalcula nombre y
-            // precio contra el catálogo. `cartItemVariant` normaliza carritos antiguos.
             variant: cartItemVariant(item),
           })),
         }),
@@ -184,8 +255,6 @@ export default function CartPage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        // El pedido NO se creó: conservamos el carrito y la misma clave de idempotencia,
-        // por lo que reintentar es seguro.
         const parsed = parseOrderErrorPayload(payload);
         setOrderError(parsed);
         advance("failure");
@@ -213,12 +282,6 @@ export default function CartPage() {
     }
   };
 
-  /*
-    Mismo markup en servidor y primer render del cliente: el carrito recién aparece
-    cuando `useHydrated` pasa a true. Si en cambio renderizáramos `items` directo,
-    el primer render del cliente ya tendría los productos rehidratados y React
-    tiraría el error de hidratación en la consola.
-  */
   if (!hydrated) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-4">
@@ -289,8 +352,6 @@ export default function CartPage() {
                   {variantLabel && (
                     <div className="mt-0.5 text-body text-secondary">{variantLabel}</div>
                   )}
-                  {/* Precio unitario explícito: sin esto el comprador solo ve el
-                      subtotal de la línea y no puede verificarlo. */}
                   <div className="mt-1 text-sm text-tertiary">
                     {t("cart.unitPrice")}: {money(item.price)}
                   </div>
@@ -306,9 +367,16 @@ export default function CartPage() {
                 <div className="flex items-center rounded-xl border border-border-strong">
                   <button
                     type="button"
-                    aria-label={t("cart.decrease", { name: item.name })}
-                    onClick={() => updateQuantity(cartLineKey(item), item.quantity - 1)}
-                    disabled={isSubmitting || item.quantity <= 1}
+                    aria-label={
+                      item.quantity <= 1
+                        ? t("cart.removeNamed", { name: item.name })
+                        : t("cart.decrease", { name: item.name })
+                    }
+                    onClick={() => {
+                      if (item.quantity <= 1) removeItem(cartLineKey(item));
+                      else updateQuantity(cartLineKey(item), item.quantity - 1);
+                    }}
+                    disabled={isSubmitting}
                     className="h-12 w-12 rounded-l-xl text-2xl leading-none hover:bg-surface-raised disabled:opacity-40"
                   >
                     −
@@ -349,11 +417,16 @@ export default function CartPage() {
         <div className="font-mono text-2xl font-semibold tabular-nums">{money(total)}</div>
       </div>
 
-      {/* Datos de contacto: `POST /api/orders` exige `contactEmail`.
-          Las etiquetas son visibles y permanentes: el placeholder no reemplaza a
-          un label (desaparece al escribir y el campo deja de tener nombre). */}
+      {/* Contacto: el correo de la cuenta se completa solo. */}
       <div className="mt-8 border-t border-border pt-6">
-        <h2 className="mb-3 text-body-lg font-semibold">{t("cart.contact")}</h2>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-body-lg font-semibold">{t("cart.contact")}</h2>
+          {prefilled && (
+            <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
+              {t("cart.prefilled")}
+            </span>
+          )}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="block sm:col-span-2">
             <label htmlFor="cart-email" className="mb-1 block text-body font-medium text-primary">
@@ -409,7 +482,7 @@ export default function CartPage() {
           disabled={isSubmitting}
           className="min-h-14 flex-1 rounded-xl bg-brand text-body-lg font-semibold text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {t("cart.review")}
+          {isSubmitting ? t("cart.creating") : t("cart.confirmCta")}
         </button>
         <Link
           href="/"
@@ -452,7 +525,7 @@ export default function CartPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="checkout-confirm-title"
-            className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface p-5 sm:max-w-2xl sm:rounded-3xl sm:p-7"
+            className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface p-5 sm:max-w-lg sm:rounded-3xl sm:p-7"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -460,9 +533,9 @@ export default function CartPage() {
                   {t("cart.confirmKicker")}
                 </div>
                 <h2 id="checkout-confirm-title" className="mt-1 text-2xl font-semibold tracking-tight">
-                  {t("cart.confirmTitle")}
+                  {t("cart.confirmSafetyTitle")}
                 </h2>
-                <p className="mt-1.5 text-sm text-tertiary">{t("cart.confirmBody")}</p>
+                <p className="mt-1.5 text-sm text-secondary">{t("cart.confirmSafetyBody")}</p>
               </div>
               <button
                 type="button"
@@ -475,33 +548,84 @@ export default function CartPage() {
               </button>
             </div>
 
-            <ul className="mt-5 divide-y divide-border border-y border-border">
-              {summary.lines.map((line, index) => (
-                <li key={`${line.name}-${index}`} className="flex justify-between gap-4 py-3">
-                  <div>
-                    <div className="font-medium">{line.name}</div>
-                    {line.brand && <div className="text-xs text-tertiary">{line.brand}</div>}
-                    {line.variantLabel && (
-                      <div className="mt-1 text-xs text-tertiary">{line.variantLabel}</div>
-                    )}
-                    <div className="mt-1 text-sm text-tertiary">
-                      {line.quantity} × {money(line.unitPrice)}
-                    </div>
-                  </div>
-                  <div className="text-right font-mono tabular-nums">{money(line.lineTotal)}</div>
-                </li>
-              ))}
-            </ul>
+            {/* Resumen de una línea: el detalle ya está detrás, en el carrito. */}
+            <div className="mt-5 rounded-2xl border border-border bg-background p-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm text-secondary">
+                  {t("cart.summaryCount", { count: summary.itemCount })}
+                </span>
+                <span className="font-mono text-2xl font-semibold tabular-nums">
+                  {money(summary.total)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted">{t("cart.pricesServer")}</p>
+            </div>
 
-            <div className="mt-4 flex justify-between text-sm text-secondary">
-              <span>{t("cart.subtotal")}</span>
-              <span className="font-mono tabular-nums">{money(summary.subtotal)}</span>
-            </div>
-            <div className="mt-2 flex justify-between text-body-lg font-medium">
-              <span>{t("cart.total")}</span>
-              <span className="font-mono tabular-nums tracking-tight">{money(summary.total)}</span>
-            </div>
-            <p className="mt-1 text-xs text-muted">{t("cart.pricesServer")}</p>
+            <fieldset className="mt-5">
+              <legend className="text-body font-semibold">{t("cart.payment")}</legend>
+              <div className="mt-2 space-y-2">
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${
+                    effectivePaymentChoice === "yape"
+                      ? "border-brand bg-surface-raised"
+                      : "border-border hover:bg-surface-raised/60"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="yape"
+                    checked={effectivePaymentChoice === "yape"}
+                    onChange={() => setPaymentChoice("yape")}
+                    className="mt-1 h-4 w-4 accent-[var(--um-brand)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-body font-medium">{t("cart.paymentYape")}</span>
+                    <span className="mt-0.5 block text-xs text-tertiary">
+                      {t("cart.paymentYapeHint")}
+                    </span>
+                  </span>
+                </label>
+
+                <label
+                  className={`flex items-start gap-3 rounded-xl border p-3 ${
+                    !cashAvailable
+                      ? "cursor-not-allowed border-border opacity-60"
+                      : effectivePaymentChoice === "cash"
+                        ? "cursor-pointer border-brand bg-surface-raised"
+                        : "cursor-pointer border-border hover:bg-surface-raised/60"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    value="cash"
+                    checked={effectivePaymentChoice === "cash"}
+                    disabled={!cashAvailable}
+                    onChange={() => setPaymentChoice("cash")}
+                    className="mt-1 h-4 w-4 accent-[var(--um-brand)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-body font-medium">{t("cart.paymentCash")}</span>
+                    <span className="mt-0.5 block text-xs text-tertiary">
+                      {!loggedIn
+                        ? t("cart.paymentCashAccount")
+                        : !paymentInfo?.cash
+                          ? t("cart.paymentCashUnavailable")
+                          : t("cart.paymentCashHint")}
+                    </span>
+                    {!loggedIn && (
+                      <Link
+                        href="/ingresar?next=/cart"
+                        className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2"
+                      >
+                        {t("cart.signIn")}
+                      </Link>
+                    )}
+                  </span>
+                </label>
+              </div>
+            </fieldset>
 
             {orderError && (
               <div
@@ -557,7 +681,7 @@ export default function CartPage() {
                 disabled={isSubmitting}
                 className="min-h-12 flex-1 rounded-xl bg-brand font-semibold text-background hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? t("cart.creating") : t("cart.confirm")}
+                {isSubmitting ? t("cart.creating") : t("cart.confirmSafetyButton")}
               </button>
             </div>
           </div>

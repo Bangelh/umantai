@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { getAllOverrides, hasDatabaseConnection } from '@/lib/db';
 import { baseProductsData, getProductOptions, type Product } from '@/lib/products';
 import {
@@ -21,11 +21,18 @@ import {
 } from '@/lib/commerce.server';
 import { buildStockConflictResponse, findStockShortages } from '@/lib/stock-conflict';
 import { getSessionUser } from '@/lib/auth.server';
-import { DEFAULT_STORE_ID, DEFAULT_STORE_SLUG } from '@/lib/stores.server';
+import {
+  DEFAULT_STORE_ID,
+  DEFAULT_STORE_SLUG,
+  getStorePaymentInfoBySlug,
+} from '@/lib/stores.server';
 import { resolveStoreCheckout } from '@/lib/store-catalog.server';
 import { CatalogError } from '@/lib/catalog';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
 import { withRequestLogging } from '@/lib/observability.server';
+import { notifyStoreNewOrderSafely } from '@/lib/whatsapp.server';
+import { notifyNewOrderSafely } from '@/lib/notifications.server';
+import { isPlatformAdminUser } from '@/lib/platform-admin.server';
 
 /**
  * POST /api/orders — crea un pedido del carrito y reserva su stock.
@@ -61,7 +68,7 @@ import { withRequestLogging } from '@/lib/observability.server';
 /** TTL de la reserva de stock. Súbelo si el checkout real es más lento. */
 const RESERVATION_TTL_MINUTES = (() => {
   const raw = Number(process.env.COMMERCE_RESERVATION_TTL_MINUTES);
-  return Number.isFinite(raw) && raw > 0 ? raw : 30;
+  return Number.isFinite(raw) && raw > 0 ? raw : 15;
 })();
 
 /** Límite defensivo por línea (no hay tope en la BD; evita un carrito absurdo). */
@@ -83,6 +90,18 @@ interface OrderRequestBody {
   items?: unknown;
   /** Tienda de la vitrina. Ausente = catálogo legacy (fase 1). */
   storeSlug?: unknown;
+  /** yape | plin | bank | cash. El efectivo exige cuenta y tienda que lo acepte. */
+  paymentMethod?: unknown;
+}
+
+type OrderPaymentMethod = 'yape' | 'plin' | 'bank' | 'cash';
+
+const PAYMENT_METHODS: readonly OrderPaymentMethod[] = ['yape', 'plin', 'bank', 'cash'];
+
+function readPaymentMethod(value: unknown): OrderPaymentMethod {
+  return typeof value === 'string' && (PAYMENT_METHODS as readonly string[]).includes(value)
+    ? (value as OrderPaymentMethod)
+    : 'yape';
 }
 
 interface RawOrderLine {
@@ -161,6 +180,15 @@ async function handleCreateOrder(request: NextRequest) {
   // ── Identidad (opcional): el checkout de invitado sigue siendo válido ─────
   // Si hay sesión, el pedido se asocia a `orders.user_id`. Nunca se exige login.
   const sessionUser = await getSessionUser(request.headers);
+  if (sessionUser && (await isPlatformAdminUser(sessionUser))) {
+    return NextResponse.json(
+      {
+        error: 'Las cuentas de administración de UMANTAI no pueden comprar. Usa una cuenta de comprador.',
+        code: 'platform_admin_cannot_buy',
+      },
+      { status: 403 },
+    );
+  }
 
   // ── Validación del contacto ────────────────────────────────────────────────
   const contactEmail =
@@ -189,6 +217,7 @@ async function handleCreateOrder(request: NextRequest) {
   //   · `storeSlug` de una tienda de la plataforma → `store_products`.
   //   · sin tienda (o la legacy)                    → catálogo base + overrides.
   const storeSlug = asTrimmedString(body.storeSlug);
+  const paymentMethod = readPaymentMethod(body.paymentMethod);
   const lineStoreHints = rawItems
     .map((raw) => asTrimmedString(((raw ?? {}) as RawOrderLine).storeSlug))
     .filter((slug): slug is string => !!slug);
@@ -280,6 +309,35 @@ async function handleCreateOrder(request: NextRequest) {
     }
   }
 
+  // ── Efectivo: solo compradores con cuenta y tiendas que lo acepten ──────────
+  // El efectivo no se paga por adelantado: la tienda recibe el pedido y confirma
+  // si acepta el método antes de prepararlo. Sin sesión no hay a quién reclamarle
+  // el pedido, así que se rechaza en el servidor (no solo en la UI).
+  if (paymentMethod === 'cash') {
+    if (!sessionUser) {
+      return NextResponse.json(
+        {
+          error: 'Inicia sesión para pagar en efectivo al retirar.',
+          code: 'cash_requires_account',
+        },
+        { status: 403 },
+      );
+    }
+    if (!storeSlug) {
+      return NextResponse.json(
+        { error: 'El pago en efectivo no está disponible para este catálogo.', code: 'cash_unavailable' },
+        { status: 400 },
+      );
+    }
+    const payments = await getStorePaymentInfoBySlug(storeSlug).catch(() => null);
+    if (!payments?.cash) {
+      return NextResponse.json(
+        { error: 'Esta tienda no acepta pago en efectivo.', code: 'cash_unavailable' },
+        { status: 400 },
+      );
+    }
+  }
+
   // ── Validación de stock FRESCA antes de crear el pedido ─────────────────────
   // El carrito muestra el stock de cuando se agregó el producto; para cuando el
   // comprador confirma, otro checkout pudo llevarse las últimas unidades. Acá se
@@ -310,6 +368,7 @@ async function handleCreateOrder(request: NextRequest) {
   if (Object.keys(buyer).length > 0) metadata.buyer = buyer;
   if (storeSlug) metadata.storeSlug = storeSlug;
   if (sessionUser) metadata.userId = sessionUser.id;
+  metadata.paymentMethod = paymentMethod;
 
   const idempotencyKey = asTrimmedString(body.idempotencyKey);
   const channel = isOrderChannel(body.channel) ? body.channel : 'web';
@@ -357,6 +416,16 @@ async function handleCreateOrder(request: NextRequest) {
       },
       { metadata },
     );
+
+    // Avisos a la tienda (correo + WhatsApp): best-effort y después de responder.
+    // El correo va al contacto de la tienda y el WhatsApp a su número; sin
+    // credenciales simplemente no se envía y el pedido sigue su curso.
+    after(async () => {
+      await Promise.allSettled([
+        notifyNewOrderSafely(order.id),
+        notifyStoreNewOrderSafely(order.id),
+      ]);
+    });
 
     return NextResponse.json({ order }, { status: 201 });
   } catch (error) {
