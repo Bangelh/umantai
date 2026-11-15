@@ -41,32 +41,39 @@ interface SessionPayload {
   error?: string;
 }
 
+interface SessionSnapshot {
+  status: PlatformAdminStatus;
+  email: string | null;
+}
+
 export function usePlatformAdminSession(): PlatformAdminSession {
   const [status, setStatus] = useState<PlatformAdminStatus>('checking');
   const [email, setEmail] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  // La lectura es pura: devuelve el snapshot y deja los setState al llamador.
+  // Así el efecto inicial puede esperar el fetch sin disparar un render síncrono.
+  const readSession = useCallback(async (): Promise<SessionSnapshot> => {
     try {
       const response = await fetch('/api/admin/session', {
         cache: 'no-store',
         credentials: 'same-origin',
       });
       const payload = (await response.json().catch(() => null)) as SessionPayload | null;
-      if (!response.ok) {
-        setStatus('unavailable');
-        return;
-      }
+      if (!response.ok) return { status: 'unavailable', email: null };
       if (payload?.authenticated) {
-        setEmail(payload.user?.email ?? null);
-        setStatus('authenticated');
-        return;
+        return { status: 'authenticated', email: payload.user?.email ?? null };
       }
-      setEmail(null);
-      setStatus('anonymous');
+      return { status: 'anonymous', email: null };
     } catch {
-      setStatus('unavailable');
+      return { status: 'unavailable', email: null };
     }
   }, []);
+
+  const refresh = useCallback(async () => {
+    const next = await readSession();
+    setEmail(next.email);
+    setStatus(next.status);
+  }, [readSession]);
 
   const activate = useCallback(async (): Promise<PlatformAdminStatus> => {
     try {
@@ -105,8 +112,16 @@ export function usePlatformAdminSession(): PlatformAdminSession {
   }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    void readSession().then((next) => {
+      if (!active) return;
+      setEmail(next.email);
+      setStatus(next.status);
+    });
+    return () => {
+      active = false;
+    };
+  }, [readSession]);
 
   return { status, email, refresh, activate, signOut };
 }

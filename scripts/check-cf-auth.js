@@ -8,19 +8,21 @@
  * Uses primary bangelh account (see scripts/ensure-wrangler-cache.js + root config/primary-account.json).
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { execSync } from 'node:child_process';
 
 // Run the cache ensure as a side effect (idempotent) — loads via shared primary-account module (bangelh)
-require('./ensure-wrangler-cache');
+import './ensure-wrangler-cache.js';
 
 let ACCOUNT_ID = 'a91810f9781cedd3a82123e71826fd4c';
 try {
-  const primary = require('../../../config/primary-account');
-  const cf = primary.getCloudflareAccount();
-  if (cf.accountId) ACCOUNT_ID = cf.accountId;
-} catch (_) {}
+  const primary = await import('../../../config/primary-account.js');
+  const getCloudflareAccount =
+    primary.getCloudflareAccount ?? primary.default?.getCloudflareAccount;
+  const cf = getCloudflareAccount?.();
+  if (cf?.accountId) ACCOUNT_ID = cf.accountId;
+} catch {
+  // El módulo central es opcional; se usa el account ID conocido.
+}
 
 const hasApiToken = !!process.env.CLOUDFLARE_API_TOKEN;
 
@@ -31,7 +33,7 @@ try {
     stdio: ['ignore', 'pipe', 'ignore'],
   });
   isLoggedIn = !/not authenticated|You are not authenticated|Not logged in/i.test(whoami);
-} catch (e) {
+} catch {
   isLoggedIn = false;
 }
 

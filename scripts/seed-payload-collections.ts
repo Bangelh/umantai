@@ -11,11 +11,26 @@
  * The custom /admin can later be updated or deprecated in favor of Payload.
  */
 
-import { getPayload } from 'payload'
+import { getPayload, type Where } from 'payload'
 import config from '../payload.config'
 import { wholeFoodsCategories } from '../lib/categories'
 import { baseProductsData as baseProducts } from '../lib/products'
 import { getAllOverrides } from '../lib/db'
+
+interface CategoryNode {
+  name?: string
+  subcategories?: CategoryNode[]
+}
+
+interface SeedOverride {
+  brand?: string | null
+  name?: string
+  price?: number
+  inStock?: number | null
+  description?: string
+  subcategory?: string
+  bestseller?: boolean
+}
 
 async function seed() {
   console.log('🚀 Starting Payload collections seed...')
@@ -28,9 +43,9 @@ async function seed() {
   baseProducts.forEach(p => brandNames.add(p.brand))
   // Also pull from overrides if any
   try {
-    const overrides = await getAllOverrides()
-    Object.values(overrides).forEach((ov: any) => {
-      if (ov.brand) brandNames.add(ov.brand)
+    const overrides = (await getAllOverrides()) as unknown as Record<string, SeedOverride>
+    Object.values(overrides).forEach((ov) => {
+      if (typeof ov.brand === 'string') brandNames.add(ov.brand)
     })
   } catch {}
 
@@ -56,13 +71,14 @@ async function seed() {
   console.log('\n📁 Seeding categories tree...')
   const createdCategoryIds = new Map<string, number>() // name -> id
 
-  async function seedCategory(node: any, parentId?: number, level = 0) {
+  async function seedCategory(node: CategoryNode, parentId?: number, level = 0) {
     const name = node.name
     if (!name) return
 
     // Check if exists by name + parent
-    const where: any = { name: { equals: name } }
-    if (parentId) where.parent = { equals: parentId }
+    const where: Where = parentId
+      ? { name: { equals: name }, parent: { equals: parentId } }
+      : { name: { equals: name } }
 
     const existing = await payload.find({
       collection: 'categories',
@@ -105,7 +121,10 @@ async function seed() {
 
   // 3. Seed Products + apply current overrides
   console.log('\n🛍️  Seeding products (base + current overrides)...')
-  const overrides = await getAllOverrides().catch(() => ({} as any))
+  const overrides = (await getAllOverrides().catch(() => ({}))) as unknown as Record<
+    string,
+    SeedOverride
+  >
 
   let productsCreated = 0
   let overridesCreated = 0
