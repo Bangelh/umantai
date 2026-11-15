@@ -18,11 +18,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { OrderStatusBadge } from '@/components/orders/OrderStatusBadge';
+import { PaymentReview } from './PaymentReview';
+import { PaymentProofModal } from './PaymentProofModal';
+import { OrderFulfillmentActions } from './OrderFulfillmentActions';
 import { getCurrentUser } from '@/lib/current-user.server';
 import { formatDate as formatDateLocale, formatMoneyUnits } from '@/lib/format';
 import type { MessageKey } from '@/lib/i18n/dictionaries';
 import { getTranslator } from '@/lib/i18n/server';
-import { orderStatusLabel } from '@/lib/i18n/status';
 import { orderStatusCopy, paymentStatusKey } from '@/lib/order-status-copy';
 import { getStoreOrderDetail, requireStoreAccess } from '@/lib/stores.server';
 
@@ -106,10 +108,12 @@ export default async function MerchantOrderDetailPage({ params }: PageProps) {
         {t('merchant.orderPlaced', { date: placedAt })}
       </p>
 
-      <p className="mt-2 text-body text-secondary">{t(copy.explanationKey as MessageKey)}</p>
+      {!(order.status === 'pending_payment' && order.paymentProof) && (
+        <p className="mt-2 text-body text-secondary">{t(copy.explanationKey as MessageKey)}</p>
+      )}
 
       {/* Aviso operativo: lo primero que tiene que leer el comerciante. */}
-      {order.status === 'pending_payment' && (
+      {order.status === 'pending_payment' && !order.paymentProof && (
         <div className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-4">
           <p className="text-body font-semibold text-warning">{t('merchant.waitingPayment')}</p>
           <p className="mt-1 text-body text-secondary">{t('merchant.waitingPaymentWarning')}</p>
@@ -122,6 +126,39 @@ export default async function MerchantOrderDetailPage({ params }: PageProps) {
           </p>
         </div>
       )}
+
+      {order.status === 'pending_payment' && order.paymentMethod === 'cash' && (
+        <div className="mt-4 rounded-2xl border border-info/40 bg-info/10 p-4">
+          <p className="text-body font-semibold text-info">{t('merchant.cashOrder')}</p>
+          <p className="mt-1 text-body text-secondary">{t('merchant.cashOrderBody')}</p>
+          <PaymentReview storeId={storeId} orderId={order.id} hasProof />
+        </div>
+      )}
+
+      {order.paymentProof ? (
+        <section aria-label={t('merchant.proofHeading')} className="mt-4 rounded-2xl border border-border bg-surface p-4">
+          <h2 className="text-[11px] uppercase tracking-wide text-muted">{t('merchant.proofHeading')}</h2>
+          <p className="mt-1 text-body text-secondary">
+            {order.paymentProof.status === 'submitted'
+              ? t('merchant.proofPending')
+              : order.paymentProof.status === 'rejected'
+                ? t('order.proofRejected')
+                : t('merchant.proofApproved')}
+          </p>
+          <PaymentProofModal
+            url={order.paymentProof.url}
+            label={t('merchant.proofHeading')}
+            openLabel={t('merchant.proofOpen')}
+          />
+          {order.status === 'pending_payment' && (
+            <PaymentReview storeId={storeId} orderId={order.id} hasProof />
+          )}
+        </section>
+      ) : order.status === 'pending_payment' ? (
+        <p className="mt-4 rounded-2xl border border-border bg-surface p-4 text-sm text-tertiary">
+          {t('merchant.proofNone')}
+        </p>
+      ) : null}
 
       <section aria-label={t('merchant.orderStatus')} className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="rounded-xl border border-border bg-surface p-3">
@@ -150,7 +187,10 @@ export default async function MerchantOrderDetailPage({ params }: PageProps) {
           <div className="text-[11px] uppercase tracking-wide text-muted">
             {t('merchant.customer')}
           </div>
-          <div className="mt-1 break-all text-sm font-medium text-primary">{order.contactEmail}</div>
+          <div className="mt-1 text-sm font-medium text-primary">
+            {order.buyerName ?? t('merchant.customerNoName')}
+          </div>
+          <div className="mt-0.5 break-all text-xs text-tertiary">{order.contactEmail}</div>
           {order.contactPhone && (
             <div className="mt-0.5 text-xs text-tertiary">{order.contactPhone}</div>
           )}
@@ -232,6 +272,8 @@ export default async function MerchantOrderDetailPage({ params }: PageProps) {
           </div>
         </dl>
       </section>
+
+      <OrderFulfillmentActions storeId={storeId} orderId={order.id} status={order.status} />
 
       <section
         aria-label={t('merchant.nextAction')}
