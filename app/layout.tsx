@@ -6,12 +6,11 @@ import { cookies, headers } from "next/headers";
 import { Toaster } from "sonner";
 import { NavActions } from "./components/NavActions";
 import { RouteChrome } from "./components/RouteChrome";
-import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { SiteFooter } from "./components/SiteFooter";
 import { AuthLink } from "@/components/brand/AuthLink";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { businessConfig, whatsappNumber } from "@/config/business";
+import { businessConfig } from "@/config/business";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { DEFAULT_LOCALE } from "@/lib/i18n/config";
 import { getLocale, getMessages } from "@/lib/i18n/server";
@@ -160,25 +159,16 @@ export default async function RootLayout({
           */}
           <div aria-hidden="true" className="h-16 lg:hidden" />
 
-          <MobileBottomNav whatsappPhone={whatsappNumber()} />
+          <MobileBottomNav />
         </I18nProvider>
 
-        {/*
-          Botón flotante de WhatsApp. El número viene de `config/business.ts`
-          (override opcional por NEXT_PUBLIC_WHATSAPP_SALES_PHONE). Ventas y
-          atención comparten el mismo canal, así que se muestra un solo botón.
-          Los mensajes son opcionales:
-          - NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE
-          - NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE
-        */}
-        <FloatingWhatsApp
-          salesPhone={whatsappNumber()}
-          supportPhone={whatsappNumber()}
-          salesMessage={process.env.NEXT_PUBLIC_WHATSAPP_SALES_MESSAGE}
-          supportMessage={process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT_MESSAGE}
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          duration={700}
+          className="font-sans"
         />
-
-        <Toaster position="top-center" richColors closeButton className="font-sans" />
       </body>
     </html>
   );
