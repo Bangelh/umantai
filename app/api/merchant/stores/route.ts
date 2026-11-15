@@ -9,7 +9,7 @@
  * Autenticación: cookie de Better Auth. Sin sesión → 401.
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getSessionUser, resolveAuthBaseUrl } from '@/lib/auth.server';
 import { buildStoreCreatedEmail, sendTransactionalEmail } from '@/lib/email.server';
 import { getUbigeoChain } from '@/lib/geo/ubigeo.server';
@@ -21,7 +21,14 @@ import {
   validateStoreLocation,
   type StoreLocationWarning,
 } from '@/lib/store-location';
-import { createStoreForOwner, listStoresForUser } from '@/lib/stores.server';
+import {
+  createStoreForOwner,
+  listStoresForUser,
+  readStorePaymentsInput,
+  updateStorePayments,
+} from '@/lib/stores.server';
+import { isPlatformAdminUser } from '@/lib/platform-admin.server';
+import { notifyAdminsNewStoreSafely } from '@/lib/notifications.server';
 import { rateLimitGate } from '@/lib/rate-limit-http.server';
 
 export const runtime = 'nodejs';
@@ -64,6 +71,8 @@ interface CreateStoreBody {
   longitude?: unknown;
   contactEmail?: unknown;
   contactPhone?: unknown;
+  /** Yape, Plin, cuenta y efectivo que el comerciante carga en el alta. */
+  payments?: unknown;
 }
 
 function str(value: unknown): string | null {
@@ -87,6 +96,16 @@ export async function POST(request: Request) {
     );
   }
 
+  if (await isPlatformAdminUser(user)) {
+    return NextResponse.json(
+      {
+        error: 'Las cuentas de administración de UMANTAI no pueden crear tiendas. Usa una cuenta de comerciante.',
+        code: 'platform_admin_cannot_sell',
+      },
+      { status: 403 },
+    );
+  }
+
   // Onboarding: 5 altas por hora y usuario. Evita crear tiendas en bucle.
   const gate = await rateLimitGate(request, 'merchant-onboarding', {
     limit: 5,
@@ -104,6 +123,19 @@ export async function POST(request: Request) {
   if (!name) {
     return NextResponse.json(
       { error: 'El nombre del negocio es obligatorio.', code: 'invalid_store_input' },
+      { status: 400 },
+    );
+  }
+
+  // Los métodos de pago son opcionales en el alta, pero si vienen se validan
+  // ANTES de crear la tienda para no dejar una fila a medio configurar.
+  const payments =
+    body.payments === undefined || body.payments === null
+      ? null
+      : readStorePaymentsInput(body.payments);
+  if (body.payments !== undefined && body.payments !== null && !payments) {
+    return NextResponse.json(
+      { error: 'Revisa los datos de pago: el número o la cuenta no son válidos.', code: 'invalid_payments' },
       { status: 400 },
     );
   }
@@ -173,6 +205,27 @@ export async function POST(request: Request) {
       contactEmail: str(body.contactEmail) ?? user.email,
       contactPhone: str(body.contactPhone),
     });
+
+    if (payments) {
+      await updateStorePayments(user.id, store.id, payments).catch((error: unknown) => {
+        // La tienda ya existe: no se revierte el alta por un fallo al guardar los
+        // pagos, pero se registra para que el comerciante pueda cargarlos luego.
+        console.error('[merchant-onboarding] no se pudieron guardar los pagos', {
+          storeId: store.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
+    // Aviso a los administradores: una tienda nueva queda pendiente de revisión.
+    after(() =>
+      notifyAdminsNewStoreSafely({
+        storeId: store.id,
+        storeName: store.name,
+        ownerEmail: user.email,
+        category: store.category,
+      }),
+    );
 
     // Aviso por correo: 'store created' es parte del producto (el comerciante
     // necesita saber que el alta funcionó y qué sigue). Es best-effort: si el

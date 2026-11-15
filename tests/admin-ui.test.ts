@@ -37,11 +37,13 @@ test('ningún componente del navegador usa el token compartido', () => {
   assert.deepEqual(offenders, []);
 });
 
-test('la pantalla de acceso no tiene campo de token', () => {
+test('la pantalla de acceso usa correo y contraseña, nunca un campo de token', () => {
   const screen = readFileSync(join(root, 'components/admin/AdminAccessScreen.tsx'), 'utf8');
-  assert.doesNotMatch(screen, /<input/);
-  assert.match(screen, /usePathname/);
-  assert.match(screen, /admin\.activate/);
+  // El formulario real vive en AuthForm: correo/contraseña, no un token manual.
+  assert.match(screen, /AuthForm/);
+  assert.match(screen, /adminLogin\.title/);
+  assert.doesNotMatch(screen, /ADMIN_API_SECRET|x-admin-token|name=["']token/);
+  assert.doesNotMatch(screen, /admin\.activate/);
 });
 
 test('la cookie de Platform Admin es HttpOnly, SameSite=Strict y expira', () => {

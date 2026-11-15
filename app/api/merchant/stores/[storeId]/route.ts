@@ -39,7 +39,14 @@ import {
   readFarPinConfirmation,
   validateStoreLocation,
 } from '@/lib/store-location';
-import { requireStoreAccess, updateStoreIdentity } from '@/lib/stores.server';
+import {
+  readStorePaymentsInput,
+  requireStoreAccess,
+  updateStoreContactPhone,
+  updateStoreIdentity,
+  updateStorePayments,
+} from '@/lib/stores.server';
+import { normalizeWhatsAppPhone } from '@/lib/whatsapp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,7 +55,11 @@ interface PatchBody {
   location?: unknown;
   name?: unknown;
   slug?: unknown;
+  contactPhone?: unknown;
+  payments?: unknown;
 }
+
+
 
 interface RouteContext {
   params: Promise<{ storeId: string }>;
@@ -79,22 +90,96 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const hasLocation = body.location !== undefined && body.location !== null;
   const hasIdentity = body.name !== undefined || body.slug !== undefined;
+  const hasContact = body.contactPhone !== undefined;
+  const hasPayments = body.payments !== undefined;
 
-  if (!hasLocation && !hasIdentity) {
+  if (!hasLocation && !hasIdentity && !hasContact && !hasPayments) {
     return NextResponse.json(
       { error: 'No hay nada que actualizar.', code: 'invalid_store_input' },
       { status: 400 },
     );
   }
 
-  if (hasLocation && hasIdentity) {
+  if (
+    (hasLocation && hasIdentity) ||
+    (hasContact && (hasLocation || hasIdentity)) ||
+    (hasPayments && (hasLocation || hasIdentity || hasContact))
+  ) {
     return NextResponse.json(
       {
-        error: 'Actualiza la ubicación o la dirección pública por separado.',
+        error: 'Actualiza el WhatsApp, la ubicación o la dirección pública por separado.',
         code: 'invalid_store_input',
       },
       { status: 400 },
     );
+  }
+
+  if (hasPayments) {
+    const payments = readStorePaymentsInput(body.payments);
+    if (!payments) {
+      return NextResponse.json(
+        {
+          error:
+            'Revisa los números de Yape/Plin (6 a 20 caracteres) y el titular (máx. 80).',
+          code: 'invalid_payments',
+        },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const saved = await updateStorePayments(user.id, storeId, payments);
+      logEvent('store_payments_updated', {
+        storeId,
+        userId: user.id,
+        hasYape: saved.yape !== null,
+        hasPlin: saved.plin !== null,
+        cash: saved.cash,
+      });
+      return NextResponse.json({ payments: saved });
+    } catch (error) {
+      return platformErrorResponse(error);
+    }
+  }
+
+  if (hasContact) {
+    const raw = body.contactPhone;
+    if (raw !== null && typeof raw !== 'string') {
+      return NextResponse.json(
+        { error: 'El WhatsApp debe ser texto.', code: 'invalid_phone' },
+        { status: 400 },
+      );
+    }
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
+    const phone = trimmed ? normalizeWhatsAppPhone(trimmed) : null;
+    if (trimmed && !phone) {
+      return NextResponse.json(
+        {
+          error: 'Ingresa un WhatsApp válido de 9 dígitos (ej. 987 654 321).',
+          code: 'invalid_phone',
+        },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const store = await updateStoreContactPhone(user.id, storeId, phone);
+      logEvent('store_contact_updated', {
+        storeId,
+        userId: user.id,
+        hasPhone: phone !== null,
+      });
+      return NextResponse.json({
+        store: {
+          id: store.id,
+          name: store.name,
+          slug: store.slug,
+          whatsapp: store.whatsapp,
+        },
+      });
+    } catch (error) {
+      return platformErrorResponse(error);
+    }
   }
 
   if (hasIdentity) {

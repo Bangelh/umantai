@@ -55,6 +55,9 @@ export default function AdminPlansPage() {
   const [promoMonths, setPromoMonths] = useState('1');
 
   const load = useCallback(async () => {
+    // Cede el turno antes de tocar estado: así la carga lanzada desde un efecto
+    // no provoca renders en cascada.
+    await Promise.resolve();
     setBusy(true);
     setError(null);
     try {
@@ -81,11 +84,14 @@ export default function AdminPlansPage() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [t]);
 
-  // Con sesión de Platform Admin activa, carga los datos una vez.
+  // Con sesión de Platform Admin activa, carga los datos una vez. Se difiere
+  // al siguiente tick para no encadenar renders dentro del efecto.
   useEffect(() => {
-    if (admin.status === 'authenticated') void load();
+    if (admin.status !== 'authenticated') return;
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [admin.status, load]);
 
   const adminPost = async (path: string, body: Record<string, unknown>) => {
@@ -207,6 +213,12 @@ export default function AdminPlansPage() {
     }
   };
 
+  const paidSubscriptions = subscriptions.filter(
+    (row) => row.plan.code !== 'free' && row.status === 'active',
+  );
+  const paidStores = paidSubscriptions.length;
+  const mrrCents = paidSubscriptions.reduce((sum, row) => sum + row.plan.priceCents, 0);
+
   if (admin.status !== 'authenticated') {
     return (
       <AdminAccessScreen
@@ -265,6 +277,32 @@ export default function AdminPlansPage() {
           {notice}
         </p>
       )}
+
+      <section aria-label={t('adminPlans.metrics')} className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <div className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.totalStores')}</div>
+          <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">{subscriptions.length}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <div className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.paidStores')}</div>
+          <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">{paidStores}</div>
+          <div className="mt-0.5 text-xs text-tertiary">{t('adminPlans.paidStoresHint')}</div>
+        </div>
+        <div className="rounded-2xl border border-brand/40 bg-brand/5 p-4">
+          <div className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.mrr')}</div>
+          <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">
+            {formatUsdCents(mrrCents)}
+          </div>
+          <div className="mt-0.5 text-xs text-tertiary">{t('adminPlans.mrrHint')}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <div className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.paidShare')}</div>
+          <div className="mt-1 font-mono text-3xl font-semibold tabular-nums">
+            {subscriptions.length > 0 ? Math.round((paidStores / subscriptions.length) * 100) : 0}%
+          </div>
+          <div className="mt-0.5 text-xs text-tertiary">{t('adminPlans.paidShareHint')}</div>
+        </div>
+      </section>
 
       <section className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">{t('adminPlans.catalog')}</h2>

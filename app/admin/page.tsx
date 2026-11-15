@@ -2,25 +2,37 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import {
+  Boxes,
+  ChevronRight,
+  Clock,
+  CreditCard,
+  Globe,
+  Library,
+  MessageSquare,
+  Monitor,
+  Store,
+  TrendingUp,
+  Wrench,
+} from 'lucide-react';
 
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
+import { formatMoney } from '@/lib/format';
 import { AdminNav } from './components/AdminNav';
 
 /**
- * /admin — entrada del Platform Admin.
+ * /admin — portada del panel de la plataforma.
  *
- * Antes esta ruta era el editor legacy del catálogo del template: un operador que
- * abría "Panel" veía precios en dólares de un catálogo que no es el marketplace,
- * textos técnicos ("Vercel Postgres", "Setup DB Tables") y todo en inglés.
+ * Es el panel de los dueños de UMANTAI, no el de cada comerciante (ese es
+ * /negocio) ni el de la operaria del kiosco (la tablet abre /admin/kiosco).
  *
- * Ahora es lo que un operador necesita al entrar: qué está esperando una decisión
- * y a dónde ir. Sin métricas de vanidad, sin metadata de infraestructura.
- *
- * El editor legacy sigue disponible en /admin/productos, donde se nombra por lo
- * que realmente hace.
+ * La portada responde tres preguntas, en este orden:
+ *   1. ¿Cómo va el negocio?  → ventas de los últimos 30 días.
+ *   2. ¿Qué espera una decisión? → tiendas por aprobar, reclamos, pedidos.
+ *   3. ¿A dónde voy? → accesos grandes con ícono; lo técnico queda en Herramientas.
  */
 
 /** Hora de Lima, la única zona en la que opera el negocio. */
@@ -48,30 +60,56 @@ interface ComplaintRow {
 
 interface OrderRow {
   id: string;
+  status: string;
+}
+
+interface SalesRow {
+  revenueCents: number;
+  orders: number;
+  allOrders: number;
+}
+
+interface SubscriptionRow {
+  status: string;
+  plan: { code: string; priceCents: number };
 }
 
 interface Summary {
   storesActive: number;
   storesPending: number;
   complaintsPending: number;
-  ordersOperational: number;
+  ordersReady: number;
   pendingStoreNames: string[];
+  /** Tiendas con una suscripción paga activa y su ingreso mensual. */
+  paidStores: number;
+  mrrCents: number;
+  /** `null` si el resumen de ventas no respondió: no se inventa un cero. */
+  sales: SalesRow | null;
 }
 
 const EMPTY: Summary = {
   storesActive: 0,
   storesPending: 0,
   complaintsPending: 0,
-  ordersOperational: 0,
+  ordersReady: 0,
   pendingStoreNames: [],
+  paidStores: 0,
+  mrrCents: 0,
+  sales: null,
 };
 
+/** Pedidos que ya están pagados y todavía no salieron de la tienda. */
+const READY_STATUSES = new Set(['confirmed', 'preparing', 'ready_for_pickup']);
+
 async function fetchSummary(): Promise<Summary> {
-  const [storesResponse, complaintsResponse, ordersResponse] = await Promise.all([
-    fetch('/api/admin/stores', withAdminAuth()),
-    fetch('/api/admin/complaints?status=received', withAdminAuth()),
-    fetch('/api/admin/orders?limit=200', withAdminAuth()),
-  ]);
+  const [storesResponse, complaintsResponse, ordersResponse, salesResponse, subsResponse] =
+    await Promise.all([
+      fetch('/api/admin/stores', withAdminAuth()),
+      fetch('/api/admin/complaints?status=received', withAdminAuth()),
+      fetch('/api/admin/orders?limit=200', withAdminAuth()),
+      fetch('/api/admin/analytics/summary?range=30d', withAdminAuth()),
+      fetch('/api/admin/billing/subscriptions', withAdminAuth()),
+    ]);
 
   if (!storesResponse.ok) throw new Error('stores');
 
@@ -80,8 +118,7 @@ async function fetchSummary(): Promise<Summary> {
     | null;
   const stores = storesPayload?.stores ?? [];
 
-  // Las reclamaciones se cuentan sin romper el panel si esa bandeja falla: una
-  // sección caída no debe ocultar las tiendas por aprobar.
+  // Cada bandeja es independiente: si una falla, el resto sigue visible.
   let complaints: ComplaintRow[] = [];
   if (complaintsResponse.ok) {
     const payload = (await complaintsResponse.json().catch(() => null)) as
@@ -98,19 +135,49 @@ async function fetchSummary(): Promise<Summary> {
     orders = payload?.orders ?? [];
   }
 
+  let sales: SalesRow | null = null;
+  if (salesResponse.ok) {
+    const payload = (await salesResponse.json().catch(() => null)) as
+      | { ok?: boolean; sales?: SalesRow }
+      | null;
+    if (payload?.ok && payload.sales) {
+      sales = {
+        revenueCents: payload.sales.revenueCents,
+        orders: payload.sales.orders,
+        allOrders: payload.sales.allOrders,
+      };
+    }
+  }
+
+  let paidStores = 0;
+  let mrrCents = 0;
+  if (subsResponse.ok) {
+    const payload = (await subsResponse.json().catch(() => null)) as
+      | { subscriptions?: SubscriptionRow[] }
+      | null;
+    const paid = (payload?.subscriptions ?? []).filter(
+      (row) => row.status === 'active' && row.plan.code !== 'free',
+    );
+    paidStores = paid.length;
+    mrrCents = paid.reduce((sum, row) => sum + row.plan.priceCents, 0);
+  }
+
   const pending = stores.filter((store) => !store.active);
 
   return {
     storesActive: stores.length - pending.length,
     storesPending: pending.length,
     complaintsPending: complaints.filter((complaint) => complaint.status !== 'answered').length,
-    ordersOperational: orders.length,
+    ordersReady: orders.filter((order) => READY_STATUSES.has(order.status)).length,
     pendingStoreNames: pending.slice(0, 3).map((store) => store.name),
+    paidStores,
+    mrrCents,
+    sales,
   };
 }
 
 export default function AdminHomePage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const admin = usePlatformAdminSession();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState(false);
@@ -175,50 +242,69 @@ export default function AdminHomePage() {
               : t('adminHome.complaintsItem', { count: data.complaintsPending }),
         }
       : null,
-    data.ordersOperational > 0
+    data.ordersReady > 0
       ? {
           key: 'orders',
           href: '/admin/kiosco',
           text:
-            data.ordersOperational === 1
+            data.ordersReady === 1
               ? t('adminHome.ordersItemOne')
-              : t('adminHome.ordersItem', { count: data.ordersOperational }),
+              : t('adminHome.ordersItem', { count: data.ordersReady }),
         }
       : null,
   ].filter((item): item is { key: string; href: string; text: string } => item !== null);
 
   const cards = [
-    {
-      href: '/admin/tiendas',
-      value: data.storesActive,
-      label: t('adminHome.storesActive'),
-    },
+    { href: '/admin/tiendas', value: data.storesActive, label: t('adminHome.storesActive'), icon: Store },
     {
       href: '/admin/tiendas',
       value: data.storesPending,
       label: t('adminHome.storesPending'),
+      icon: Clock,
       highlight: data.storesPending > 0,
     },
+    { href: '/admin/kiosco', value: data.ordersReady, label: t('adminHome.readyOrders'), icon: Boxes },
     {
       href: '/admin/reclamaciones',
       value: data.complaintsPending,
       label: t('adminHome.complaintsPending'),
+      icon: MessageSquare,
       highlight: data.complaintsPending > 0,
-    },
-    {
-      href: '/admin/kiosco',
-      value: data.ordersOperational,
-      label: t('adminHome.operations'),
     },
   ];
 
-  const shortcuts = [
-    { href: '/admin/catalogo', label: t('adminNav.catalog') },
-    { href: '/admin/inventario', label: t('adminNav.inventory') },
-    { href: '/admin/analytics', label: t('adminNav.analytics') },
-    { href: '/admin/planes', label: t('adminNav.plans') },
-    { href: '/admin/kiosco', label: t('adminNav.kiosk') },
-    { href: '/admin/productos', label: t('adminNav.siteCatalog') },
+  const actions = [
+    {
+      href: '/admin/tiendas',
+      icon: Store,
+      label: t('adminHome.actionStores'),
+      hint: t('adminHome.actionStoresHint'),
+    },
+    {
+      href: '/admin/reclamaciones',
+      icon: MessageSquare,
+      label: t('adminHome.actionComplaints'),
+      hint: t('adminHome.actionComplaintsHint'),
+    },
+    {
+      href: '/admin/kiosco',
+      icon: Monitor,
+      label: t('adminHome.actionOrders'),
+      hint: t('adminHome.actionOrdersHint'),
+    },
+    {
+      href: '/admin/analytics',
+      icon: TrendingUp,
+      label: t('adminHome.actionSales'),
+      hint: t('adminHome.actionSalesHint'),
+    },
+  ];
+
+  const tools = [
+    { href: '/admin/catalogo', icon: Library, label: t('adminNav.catalog') },
+    { href: '/admin/productos', icon: Globe, label: t('adminNav.siteCatalog') },
+    { href: '/admin/inventario', icon: Boxes, label: t('adminNav.inventory') },
+    { href: '/admin/planes', icon: CreditCard, label: t('adminNav.plans') },
   ];
 
   return (
@@ -245,7 +331,7 @@ export default function AdminHomePage() {
         </div>
       </header>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4">
         <AdminNav />
       </div>
 
@@ -267,21 +353,75 @@ export default function AdminHomePage() {
         </p>
       ) : (
         <>
-          <section aria-label={t('adminHome.title')} className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {cards.map((card) => (
-              <Link
-                key={card.label}
-                href={card.href}
-                className={`rounded-2xl border p-4 transition-colors hover:bg-surface-raised ${
-                  card.highlight ? 'border-warning/50 bg-warning/5' : 'border-border bg-surface'
-                }`}
-              >
-                <span className="block font-mono text-4xl font-semibold tabular-nums">{card.value}</span>
-                <span className="mt-1 block text-[15px] leading-snug text-secondary">{card.label}</span>
-              </Link>
-            ))}
+          {/* Cómo va el negocio */}
+          <Link
+            href="/admin/analytics"
+            className="mt-6 block rounded-2xl border border-brand/40 bg-brand/5 p-5 transition-colors hover:bg-brand/10"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="flex items-center gap-2 text-sm text-secondary">
+                  <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                  {t('adminHome.salesTitle')}
+                </p>
+                <p className="mt-2 font-mono text-4xl font-semibold tabular-nums sm:text-5xl">
+                  {data.sales ? formatMoney(data.sales.revenueCents, 'PEN', locale) : '—'}
+                </p>
+                <p className="mt-1 text-sm text-secondary">
+                  {data.sales
+                    ? data.sales.orders > 0
+                      ? t('adminHome.salesOrders', { count: data.sales.orders })
+                      : t('adminHome.salesEmpty')
+                    : t('adminHome.salesUnavailable')}
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-sm font-medium text-brand">
+                {t('adminHome.openSales')}
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </span>
+            </div>
+            <p className="mt-3 text-xs text-tertiary">{t('adminHome.salesRule')}</p>
+          </Link>
+
+          <Link
+            href="/admin/planes"
+            className="mt-3 grid grid-cols-2 gap-3 rounded-2xl border border-border bg-surface p-4 transition-colors hover:bg-surface-raised"
+          >
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.paidStores')}</p>
+              <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">{data.paidStores}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted">{t('adminPlans.mrr')}</p>
+              <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
+                {formatMoney(data.mrrCents, 'USD', locale)}
+              </p>
+            </div>
+          </Link>
+
+          {/* Números que importan */}
+          <section aria-label={t('adminHome.attention')} className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {cards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Link
+                  key={card.label}
+                  href={card.href}
+                  className={`rounded-2xl border p-4 transition-colors hover:bg-surface-raised ${
+                    card.highlight ? 'border-warning/50 bg-warning/5' : 'border-border bg-surface'
+                  }`}
+                >
+                  <Icon className="h-5 w-5 text-tertiary" aria-hidden="true" />
+                  <span className="mt-2 block font-mono text-4xl font-semibold tabular-nums">
+                    {card.value}
+                  </span>
+                  <span className="mt-1 block text-[15px] leading-snug text-secondary">{card.label}</span>
+                </Link>
+              );
+            })}
           </section>
 
+          {/* Qué espera una decisión */}
           <section className="mt-8">
             <h2 className="text-lg font-semibold">{t('adminHome.attention')}</h2>
             {attention.length === 0 ? (
@@ -313,20 +453,55 @@ export default function AdminHomePage() {
             )}
           </section>
 
+          {/* A dónde voy */}
           <section className="mt-8">
-            <h2 className="text-lg font-semibold">{t('adminHome.shortcuts')}</h2>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {shortcuts.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="flex min-h-12 items-center rounded-xl border border-border-strong px-4 text-[15px] hover:bg-surface-raised"
-                >
-                  {link.label}
-                </Link>
-              ))}
+            <h2 className="text-lg font-semibold">{t('adminHome.quickActions')}</h2>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {actions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    className="flex min-h-20 items-center gap-4 rounded-2xl border border-border-strong px-4 py-3 transition-colors hover:bg-surface-raised"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand">
+                      <Icon className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-medium leading-snug">{action.label}</span>
+                      <span className="mt-0.5 block text-xs text-tertiary">{action.hint}</span>
+                    </span>
+                    <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-tertiary" aria-hidden="true" />
+                  </Link>
+                );
+              })}
             </div>
           </section>
+
+          {/* Lo técnico, fuera del camino */}
+          <details className="mt-8 rounded-2xl border border-border bg-surface">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[15px] font-medium">
+              <Wrench className="h-4 w-4 text-tertiary" aria-hidden="true" />
+              {t('adminHome.tools')}
+              <span className="ml-auto text-xs font-normal text-tertiary">{t('adminHome.toolsHint')}</span>
+            </summary>
+            <div className="grid grid-cols-2 gap-2 border-t border-border p-3 sm:grid-cols-4">
+              {tools.map((tool) => {
+                const Icon = tool.icon;
+                return (
+                  <Link
+                    key={tool.href}
+                    href={tool.href}
+                    className="flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm hover:bg-surface-raised"
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-tertiary" aria-hidden="true" />
+                    <span className="truncate">{tool.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </details>
         </>
       )}
     </main>
