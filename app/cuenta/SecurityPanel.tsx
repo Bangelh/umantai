@@ -28,7 +28,7 @@ export function SecurityPanel() {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch('/api/auth/list-sessions', {
+        const response = await fetch('/api/account/sessions', {
           method: 'GET',
           credentials: 'same-origin',
           headers: { accept: 'application/json' },
@@ -50,7 +50,7 @@ export function SecurityPanel() {
     if (revoking) return;
     setRevoking(true);
     try {
-      const response = await fetch('/api/auth/revoke-other-sessions', {
+      const response = await fetch('/api/account/sessions', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
