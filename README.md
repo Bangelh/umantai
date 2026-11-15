@@ -1,120 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# UMANTAI
 
-## Getting Started
+Marketplace local: buscador de productos por cercanía, vitrina pública por tienda,
+pedidos con retiro en tienda y panel de gestión para comerciantes.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router) + **TypeScript**
+- **PostgreSQL 17** (driver `pg`)
+- **Better Auth** para sesiones y contraseñas
+- **Payload 3** para el contenido editorial
+- **Tailwind CSS 4**
+- Despliegue en **Railway** (servicios `web`, `cron` y `Postgres17`)
+
+## Requisitos
+
+- Node.js 20 o superior
+- PostgreSQL 17
+
+## Desarrollo local
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La aplicación queda en `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variables de entorno
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Las principales:
 
-## Learn More
+| Variable | Uso |
+| --- | --- |
+| `DATABASE_URL` | Conexión a PostgreSQL |
+| `BETTER_AUTH_SECRET` | Secreto de sesiones (mínimo 32 caracteres) |
+| `NEXT_PUBLIC_SITE_URL` | URL pública del sitio |
+| `CRON_SECRET` | Autorización de las tareas programadas |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Correos transaccionales |
+| `MEDIA_DRIVER` (`db` o `r2`) | Almacenamiento de imágenes |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | Solo si `MEDIA_DRIVER=r2` |
+| `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` | Cobro online (opcional) |
 
-To learn more about Next.js, take a look at the following resources:
+## Base de datos
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deployment
-
-### Continuous Deployment (Recommended)
-
-**GitHub → Vercel + Cloudflare Pages** for automatic live deploys on every push to `main`.
-
-1. **Vercel**
-   - Go to [vercel.com/new](https://vercel.com/new) → Import Git Repository → select `Bangelh/umantai`.
-   - Framework: **Next.js**
-   - Build Command: `npm run build`
-   - Output Directory: `.next` (or blank)
-   - **Environment Variables** (critical - use **DIRECT** connection strings, never pooled):
-     - `POSTGRES_URL_NON_POOLING` (Direct connection from Supabase/Neon dashboard, port 5432)
-     - `PAYLOAD_SECRET`
-     - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-     - `SUPABASE_SERVICE_ROLE_KEY`
-     - `NEXT_PUBLIC_SERVER_URL=https://umantai.com` (or your domain)
-     - Any `BANGELH_*` or `UMANTAI_URL_*` prefixed variants for Vercel integrations.
-   - Once imported, **every push to `main`** triggers a production deploy automatically. PRs get preview URLs.
-
-2. **Cloudflare Pages (OpenNext)**
-   - Go to [dash.cloudflare.com](https://dash.cloudflare.com) → Pages → Create a project → Connect to Git → select the `Bangelh/umantai` repo.
-   - Build command: `npm run build:cloudflare`
-   - Build output directory: `.open-next`
-   - Environment Variables: Same as Vercel above (use direct DB).
-   - **Important**: Always use `npm run build:cloudflare` (not plain `npm run build`).
-   - Auto deploys on push to `main`. Use `npm run preview` locally with wrangler.
-
-3. **Payload CMS**
-   - Admin UI lives at `/cms` (deployed as part of the Next.js app).
-   - Run migrations as part of CD: `npm run payload:migrate` (requires production `POSTGRES_URL_NON_POOLING` + `PAYLOAD_SECRET`).
-   - See `.github/workflows/ci-cd.yml` for example job.
-   - Generate types locally: `npm run payload:generate-types`
-
-4. **Prisma / DB**
-   - Not a primary direct dependency (uses `@neondatabase/serverless` + Payload postgres adapter).
-   - Always prefer `POSTGRES_URL_NON_POOLING` (direct) for serverless reliability. See `lib/env.ts` and `lib/db.ts`.
-   - The CI/CD workflow and `EnvironmentStatus` will warn loudly if a pooled URL is detected.
-
-### Local / Manual Deploy Commands
+Las migraciones están en `db/migrations` y se aplican en orden numérico:
 
 ```bash
-# Setup
-git remote set-url origin https://github.com/Bangelh/umantai.git
-git push origin main
-
-# Vercel
-npx vercel login
-npx vercel link          # link to your project
-npx vercel --prod        # manual production deploy
-
-# Cloudflare
-npm run build:cloudflare
-npm run deploy:cloudflare   # or: npx wrangler pages deploy .open-next --project-name=umantai
-
-# Payload
-npm run payload:generate-types
-npm run payload:migrate     # run against your current DB (use prod env for production DB)
-
-# Full local Cloudflare preview
-npm run preview
+for f in db/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 ```
 
-### GitHub Actions (CI + optional custom deploys)
+Datos de ejemplo:
 
-See `.github/workflows/ci-cd.yml` (pushed with this setup):
-- Runs on every push/PR: install, Payload types, lint, build (Next.js + Cloudflare).
-- Example jobs for CLI-based deploys to Vercel/Cloudflare (enable by adding secrets: `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN`, prod DB secrets, etc.).
-- Add a job to run `payload:migrate` against production before/after deploys.
+```bash
+npm run seed:platform
+npm run seed:inventory
+```
 
-**Secrets to add in GitHub (repo Settings → Secrets and variables → Actions)** if using the CLI deploy jobs:
-- `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
-- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-- Production DB: `PROD_POSTGRES_URL_NON_POOLING` (direct!), `PAYLOAD_SECRET`, Supabase keys, etc.
+## Verificación
 
-### Grok Build / Agent Integration (this environment)
+```bash
+npm test                # pruebas unitarias
+npm run test:integration
+npm run lint
+npx tsc --noEmit
+npm run e2e             # Playwright
+```
 
-- Use natural language: "deploy to vercel", "run npm run deploy:cloudflare", "create GitHub release", "set up Cloudflare Pages project".
-- Available tools: `run_terminal_command` (vercel, wrangler, gh CLI already authenticated as Bangelh in many sessions), `gh` for repo/PR management.
-- Skills: Use `/implement`, `/pr-babysit`, `review` for code + deploy PRs. No dedicated Vercel/Cloudflare MCP skill was present, but terminal + CLIs provide direct control.
-- For "Build directly": the agent can execute the exact build/deploy commands above in this shell.
+## Despliegue
 
-### Important Notes for umantai.com
+Solo staging:
 
-- **Non-pooling DB**: The code strictly prefers `POSTGRES_URL_NON_POOLING`. The current `.env.local` had a pooled value under that name — always use the **Direct connection** string.
-- Automatic deploys will only be reliable once the Git integrations are connected in Vercel + Cloudflare dashboards and secrets are correct.
-- Test a push after connecting the platforms — it should trigger live deploys to both.
+```bash
+npm run deploy:staging
+npm run health:staging
+```
 
-Push this README update + workflow, then connect the dashboards. Every future `git push origin main` will build + (via platform hooks) deploy live.
+Las tareas programadas se ejecutan desde el servicio `cron`
+(`scripts/run-cron.mjs`) contra `/api/cron/expire-reservations` y
+`/api/cron/billing`.
