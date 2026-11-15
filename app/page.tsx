@@ -89,11 +89,15 @@ export default async function HomePage() {
     <main className="min-h-screen">
       {/* El logo ya está en el header: repetirlo en grande acá dejaba dos marcas
           compitiendo antes de la pregunta que el comprador tiene que responder. */}
-      <section className="mx-auto max-w-5xl px-5 pt-6 sm:pt-10">
-        <h1 className="max-w-2xl text-[1.75rem] font-semibold leading-[1.15] tracking-[-0.5px] sm:text-5xl">
-          {t('home.title')}
-        </h1>
-        <p className="mt-2 max-w-xl text-body text-secondary">{t('home.subtitle')}</p>
+      <section className="mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-12">
+        <div className="max-w-3xl">
+          <h1 className="text-balance text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-[3.25rem]">
+            {t('home.title')}
+          </h1>
+          <p className="mt-3 max-w-2xl text-pretty text-body-lg text-secondary">
+            {t('home.subtitle')}
+          </p>
+        </div>
       </section>
 
       <DiscoveryHome initial={initial} businessWhatsAppUrl={businessWhatsAppUrl} />

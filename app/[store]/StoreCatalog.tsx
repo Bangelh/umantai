@@ -181,76 +181,89 @@ export function StoreCatalog({
 
   return (
     <>
-      <ul className="divide-y divide-border">
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {products.map((product) => {
           const fromPrice = basePriceCents(product);
           const hasVariantPricing = product.variants.length > 0;
+          const actionLabel =
+            product.variants.length > 0 ? t('store.chooseShort') : t('store.addShort');
 
           return (
-            <li key={product.id} className="flex items-center gap-3 py-3">
-              {product.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element -- imagen del comercio
-                <img
-                  src={product.imageUrl}
-                  alt=""
-                  className="h-12 w-12 shrink-0 rounded-xl border border-border object-cover"
-                />
-              ) : (
-                <div
-                  aria-hidden="true"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised text-sm font-semibold text-tertiary"
-                >
-                  {product.name.slice(0, 1).toUpperCase()}
-                </div>
-              )}
-
+            <li
+              key={product.id}
+              className="flex gap-3 rounded-2xl border border-border bg-surface p-3 transition-colors hover:border-border-strong sm:flex-col sm:gap-0 sm:p-0"
+            >
               <button
                 type="button"
                 onClick={() => openPreview(product)}
-                className="min-w-0 flex-1 text-left"
+                className="flex min-w-0 flex-1 gap-3 text-left sm:flex-col sm:gap-0"
               >
-                <span className="block truncate text-[17px] font-medium leading-snug">
-                  {product.name}
-                </span>
-                <span className="mt-0.5 block truncate text-sm text-tertiary">
-                  {[product.brand, product.category].filter(Boolean).join(' · ') ||
-                    t('store.noBrand')}
-                  {product.unit !== 'unidad' && ` · ${t('store.perUnit', { unit: product.unit })}`}
-                  {product.variants.length > 0 &&
-                    ` · ${t('store.variants', { count: product.variants.length })}`}
-                </span>
-                <span className="mt-0.5 block text-sm">
-                  <span className="font-mono font-semibold tabular-nums">
-                    {hasVariantPricing && (
-                      <span className="mr-1 text-xs font-normal text-muted">
-                        {t('store.from')}
-                      </span>
-                    )}
-                    {formatMoney(fromPrice, product.currency, locale)}
-                  </span>
+                {product.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- imagen del comercio
+                  <img
+                    src={product.imageUrl}
+                    alt=""
+                    className="h-24 w-24 shrink-0 rounded-xl border border-border object-cover sm:h-40 sm:w-full sm:rounded-t-2xl sm:border-0"
+                  />
+                ) : (
                   <span
-                    className={`ml-2 text-[13px] font-medium ${
-                      product.inStock ? 'text-success' : 'text-destructive'
-                    }`}
+                    aria-hidden="true"
+                    className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised text-2xl font-semibold text-tertiary sm:h-40 sm:w-full sm:rounded-t-2xl sm:border-0 sm:text-4xl"
                   >
-                    {product.inStock
-                      ? t('store.available', { count: product.available })
-                      : t('store.outOfStock')}
+                    {product.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+
+                <span className="min-w-0 flex-1 py-1 sm:flex sm:flex-col sm:p-4">
+                  <span className="block text-[11px] font-medium uppercase tracking-[1.5px] text-muted">
+                    {[product.brand, product.category].filter(Boolean).join(' · ') ||
+                      t('store.noBrand')}
+                  </span>
+                  <span className="mt-1 block line-clamp-2 text-[17px] font-semibold leading-snug text-primary">
+                    {product.name}
+                  </span>
+                  {(product.unit !== 'unidad' || product.variants.length > 0) && (
+                    <span className="mt-1 block text-sm text-tertiary">
+                      {product.unit !== 'unidad' &&
+                        t('store.perUnit', { unit: product.unit })}
+                      {product.unit !== 'unidad' && product.variants.length > 0 && ' · '}
+                      {product.variants.length > 0 &&
+                        t('store.variants', { count: product.variants.length })}
+                    </span>
+                  )}
+                  <span className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="font-mono text-body-lg font-semibold tabular-nums text-primary">
+                      {hasVariantPricing && (
+                        <span className="mr-1 text-xs font-normal text-muted">
+                          {t('store.from')}
+                        </span>
+                      )}
+                      {formatMoney(fromPrice, product.currency, locale)}
+                    </span>
+                    <span
+                      className={`text-[13px] font-medium ${
+                        product.inStock ? 'text-success' : 'text-destructive'
+                      }`}
+                    >
+                      {product.inStock
+                        ? t('store.available', { count: product.available })
+                        : t('store.outOfStock')}
+                    </span>
                   </span>
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => quickAdd(product)}
-                disabled={!product.inStock}
-                aria-label={`${t('store.addShort')}: ${product.name}`}
-                className="min-h-11 shrink-0 rounded-xl border border-border-strong bg-surface px-3 text-sm font-medium text-primary transition-colors hover:border-brand hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {product.variants.length > 0
-                  ? t('store.chooseShort')
-                  : t('store.addShort')}
-              </button>
+              <div className="flex shrink-0 items-end sm:mt-auto sm:border-t sm:border-border sm:p-3">
+                <button
+                  type="button"
+                  onClick={() => quickAdd(product)}
+                  disabled={!product.inStock}
+                  aria-label={`${actionLabel}: ${product.name}`}
+                  className="min-h-11 rounded-xl border border-border-strong bg-surface px-3 text-sm font-medium text-primary transition-colors hover:border-brand hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-40 sm:w-full"
+                >
+                  {actionLabel}
+                </button>
+              </div>
             </li>
           );
         })}

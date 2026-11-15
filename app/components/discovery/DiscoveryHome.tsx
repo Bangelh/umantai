@@ -22,7 +22,7 @@
  */
 
 import Link from 'next/link';
-import { ArrowUpRight, MessageCircle, Search, Store } from 'lucide-react';
+import { ArrowUpRight, MapPin, MessageCircle, Search, Store } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -314,35 +314,34 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6">
-      {/* Buscador */}
+      {/* Buscador y ubicación: un solo bloque dominante. */}
       <section
         id="buscar"
         aria-label={t('search.section')}
-        className="scroll-mt-24 pt-6 sm:pt-8"
+        className="scroll-mt-24 pt-5 sm:pt-6"
       >
-        <form
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void runSearch(q, location, radiusKm);
-          }}
-          className="flex items-center gap-2"
-        >
+        <div className="surface-card relative overflow-hidden">
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/50 to-transparent"
+          />
+          <form
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runSearch(q, location, radiusKm);
+            }}
+            className="relative flex items-center gap-2 p-3 sm:p-4"
+          >
           <label htmlFor="discovery-q" className="sr-only">
             {t('search.label')}
           </label>
           <div className="relative flex-1">
-            <svg
+            <Search
               aria-hidden="true"
-              viewBox="0 0 24 24"
               className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-tertiary"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
+              strokeWidth={2}
+            />
             <input
               id="discovery-q"
               value={q}
@@ -350,115 +349,112 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
               maxLength={80}
               autoComplete="off"
               placeholder={t('search.placeholder')}
-              className="h-14 w-full rounded-2xl border border-border-strong bg-surface pl-12 pr-4 text-base outline-none placeholder:text-muted focus:border-primary"
+              className="h-14 w-full rounded-xl border border-border-strong bg-background pl-12 pr-4 text-base placeholder:text-muted focus:border-brand"
             />
           </div>
           <button
             type="submit"
-            className="h-14 shrink-0 rounded-2xl bg-brand px-5 text-sm font-semibold text-background hover:opacity-90"
+            className="h-14 shrink-0 rounded-xl bg-brand px-4 text-sm font-semibold text-background transition-opacity hover:opacity-90 sm:px-5"
           >
             {t('search.submit')}
           </button>
-        </form>
-      </section>
-
-      {/* Ubicación: control compacto; el permiso se pide solo con un clic. */}
-      {!location ? (
-        <section aria-label={t('search.locationSection')} className="mt-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={useMyLocation}
-              disabled={geoStatus === 'asking'}
-              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border-strong px-3 text-sm text-secondary hover:bg-surface-raised disabled:opacity-60"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
-                <circle cx="12" cy="10" r="2.5" />
-              </svg>
-              {geoStatus === 'asking' ? t('geo.locating') : t('geo.use')}
-            </button>
-            <span className="text-xs text-muted">{t('home.locationPrivacy')}</span>
-          </div>
-        </section>
-      ) : (
-        <section aria-label={t('search.locationSection')} className="mt-3">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/10 px-3 py-1.5 text-success">
-              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
-                <circle cx="12" cy="10" r="2.5" />
-              </svg>
-              {t('geo.near', { place: locationLabel ?? '' })}
-              <button
-                type="button"
-                onClick={clearLocation}
-                aria-label={t('geo.remove')}
-                className="ml-1 text-success/70 hover:text-success"
-              >
-                ×
-              </button>
-            </span>
-            <button
-              type="button"
-              onClick={useMyLocation}
-              disabled={geoStatus === 'asking'}
-              className="rounded-full px-2 py-1.5 text-xs text-tertiary underline-offset-4 hover:text-primary hover:underline disabled:opacity-60"
-            >
-              {geoStatus === 'asking' ? t('geo.locating') : t('geo.update')}
-            </button>
-          </div>
+          </form>
 
           <div
-            className="mt-3 -mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]"
             role="group"
             aria-label={t('search.locationSection')}
+            className="relative border-t border-border bg-surface-raised/20 px-3 py-3 sm:px-4"
           >
-            <span className="mr-1 shrink-0 text-xs uppercase tracking-[1.5px] text-muted">
-              {t('geo.radius')}
-            </span>
-            {RADIUS_OPTIONS_KM.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setRadiusKm(option)}
-                aria-pressed={radiusKm === option}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
-                  radiusKm === option
-                    ? 'border-brand bg-brand text-background'
-                    : 'border-border text-secondary hover:border-border-strong'
-                }`}
-              >
-                {option} km
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+            {!location ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <button
+                  type="button"
+                  onClick={useMyLocation}
+                  disabled={geoStatus === 'asking'}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border-strong bg-surface px-3 text-sm font-medium text-secondary transition-colors hover:bg-surface-raised disabled:opacity-60"
+                >
+                  <MapPin aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+                  {geoStatus === 'asking' ? t('geo.locating') : t('geo.use')}
+                </button>
+                <span className="text-xs leading-relaxed text-muted">{t('home.locationPrivacy')}</span>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/40 bg-success/10 px-3 text-sm font-medium text-success">
+                    <MapPin aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+                    {t('geo.near', { place: locationLabel ?? '' })}
+                    <button
+                      type="button"
+                      onClick={clearLocation}
+                      aria-label={t('geo.remove')}
+                      className="ml-0.5 text-base leading-none text-success/70 hover:text-success"
+                    >
+                      ×
+                    </button>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={useMyLocation}
+                    disabled={geoStatus === 'asking'}
+                    className="min-h-10 rounded-full px-2 text-xs text-tertiary underline-offset-4 hover:text-primary hover:underline disabled:opacity-60"
+                  >
+                    {geoStatus === 'asking' ? t('geo.locating') : t('geo.update')}
+                  </button>
+                </div>
 
-      {geoStatus === 'denied' && (
-        <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
-      )}
-      {geoStatus === 'unavailable' && (
-        <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
-      )}
+                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none]">
+                  <span className="mr-1 shrink-0 text-[11px] font-medium uppercase tracking-[1.5px] text-muted">
+                    {t('geo.radius')}
+                  </span>
+                  {RADIUS_OPTIONS_KM.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setRadiusKm(option)}
+                      aria-pressed={radiusKm === option}
+                      className={`shrink-0 rounded-full border px-3 py-1 text-xs tabular-nums transition-colors ${
+                        radiusKm === option
+                          ? 'border-brand bg-brand text-background'
+                          : 'border-border text-secondary hover:border-border-strong'
+                      }`}
+                    >
+                      {option} km
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {geoStatus === 'denied' && (
+              <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
+            )}
+            {geoStatus === 'unavailable' && (
+              <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Resultados */}
-      <section aria-label={t('search.resultsSection')} className="mt-5">
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+      <section aria-label={t('search.resultsSection')} className="mt-9">
+        <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
               {q.trim()
                 ? t('search.resultsFor', { query: q.trim() })
                 : location
                   ? t('search.productsNearby')
                   : t('search.allProducts')}
             </h2>
-            <p className="mt-0.5 text-xs text-muted">
+            <p className="mt-1 text-sm text-secondary">
               {sort === 'best' ? t('home.sortBestNote') : t('home.sortNearbyNote')}
             </p>
           </div>
-          <span className="text-xs text-muted tabular-nums">
+          <span
+            aria-live="polite"
+            className="inline-flex w-fit items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-secondary tabular-nums"
+          >
             {loading
               ? t('search.searching')
               : t(results.metadata.total === 1 ? 'search.productCountOne' : 'search.productCountMany', {
@@ -503,23 +499,25 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         )}
 
         {error && (
-          <div role="alert" className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <div role="alert" className="mt-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-3.5 text-sm text-destructive">
             {error}
           </div>
         )}
 
         {loading && results.products.length === 0 ? (
-          <ul className="animate-pulse divide-y divide-border" aria-hidden="true">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <li key={index} className="flex items-center justify-between gap-4 py-3">
-                <div className="space-y-1.5">
-                  <div className="h-4 w-40 rounded bg-surface-raised" />
-                  <div className="h-3 w-24 rounded bg-surface-raised" />
-                </div>
-                <div className="h-4 w-16 rounded bg-surface-raised" />
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-surface">
+            <ul className="animate-pulse divide-y divide-border" aria-hidden="true">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <li key={index} className="flex items-center justify-between gap-4 px-4 py-4">
+                  <div className="space-y-1.5">
+                    <div className="h-4 w-40 rounded bg-surface-raised" />
+                    <div className="h-3 w-24 rounded bg-surface-raised" />
+                  </div>
+                  <div className="h-4 w-16 rounded bg-surface-raised" />
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : results.products.length === 0 ? (
           <EmptyState
             align="center"
@@ -540,20 +538,21 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             className="mt-3"
           />
         ) : (
-          <ul className="divide-y divide-border">
-            {sortedProducts.map((product) => (
-              <li
-                key={`${product.storeId}:${product.productSlug}`}
-                className="flex items-center gap-2 py-3"
-              >
+          <div className="mt-3 overflow-hidden rounded-2xl border border-border bg-surface">
+            <ul className="divide-y divide-border">
+              {sortedProducts.map((product) => (
+                <li
+                  key={`${product.storeId}:${product.productSlug}`}
+                  className="flex items-center gap-2 px-3 py-3.5 sm:px-4"
+                >
                 <button
                   type="button"
                   onClick={() => setPreview(product)}
-                  className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg py-1 text-left transition-colors hover:bg-surface-raised/60"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl px-1 py-1 text-left transition-colors hover:bg-surface-raised/60"
                   aria-label={t('home.previewAria', { name: product.name })}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-base font-medium leading-tight text-primary">
+                    <span className="block truncate text-body-lg font-medium leading-tight text-primary">
                       {product.name}
                     </span>
                     <span className="mt-0.5 block truncate text-sm text-tertiary">
@@ -563,7 +562,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-mono text-base font-semibold tabular-nums text-primary">
+                    <span className="block font-mono text-body-lg font-semibold tabular-nums text-primary">
                       {product.hasVariants && (
                         <span className="mr-1 text-xs font-normal text-muted">{t('store.from')}</span>
                       )}
@@ -596,8 +595,9 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                   </button>
                 )}
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          </div>
         )}
 
         {results.metadata.total > results.products.length && (
@@ -608,11 +608,22 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
       </section>
 
       {/* Tiendas: grilla estática. Menos de 15 tiendas no justifican un carrusel. */}
-      <section aria-label={t('search.storesSection')} className="mt-9">
-        <div className="border-b border-border pb-2">
-          <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
+      <section aria-label={t('search.storesSection')} className="mt-12">
+        <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
             {location ? t('search.storesNearby') : t('search.storesAll')}
           </h2>
+          {results.stores.length > 0 && (
+            <span
+              aria-live="polite"
+              className="inline-flex w-fit items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-secondary tabular-nums"
+            >
+              {t(
+                results.stores.length === 1 ? 'search.storeCountOne' : 'search.storeCountMany',
+                { count: results.stores.length },
+              )}
+            </span>
+          )}
         </div>
 
         {results.stores.length === 0 ? (
@@ -672,6 +683,10 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                       {store.district}
                     </span>
                   )}
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-secondary">
+                    {t('home.previewVisitStore')}
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
                 </Link>
               </li>
             ))}
