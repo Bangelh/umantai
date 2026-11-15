@@ -72,10 +72,12 @@ export default async function ContactPage() {
                   <span className="text-warning">{t('contact.whatsappPending')}</span>
                 )}
               </li>
-              <li className="text-secondary">
-                <span className="text-tertiary">{t('contact.address')} </span>
-                <span className="text-warning">{t('contact.addressPending')}</span>
-              </li>
+              {businessConfig.address && (
+                <li className="text-secondary">
+                  <span className="text-tertiary">{t('contact.address')} </span>
+                  <span>{businessConfig.address}</span>
+                </li>
+              )}
             </ul>
           </section>
 

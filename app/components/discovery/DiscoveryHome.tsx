@@ -44,7 +44,6 @@ import { flyToCart } from '@/lib/fly-to-cart';
 import { useI18n } from '@/components/i18n/I18nProvider';
 
 const GEO_STORAGE_KEY = 'umantai:geo';
-const LOCATION_PROMPT_KEY = 'umantai:location-prompt';
 const DEBOUNCE_MS = 300;
 
 interface Props {
@@ -87,22 +86,6 @@ function writeSessionGeo(point: GeoSession | null): void {
   }
 }
 
-function readPromptDismissed(): boolean {
-  try {
-    return window.sessionStorage.getItem(LOCATION_PROMPT_KEY) === 'dismissed';
-  } catch {
-    return false;
-  }
-}
-
-function writePromptDismissed(): void {
-  try {
-    window.sessionStorage.setItem(LOCATION_PROMPT_KEY, 'dismissed');
-  } catch {
-    /* sin almacenamiento: se vuelve a ofrecer en la próxima visita */
-  }
-}
-
 export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   const { locale, t } = useI18n();
   const [q, setQ] = useState('');
@@ -113,7 +96,6 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [geoStatus, setGeoStatus] = useState<'idle' | 'asking' | 'denied' | 'unavailable'>('idle');
   const [sort, setSort] = useState<SortMode>('best');
-  const [promptDismissed, setPromptDismissed] = useState(true);
   const [preview, setPreview] = useState<DiscoveryProduct | null>(null);
   const [cartConflict, setCartConflict] = useState<
     { conflict: CartConflict; product: DiscoveryProduct } | null
@@ -129,8 +111,6 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   const requestSeq = useRef(0);
   const keepCartRef = useRef<HTMLButtonElement>(null);
   const closePreviewRef = useRef<HTMLButtonElement>(null);
-  const marqueeRef = useRef<HTMLDivElement>(null);
-  const marqueeTrackRef = useRef<HTMLUListElement>(null);
 
   const locationLabel = useMemo(() => {
     if (!location) return null;
@@ -140,15 +120,27 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   // Restaura la ubicación de ESTA pestaña (si el usuario ya la eligió).
   useEffect(() => {
     const stored = readSessionGeo();
-    if (stored) {
-      const timer = window.setTimeout(() => {
-        setLocation(stored);
-        setSort('nearby');
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-    const timer = window.setTimeout(() => setPromptDismissed(readPromptDismissed()), 0);
+    if (!stored) return;
+    const timer = window.setTimeout(() => {
+      setLocation(stored);
+      setSort('nearby');
+    }, 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  // La pestaña móvil «Tienda» apunta a /#buscar: enfocar el campo evita que el
+  // usuario llegue al inicio y tenga que buscar el control otra vez.
+  useEffect(() => {
+    const focusSearch = () => {
+      if (window.location.hash !== '#buscar') return;
+      document.getElementById('discovery-q')?.focus({ preventScroll: true });
+    };
+    const timer = window.setTimeout(focusSearch, 0);
+    window.addEventListener('hashchange', focusSearch);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('hashchange', focusSearch);
+    };
   }, []);
 
   const runSearch = useCallback(
@@ -232,11 +224,6 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
     setLocation(null);
     writeSessionGeo(null);
     setGeoStatus('idle');
-  };
-
-  const dismissPrompt = () => {
-    setPromptDismissed(true);
-    writePromptDismissed();
   };
 
   useEffect(() => {
@@ -324,79 +311,14 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
     ? [preview.storeAddress, preview.storeDistrict].filter(Boolean).join(', ')
     : '';
 
-  // Dos copias exactas del grupo: el riel avanza -50% y vuelve a empezar sin
-  // salto. Si hay pocas tiendas, se repiten dentro del grupo para cubrir el
-  // ancho visible. El movimiento lo controla requestAnimationFrame, no una
-  // animación CSS: así no depende de `prefers-reduced-motion` para arrancar.
-  const storesPerGroup = Math.max(1, Math.ceil(6 / Math.max(results.stores.length, 1)));
-  const groupStores = Array.from({ length: storesPerGroup }, () => results.stores).flat();
-  const trackStores = [...groupStores, ...groupStores];
-
-  useEffect(() => {
-    const viewport = marqueeRef.current;
-    const track = marqueeTrackRef.current;
-    if (!viewport || !track || results.stores.length === 0) return;
-
-    let frame = 0;
-    let last = 0;
-    let offset = 0;
-    let half = 0;
-    let visible = true;
-
-    // Con movimiento reducido igual avanza, pero más despacio: el usuario pidió
-    // que el carrusel nunca dependa de arrastre manual.
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const speed = reduceMotion ? 30 : 54;
-
-    const apply = () => {
-      track.style.transform = `translate3d(${-offset}px, 0, 0)`;
-    };
-
-    const measure = () => {
-      half = track.scrollWidth / 2;
-      if (!half) return;
-      offset = ((offset % half) + half) % half;
-      apply();
-    };
-
-    const tick = (now: number) => {
-      if (!last) last = now;
-      const delta = Math.min(64, now - last);
-      last = now;
-
-      if (visible && !document.hidden && half > 0) {
-        offset += (speed * delta) / 1000;
-        if (offset >= half) offset -= half;
-        apply();
-      }
-
-      frame = window.requestAnimationFrame(tick);
-    };
-
-    measure();
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(track);
-    const intersectionObserver = new IntersectionObserver(
-      ([entry]) => {
-        visible = entry.isIntersecting;
-        last = 0;
-      },
-      { rootMargin: '120px' },
-    );
-    intersectionObserver.observe(viewport);
-    frame = window.requestAnimationFrame(tick);
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-      intersectionObserver.disconnect();
-    };
-  }, [results.stores.length]);
-
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6">
       {/* Buscador */}
-      <section aria-label={t('search.section')} className="pt-6 sm:pt-8">
+      <section
+        id="buscar"
+        aria-label={t('search.section')}
+        className="scroll-mt-24 pt-6 sm:pt-8"
+      >
         <form
           role="search"
           onSubmit={(event) => {
@@ -439,58 +361,15 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         </form>
       </section>
 
-      {/* Ubicación: oferta proactiva, permiso solo con clic */}
-      {!promptDismissed && !location ? (
-        <section
-          aria-labelledby="location-prompt-title"
-          className="mt-4 overflow-hidden rounded-2xl border border-border-strong bg-surface"
-        >
-          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex min-w-0 items-start gap-3">
-              <span
-                aria-hidden="true"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-raised text-secondary"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
-                  <circle cx="12" cy="10" r="2.5" />
-                </svg>
-              </span>
-              <div className="min-w-0">
-                <h2 id="location-prompt-title" className="text-body-lg font-semibold leading-tight">
-                  {t('home.locationTitle')}
-                </h2>
-                <p className="mt-0.5 text-sm text-secondary">{t('home.locationBody')}</p>
-                <p className="mt-1 text-xs text-muted">{t('home.locationPrivacy')}</p>
-              </div>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={useMyLocation}
-                disabled={geoStatus === 'asking'}
-                className="h-11 flex-1 rounded-xl bg-brand px-4 text-sm font-semibold text-background hover:opacity-90 disabled:opacity-60 sm:flex-none"
-              >
-                {geoStatus === 'asking' ? t('geo.locating') : t('home.locationEnable')}
-              </button>
-              <button
-                type="button"
-                onClick={dismissPrompt}
-                className="h-11 flex-1 rounded-xl border border-border-strong px-4 text-sm font-medium text-secondary hover:bg-surface-raised sm:flex-none"
-              >
-                {t('home.locationLater')}
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : !location ? (
+      {/* Ubicación: control compacto; el permiso se pide solo con un clic. */}
+      {!location ? (
         <section aria-label={t('search.locationSection')} className="mt-3">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <button
               type="button"
               onClick={useMyLocation}
               disabled={geoStatus === 'asking'}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border-strong px-3 py-1.5 text-secondary hover:bg-surface-raised disabled:opacity-60"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-border-strong px-3 text-sm text-secondary hover:bg-surface-raised disabled:opacity-60"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" />
@@ -498,6 +377,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
               </svg>
               {geoStatus === 'asking' ? t('geo.locating') : t('geo.use')}
             </button>
+            <span className="text-xs text-muted">{t('home.locationPrivacy')}</span>
           </div>
         </section>
       ) : (
@@ -563,7 +443,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
       )}
 
       {/* Resultados */}
-      <section aria-label={t('search.resultsSection')} className="mt-7">
+      <section aria-label={t('search.resultsSection')} className="mt-5">
         <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border pb-2">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
@@ -587,11 +467,12 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         </div>
 
         {results.products.length > 1 && (
-          <div
-            className="mt-3 inline-flex rounded-full border border-border bg-surface p-0.5"
-            role="group"
-            aria-label={t('home.sortLabel')}
-          >
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div
+              className="inline-flex rounded-full border border-border bg-surface p-0.5"
+              role="group"
+              aria-label={t('home.sortLabel')}
+            >
             <button
               type="button"
               onClick={() => setSort('nearby')}
@@ -613,6 +494,10 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             >
               {t('home.sortBest')}
             </button>
+            </div>
+            {!location && (
+              <span className="text-xs text-muted">{t('home.sortNearbyHint')}</span>
+            )}
           </div>
         )}
 
@@ -643,7 +528,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             {sortedProducts.map((product) => (
               <li
                 key={`${product.storeId}:${product.productSlug}`}
-                className="flex items-center gap-2 py-2.5"
+                className="flex items-center gap-2 py-3"
               >
                 <button
                   type="button"
@@ -652,23 +537,23 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                   aria-label={t('home.previewAria', { name: product.name })}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium leading-tight text-primary">
+                    <span className="block truncate text-base font-medium leading-tight text-primary">
                       {product.name}
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-tertiary">
+                    <span className="mt-0.5 block truncate text-sm text-tertiary">
                       {product.storeName}
                       {product.distanceKm !== null && ` · ${formatDistanceKm(product.distanceKm, locale)}`}
                       {product.brand && ` · ${product.brand}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-mono text-[15px] font-semibold tabular-nums text-primary">
+                    <span className="block font-mono text-base font-semibold tabular-nums text-primary">
                       {product.hasVariants && (
-                        <span className="mr-1 text-[10px] font-normal text-muted">{t('store.from')}</span>
+                        <span className="mr-1 text-xs font-normal text-muted">{t('store.from')}</span>
                       )}
                       {formatPriceCents(product.priceCents, product.currency, locale)}
                     </span>
-                    <span className={`mt-0.5 block text-[11px] font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>
+                    <span className={`mt-0.5 block text-[13px] font-medium ${product.inStock ? 'text-success' : 'text-destructive'}`}>
                       {product.inStock ? t('search.available') : t('search.outOfStock')}
                     </span>
                   </span>
@@ -689,7 +574,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                     onClick={(event) => add(product, event.currentTarget)}
                     disabled={!product.inStock}
                     aria-label={`${t('store.addShort')}: ${product.name}`}
-                    className="min-h-11 shrink-0 rounded-xl bg-brand px-3 text-sm font-semibold text-background transition-transform hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="min-h-11 shrink-0 rounded-xl border border-border-strong bg-surface px-3 text-sm font-medium text-primary transition-colors hover:border-brand hover:bg-surface-raised active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {t('store.addShort')}
                   </button>
@@ -706,7 +591,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         )}
       </section>
 
-      {/* Tiendas: carrusel automático en bucle para no alargar la página */}
+      {/* Tiendas: grilla estática. Menos de 15 tiendas no justifican un carrusel. */}
       <section aria-label={t('search.storesSection')} className="mt-9">
         <div className="border-b border-border pb-2">
           <h2 className="text-sm font-semibold uppercase tracking-[2px] text-secondary">
@@ -717,64 +602,51 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         {results.stores.length === 0 ? (
           <p className="py-5 text-sm text-tertiary">{t('search.noStores')}</p>
         ) : (
-          <div ref={marqueeRef} className="store-marquee -mx-4 mt-3 overflow-hidden sm:-mx-6">
-            <ul ref={marqueeTrackRef} className="store-marquee-track flex w-max pb-2">
-              {trackStores.map((store, index) => {
-                // Solo la primera copia de cada tienda queda en el árbol de
-                // accesibilidad y en el orden de tabulación. Las demás son
-                // visuales: evitan huecos cuando el carril da la vuelta.
-                const hidden = index >= results.stores.length;
-                return (
-                  <li
-                    key={`${index}-${store.id}`}
-                    aria-hidden={hidden || undefined}
-                    className="mr-3 w-[248px] shrink-0"
-                  >
-                    <Link
-                      href={`/${store.slug}`}
-                      tabIndex={hidden ? -1 : undefined}
-                      className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-raised"
-                    >
-                      <span className="flex items-center gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised text-base font-semibold text-secondary">
-                          {store.logoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- logo remoto del comercio
-                            <img src={store.logoUrl} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            store.name.slice(0, 1).toUpperCase()
-                          )}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[15px] font-semibold leading-tight">
-                            {store.name}
-                          </span>
-                          <span className="mt-0.5 block truncate text-xs text-tertiary">
-                            {store.category ?? t('search.merchantFallback')}
-                          </span>
-                        </span>
-                      </span>
-
-                      <span className="mt-3 flex items-center justify-between text-xs text-tertiary">
-                        <span className="tabular-nums">
-                          {t('search.storeAvailable', { count: store.inStockCount })}
-                        </span>
-                        {store.distanceKm !== null && (
-                          <span className="tabular-nums">
-                            {formatDistanceKm(store.distanceKm, locale)}
-                          </span>
-                        )}
-                      </span>
-                      {store.district && (
-                        <span className="mt-1 block truncate text-xs text-muted">
-                          {store.district}
-                        </span>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {results.stores.map((store) => (
+              <li key={store.id} className="min-w-0">
+                <Link
+                  href={`/${store.slug}`}
+                  className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-raised"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised text-base font-semibold text-secondary">
+                      {store.logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- logo remoto del comercio
+                        <img src={store.logoUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        store.name.slice(0, 1).toUpperCase()
                       )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-base font-semibold leading-tight">
+                        {store.name}
+                      </span>
+                      <span className="mt-0.5 block truncate text-sm text-tertiary">
+                        {store.category ?? t('search.merchantFallback')}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span className="mt-3 flex items-center justify-between text-[13px] text-tertiary">
+                    <span className="tabular-nums">
+                      {t('search.storeAvailable', { count: store.inStockCount })}
+                    </span>
+                    {store.distanceKm !== null && (
+                      <span className="tabular-nums">
+                        {formatDistanceKm(store.distanceKm, locale)}
+                      </span>
+                    )}
+                  </span>
+                  {store.district && (
+                    <span className="mt-1 block truncate text-sm text-muted">
+                      {store.district}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

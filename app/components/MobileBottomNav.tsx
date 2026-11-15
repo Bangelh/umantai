@@ -49,6 +49,7 @@ export function MobileBottomNav() {
               <Link
                 key={tab.href}
                 href={tab.href}
+                aria-current={active ? 'page' : undefined}
                 className={`flex min-h-12 flex-col items-center justify-center flex-1 gap-0.5 py-1 text-[11px] transition-colors ${active ? "text-primary font-semibold" : "text-tertiary hover:text-secondary"}`}
               >
                 <div className="relative">

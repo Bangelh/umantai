@@ -22,10 +22,12 @@ import { usePathname } from 'next/navigation';
 export function RouteChrome({
   header,
   footer,
+  banner,
   children,
 }: {
   header: React.ReactNode;
   footer: React.ReactNode;
+  banner?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -34,6 +36,7 @@ export function RouteChrome({
 
   return (
     <>
+      {bare || adminArea ? null : banner}
       {bare ? null : header}
       {children}
       {bare || adminArea ? null : footer}

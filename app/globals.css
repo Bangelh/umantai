@@ -397,31 +397,6 @@ body {
   /* Legacy fallback - component uses Tailwind classes primarily */
 }
 
-/*
- * Carrusel automático de tiendas.
- *
- * El riel tiene DOS copias idénticas del grupo. DiscoveryHome lo desplaza con
- * requestAnimationFrame hacia la izquierda: al llegar a -50% vuelve a 0, donde
- * el contenido es exactamente el mismo. La máscara funde ambos bordes para que
- * las tiendas aparezcan por la derecha y se desvanezcan por la izquierda sin
- * un corte visible.
- */
-.store-marquee {
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0%,
-    #000 10%,
-    #000 90%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(to right, transparent 0%, #000 10%, #000 90%, transparent 100%);
-  touch-action: pan-y;
-}
-
-.store-marquee-track {
-  will-change: transform;
-}
-
 /* Respeta la preferencia del sistema de reducir movimiento. */
 @media (prefers-reduced-motion: reduce) {
   *,

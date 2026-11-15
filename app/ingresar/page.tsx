@@ -24,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 interface PageProps {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; mode?: string | string[] }>;
 }
 
 function safeNext(raw: string | string[] | undefined): string {
@@ -36,17 +36,21 @@ function safeNext(raw: string | string[] | undefined): string {
 export default async function LoginPage({ searchParams }: PageProps) {
   const { t } = await getTranslator();
   const user = await getCurrentUser();
-  const { next } = await searchParams;
+  const { next, mode } = await searchParams;
   const destination = safeNext(next);
+  const requestedMode = Array.isArray(mode) ? mode[0] : mode;
+  const initialMode = requestedMode === 'register' ? ('register' as const) : ('login' as const);
 
   if (user) redirect(destination);
 
   return (
     <main className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-5 py-10">
       <div className="rounded-3xl border border-border bg-surface p-6 sm:p-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t('nav.login')}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {initialMode === 'register' ? t('auth.registerTab') : t('nav.login')}
+        </h1>
         <p className="mt-1 text-sm text-secondary">{t('auth.guest')}</p>
-        <AuthForm next={destination} />
+        <AuthForm next={destination} initialMode={initialMode} />
       </div>
 
       <p className="mt-5 text-center text-xs text-muted">

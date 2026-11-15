@@ -5,6 +5,7 @@ import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { Toaster } from "sonner";
 import { NavActions } from "./components/NavActions";
+import { HeaderNav } from "./components/HeaderNav";
 import { RouteChrome } from "./components/RouteChrome";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { SiteFooter } from "./components/SiteFooter";
@@ -22,6 +23,7 @@ import { isProductionRuntime } from "@/lib/runtime-environment.server";
  * mismas URLs y evita que un catálogo de prueba aparezca en buscadores.
  */
 const INDEXABLE = isProductionRuntime();
+const SHOW_STAGING_BANNER = !isProductionRuntime();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -129,6 +131,16 @@ export default async function RootLayout({
           fallbackMessages={getMessages(DEFAULT_LOCALE)}
         >
           <RouteChrome
+            banner={
+              SHOW_STAGING_BANNER ? (
+                <div
+                  role="note"
+                  className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-xs font-medium text-warning sm:text-sm"
+                >
+                  {t('staging.banner')}
+                </div>
+              ) : null
+            }
             header={
               /* Top Navigation */
               <nav aria-label={t('nav.primary')} className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-50">
@@ -136,6 +148,7 @@ export default async function RootLayout({
                   <Link href="/" className="shrink-0" aria-label={t('nav.homeAria')}>
                     <BrandLogo />
                   </Link>
+                  <HeaderNav />
                   <div className="flex items-center gap-2 sm:gap-4">
                     <AuthLink />
                     <NavActions />

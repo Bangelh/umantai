@@ -10,6 +10,14 @@ type Mode = 'login' | 'register';
 
 interface Props {
   next: string;
+  /** Pestaña inicial; permite que «Crear cuenta de negocio» abra registro. */
+  initialMode?: Mode;
+  /**
+   * Recarga completa después de autenticar. El panel de administración lo usa
+   * para que el hook de sesión vuelva a arrancar y canjee la cuenta por la
+   * cookie de Platform Admin.
+   */
+  fullReload?: boolean;
 }
 
 interface AuthErrorPayload {
@@ -18,10 +26,10 @@ interface AuthErrorPayload {
   error?: string;
 }
 
-export function AuthForm({ next }: Props) {
+export function AuthForm({ next, initialMode = 'login', fullReload = false }: Props) {
   const router = useRouter();
   const { t } = useI18n();
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +82,10 @@ export function AuthForm({ next }: Props) {
 
       toast.success(mode === 'login' ? t('auth.welcomeBack') : t('auth.accountCreated'));
       if (mode === 'register') toast.info(t('auth.verifySent'));
+      if (fullReload) {
+        window.location.assign(next);
+        return;
+      }
       router.push(next);
       router.refresh();
     } catch (err) {
