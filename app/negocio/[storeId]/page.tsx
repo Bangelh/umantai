@@ -25,7 +25,9 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
 import { MerchantCatalog } from './MerchantCatalog';
 import { StoreBilling } from './StoreBilling';
 import { StoreIdentityForm } from './StoreIdentityForm';
@@ -190,7 +192,11 @@ export default async function MerchantStorePage({ params }: PageProps) {
 
   return (
     <main className="mx-auto max-w-5xl px-4 pb-12 pt-6 sm:px-6">
-      <nav className="text-xs text-muted">
+      {/* El panel es una herramienta de trabajo: la atmósfera se limita a la
+          cabecera. Las secciones de abajo no se animan para no distraer. */}
+      <div className="relative isolate -mx-4 px-4 pb-1 sm:-mx-6 sm:px-6">
+        <AuroraBackdrop />
+      <nav className="relative text-xs text-muted">
         <Link href="/negocio" className="hover:text-primary">
           {t('merchant.breadcrumb')}
         </Link>
@@ -198,7 +204,10 @@ export default async function MerchantStorePage({ params }: PageProps) {
         <span className="text-secondary">{store.name}</span>
       </nav>
 
-      <header className="surface-card mt-4 flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
+      <SpotlightSurface
+        className="surface-card relative mt-4"
+        bodyClassName="flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5"
+      >
         <div className="flex min-w-0 items-start gap-3">
           {store.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- imagen subida por el comercio
@@ -250,7 +259,8 @@ export default async function MerchantStorePage({ params }: PageProps) {
             </span>
           )}
         </div>
-      </header>
+      </SpotlightSurface>
+      </div>
 
       {status.state === 'pending_review' && (
         <div className="mt-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-warning">

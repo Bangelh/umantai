@@ -22,9 +22,12 @@ import type { ReactNode } from 'react';
 export function SpotlightSurface({
   children,
   className = '',
+  bodyClassName = '',
 }: {
   children: ReactNode;
   className?: string;
+  /** Layout interno: la superficie agrega su propio envoltorio `relative`. */
+  bodyClassName?: string;
 }) {
   const reduced = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -60,7 +63,7 @@ export function SpotlightSurface({
           style={{ background }}
         />
       )}
-      <div className="relative">{children}</div>
+      <div className={`relative ${bodyClassName}`}>{children}</div>
     </div>
   );
 }

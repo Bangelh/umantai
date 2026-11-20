@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
+import { Reveal } from '@/components/ui/Reveal';
 import { toast } from 'sonner';
 import { useCartStore, type CartConflict } from '@/lib/cartStore';
 import {
@@ -181,6 +183,7 @@ export function StoreCatalog({
 
   return (
     <>
+      <Reveal>
       <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {products.map((product) => {
           const fromPrice = basePriceCents(product);
@@ -268,6 +271,7 @@ export function StoreCatalog({
           );
         })}
       </ul>
+      </Reveal>
 
       {preview && (
         <div
@@ -277,10 +281,13 @@ export function StoreCatalog({
             if (event.target === event.currentTarget) setPreview(null);
           }}
         >
-          <div
+          <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby="store-preview-title"
+            initial={{ opacity: 0, y: 24, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface p-5 sm:max-w-lg sm:rounded-3xl sm:p-6"
           >
             <div className="flex items-start justify-between gap-3">
@@ -405,7 +412,7 @@ export function StoreCatalog({
                 {t('store.viewDetail')}
               </Link>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 

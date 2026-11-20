@@ -11,7 +11,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
 import { BrandLogo } from '@/components/brand/BrandLogo';
+import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
 import { StoreCatalog } from './StoreCatalog';
 import { normalizeSearchText } from '@/lib/catalog';
 import { getStorefront } from '@/lib/stores.server';
@@ -103,7 +105,11 @@ export default async function StorePage({ params, searchParams }: PageProps) {
 
   return (
     <main className="mx-auto max-w-5xl px-4 pb-10 sm:px-6">
-      <nav aria-label={t('store.breadcrumb')} className="pt-4 text-sm text-tertiary">
+      {/* Cabecera de la vitrina: misma atmósfera que el home, contenida al
+          bloque de identidad para no competir con el catálogo. */}
+      <div className="relative isolate -mx-4 px-4 pb-1 sm:-mx-6 sm:px-6">
+        <AuroraBackdrop />
+      <nav aria-label={t('store.breadcrumb')} className="relative pt-4 text-sm text-tertiary">
         <Link href="/" className="hover:text-primary">
           UMANTAI
         </Link>
@@ -111,7 +117,10 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         <span className="text-secondary">{store.name}</span>
       </nav>
 
-      <header className="surface-card mt-4 flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:p-5">
+      <SpotlightSurface
+        className="surface-card relative mt-4"
+        bodyClassName="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:p-5"
+      >
         <div className="flex min-w-0 flex-1 items-start gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-surface-raised text-xl font-semibold text-secondary">
             {store.logoUrl ? (
@@ -154,7 +163,8 @@ export default async function StorePage({ params, searchParams }: PageProps) {
             {t('store.available', { count: availableCount })}
           </div>
         </div>
-      </header>
+      </SpotlightSurface>
+      </div>
 
       {store.whatsapp && (
         <div className="mt-3">

@@ -1,3 +1,4 @@
+import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { getTranslator } from '@/lib/i18n/server';
 
 /**
@@ -16,7 +17,9 @@ export default async function MerchantStoreLoading() {
     >
       <div aria-hidden="true" className="h-3 w-36 rounded bg-surface-raised" />
 
-      <div aria-hidden="true" className="surface-card mt-4 flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
+      <div className="relative isolate -mx-4 px-4 pb-1 sm:-mx-6 sm:px-6">
+      <AuroraBackdrop />
+      <div aria-hidden="true" className="surface-card relative mt-4 flex flex-wrap items-start justify-between gap-4 p-4 sm:p-5">
         <div className="flex min-w-0 items-start gap-3">
           <div className="h-14 w-14 shrink-0 rounded-2xl bg-surface-raised" />
           <div className="min-w-0 space-y-2">
@@ -30,6 +33,7 @@ export default async function MerchantStoreLoading() {
           <div className="h-9 w-24 rounded-xl bg-surface-raised" />
           <div className="h-9 w-24 rounded-xl bg-surface-raised" />
         </div>
+      </div>
       </div>
 
       <div aria-hidden="true" className="mt-4 flex gap-2 overflow-hidden">
