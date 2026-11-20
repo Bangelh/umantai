@@ -67,3 +67,6 @@ backups/
 
 # Local Netlify folder
 .netlify
+
+# Supabase CLI local state (linked project, cached binary version)
+supabase/.temp/

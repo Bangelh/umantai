@@ -82,6 +82,9 @@ npx netlify-cli env:set POSTGRES_URL_NON_POOLING 'postgresql://...:5432/postgres
 npx netlify-cli env:set PGPOOL_MAX 1
 npx netlify-cli env:set PGBETTER_AUTH_POOL_MAX 1
 npx netlify-cli env:set APP_ENV staging
+# La rama conectada (feat/railway-staging) se construye en el contexto *production*,
+# así que el valor tiene que existir en ese contexto o el guard de lib/env.ts falla el build.
+npx netlify-cli env:set APP_ENV staging --context production --force
 npx netlify-cli env:set PAYLOAD_SECRET "$(openssl rand -hex 32)"
 npx netlify-cli env:set BETTER_AUTH_SECRET "$(openssl rand -hex 32)"
 npx netlify-cli env:set CRON_SECRET "$(openssl rand -hex 32)"
@@ -136,7 +139,7 @@ Verificación:
 
 ```bash
 curl -s https://umantai-staging.netlify.app/api/health
-# {"ok":true,...,"database":"reachable",...}
+# {"ok":true,...,"environment":"staging","database":{"reachable":true}}
 ```
 
 Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), `/admin` (bandeja), login del dueño de las tiendas seed.
@@ -154,7 +157,8 @@ Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), 
 | Pooler | `aws-1-sa-east-1.pooler.supabase.com` (6543 runtime · 5432 migraciones) |
 | Esquema | 26 migraciones SQL + `product_overrides`, `categories`, `brands` |
 | Datos | 5 tiendas · 18 productos publicados · 63 filas de stock · 1.892 distritos |
-| Pendiente | publicar el primer deploy con `proxy.ts` (build Linux) |
+| Deploy publicado | `6affe73a4b47df83e907a16a` · build `6affe73a4b47df83e907a168` · commit `fe5e493` |
+| Protección | SSO de Netlify desactivado: sin eso el sitio respondía 401 antes de llegar a la app |
 
 El DNS de `umantai.com` sigue apuntando a Railway: staging vive en el subdominio de Netlify hasta que se repunte.
 
