@@ -459,7 +459,75 @@ export default function AdminComplaintsPage() {
           </div>
         )}
 
-        <div className="mt-6 overflow-x-auto rounded-2xl border border-border">
+        {/* Móvil: tarjetas. La tabla de nueve columnas solo tiene sentido desde lg;
+            por debajo obligaba a un scroll horizontal para leer una hoja. */}
+        <ul className="mt-6 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface lg:hidden">
+          {complaints.map((complaint) => {
+            const due = dueState(complaint);
+            const open = complaint.status === 'answered';
+            return (
+              <li key={complaint.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm font-semibold tabular-nums">
+                        {complaint.complaintNumber}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                          open
+                            ? 'border-border bg-surface-raised text-tertiary'
+                            : 'border-warning/40 bg-warning/10 text-warning'
+                        }`}
+                      >
+                        {t(STATUS_KEYS[complaint.status])}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-[15px] font-medium">
+                      {complaint.consumerName}
+                    </p>
+                    <p className="truncate text-xs text-tertiary">{complaint.consumerEmail}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openComplaint(complaint.id)}
+                    aria-label={`${t('adminComplaints.open')}: ${complaint.complaintNumber}`}
+                    className="min-h-11 shrink-0 rounded-xl border border-border-strong px-3 text-sm hover:bg-surface-raised"
+                  >
+                    {t('adminComplaints.open')}
+                  </button>
+                </div>
+
+                <p className="mt-3 line-clamp-2 text-sm text-secondary">
+                  {complaint.relatedItem}
+                </p>
+
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-tertiary">
+                  <span>{formatDateTime(complaint.submittedAt, locale)}</span>
+                  <span
+                    className={
+                      due === 'overdue'
+                        ? 'font-medium text-destructive'
+                        : due === 'soon'
+                          ? 'font-medium text-warning'
+                          : ''
+                    }
+                  >
+                    {t('adminComplaints.due')}: {formatDateTime(complaint.dueAt, locale)}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {!loading && complaints.length === 0 && (
+          <p className="mt-6 rounded-2xl border border-border bg-surface px-4 py-8 text-center text-[15px] text-tertiary lg:hidden">
+            {t('adminComplaints.empty')}
+          </p>
+        )}
+
+        <div className="mt-6 hidden overflow-x-auto rounded-2xl border border-border lg:block">
           <table className="w-full min-w-[820px] text-[15px]">
             <thead className="border-b border-border bg-surface text-left text-[13px] uppercase tracking-wide text-tertiary">
               <tr>
