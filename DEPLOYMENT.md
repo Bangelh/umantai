@@ -141,6 +141,23 @@ curl -s https://umantai-staging.netlify.app/api/health
 
 Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), `/admin` (bandeja), login del dueño de las tiendas seed.
 
+### Alternativa sin conectar el repo
+
+`.github/workflows/deploy-staging.yml` construye en Ubuntu y despliega con la CLI. Solo necesita `NETLIFY_AUTH_TOKEN` como secreto del repo (Settings → Secrets and variables → Actions), creado en Netlify → User settings → Applications → New access token. Mientras el secreto no exista, el workflow avisa y termina en verde sin desplegar.
+
+## 6b. Estado del staging (2026-11-20)
+
+| Recurso | Valor |
+|---|---|
+| Sitio | `umantai-staging` · https://umantai-staging.netlify.app |
+| Proyecto Supabase | `gkxyacvciyudbmuztzjv` · São Paulo (`sa-east-1`) |
+| Pooler | `aws-1-sa-east-1.pooler.supabase.com` (6543 runtime · 5432 migraciones) |
+| Esquema | 26 migraciones SQL + `product_overrides`, `categories`, `brands` |
+| Datos | 5 tiendas · 18 productos publicados · 63 filas de stock · 1.892 distritos |
+| Pendiente | publicar el primer deploy con `proxy.ts` (build Linux) |
+
+El DNS de `umantai.com` sigue apuntando a Railway: staging vive en el subdominio de Netlify hasta que se repunte.
+
 ## 7. Cron
 
 `/api/cron/*` exige `Authorization: Bearer <CRON_SECRET>`. Se dispara desde GitHub Actions (`.github/workflows/cron-staging.yml`), no desde scheduled functions de Netlify: esas cobran cómputo y tienen 30 s.

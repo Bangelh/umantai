@@ -1,0 +1,70 @@
+# .github/workflows/deploy-staging.yml — deploy de staging desde Linux.
+#
+# Por qué existe: en Windows, `netlify deploy --build` falla al empaquetar el
+# handler de edge de `proxy.ts` (el bundler arma una ruta inválida con la letra
+# de unidad). En un runner Linux el mismo build funciona. Además la subida sale
+# desde el datacenter de GitHub y no desde la conexión local.
+#
+# Secreto necesario: NETLIFY_AUTH_TOKEN (Netlify → User settings → Applications).
+# Sin ese secreto el workflow no despliega: avisa y termina en verde.
+# PAYLOAD_SECRET se pasa porque `payload.config.ts` lo exige en producción.
+
+name: deploy-staging
+
+on:
+  push:
+    branches: [feat/railway-staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: 66caef91-a2ff-4517-8d4f-ad9c0f011997
+      NEXT_TELEMETRY_DISABLED: '1'
+      PAYLOAD_SECRET: ${{ secrets.PAYLOAD_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar credencial de Netlify
+        id: cred
+        run: |
+          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Falta NETLIFY_AUTH_TOKEN: se omite el deploy de staging."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.cred.outputs.skip == 'false'
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        if: steps.cred.outputs.skip == 'false'
+        run: npm ci
+
+      - name: Build y deploy en Netlify
+        if: steps.cred.outputs.skip == 'false'
+        run: npx --yes netlify-cli@latest deploy --build --prod --message "GH Actions ${GITHUB_SHA::7}"
+
+      - name: Healthcheck
+        if: steps.cred.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' --max-time 20 https://umantai-staging.netlify.app/api/health || true)
+            echo "intento $i: $code"
+            if [ "$code" = "200" ]; then cat /tmp/health.json; exit 0; fi
+            sleep 10
+          done
+          echo "El sitio no respondió 200 en /api/health" >&2
+          exit 1
