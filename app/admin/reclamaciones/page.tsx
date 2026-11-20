@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
@@ -107,15 +107,25 @@ export default function AdminComplaintsPage() {
   const [providerActions, setProviderActions] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
+  /**
+   * `overrides` permite aplicar un cambio en el mismo gesto (por ejemplo,
+   * limpiar filtros y recargar) sin esperar a que React propague el estado:
+   * el usuario no tiene que pulsar dos botones para ver la lista limpia.
+   */
+  const load = useCallback(
+    async (overrides?: { status?: string; kind?: string; from?: string; to?: string }) => {
+    const nextStatus = overrides?.status ?? status;
+    const nextKind = overrides?.kind ?? kind;
+    const nextFrom = overrides?.from ?? from;
+    const nextTo = overrides?.to ?? to;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ limit: '100' });
-      if (status) params.set('status', status);
-      if (kind) params.set('kind', kind);
-      if (from) params.set('from', from);
-      if (to) params.set('to', to);
+      if (nextStatus) params.set('status', nextStatus);
+      if (nextKind) params.set('kind', nextKind);
+      if (nextFrom) params.set('from', nextFrom);
+      if (nextTo) params.set('to', nextTo);
 
       const response = await fetch(`/api/admin/complaints?${params.toString()}`, withAdminAuth());
       const payload = (await response.json().catch(() => null)) as ListPayload | null;
@@ -129,7 +139,9 @@ export default function AdminComplaintsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, kind, status, t, to]);
+    },
+    [from, kind, status, t, to],
+  );
 
   useEffect(() => {
     if (admin.status !== 'authenticated') return;
@@ -156,6 +168,8 @@ export default function AdminComplaintsPage() {
     };
   }, [admin.status, t]);
 
+  const detailRef = useRef<HTMLElement | null>(null);
+
   const openComplaint = async (id: string) => {
     setError(null);
     setNotice(null);
@@ -168,6 +182,15 @@ export default function AdminComplaintsPage() {
       setSelected(payload.complaint);
       setResponseText(payload.complaint.responseText ?? '');
       setProviderActions(payload.complaint.providerActions ?? '');
+      // El detalle se abre al final de la página: llevamos el foco visual ahí
+      // para que el clic no parezca que no hizo nada.
+      window.setTimeout(() => {
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        detailRef.current?.scrollIntoView({
+          block: 'start',
+          behavior: reduced ? 'auto' : 'smooth',
+        });
+      }, 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : t('adminComplaints.error'));
     }
@@ -268,9 +291,6 @@ export default function AdminComplaintsPage() {
       <div className="mx-auto max-w-7xl">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-xs uppercase tracking-[3px] text-tertiary">
-              {t('adminComplaints.title')}
-            </div>
             <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
               {t('adminComplaints.title')}
             </h1>
@@ -292,26 +312,43 @@ export default function AdminComplaintsPage() {
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-border bg-surface p-4">
-            <div className="text-xs uppercase tracking-wide text-tertiary">
-              {t('adminComplaints.pending')}
+          {[
+            {
+              label: t('adminComplaints.pending'),
+              value: complaints.filter((complaint) => complaint.status !== 'answered').length,
+              tone: 'text-primary',
+              card: 'border-border bg-surface',
+              edge: 'via-brand/30',
+            },
+            {
+              label: t('adminComplaints.dueSoon'),
+              value: soonCount,
+              tone: 'text-warning',
+              card: 'border-warning/40 bg-warning/5',
+              edge: 'via-warning/40',
+            },
+            {
+              label: t('adminComplaints.overdue'),
+              value: overdueCount,
+              tone: 'text-destructive',
+              card: 'border-destructive/40 bg-destructive/5',
+              edge: 'via-destructive/40',
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className={`relative overflow-hidden rounded-2xl border p-4 ${item.card}`}
+            >
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent to-transparent ${item.edge}`}
+              />
+              <div className={`text-xs uppercase tracking-wide ${item.tone}`}>{item.label}</div>
+              <div className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${item.tone}`}>
+                {item.value}
+              </div>
             </div>
-            <div className="mt-1 text-2xl font-semibold">
-              {complaints.filter((complaint) => complaint.status !== 'answered').length}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-warning/40 bg-warning/5 p-4">
-            <div className="text-xs uppercase tracking-wide text-warning">
-              {t('adminComplaints.dueSoon')}
-            </div>
-            <div className="mt-1 text-2xl font-semibold text-warning">{soonCount}</div>
-          </div>
-          <div className="rounded-2xl border border-destructive/40 bg-destructive/5 p-4">
-            <div className="text-xs uppercase tracking-wide text-destructive">
-              {t('adminComplaints.overdue')}
-            </div>
-            <div className="mt-1 text-2xl font-semibold text-destructive">{overdueCount}</div>
-          </div>
+          ))}
         </div>
 
         {missingYears.length > 0 && (
@@ -395,6 +432,7 @@ export default function AdminComplaintsPage() {
                 setKind(ALL);
                 setFrom('');
                 setTo('');
+                void load({ status: ALL, kind: ALL, from: '', to: '' });
               }}
               className="btn-secondary h-11 px-3 text-sm"
             >
@@ -440,7 +478,7 @@ export default function AdminComplaintsPage() {
               {complaints.map((complaint) => {
                 const due = dueState(complaint);
                 return (
-                  <tr key={complaint.id} className="align-top">
+                  <tr key={complaint.id} className="align-top transition-colors hover:bg-surface-raised/50">
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-[13px]">
                       {complaint.complaintNumber}
                     </td>
@@ -509,8 +547,9 @@ export default function AdminComplaintsPage() {
 
         {selected && (
           <section
+            ref={detailRef}
             aria-labelledby="complaint-detail-title"
-            className="mt-8 rounded-2xl border border-border bg-surface p-5"
+            className="mt-8 scroll-mt-24 rounded-2xl border border-border bg-surface p-5"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>

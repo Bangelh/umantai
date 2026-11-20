@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Store } from 'lucide-react';
 
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
@@ -129,14 +131,17 @@ export default function AdminStoresPage() {
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return (stores ?? []).filter((store) => {
-      if (filter === 'pending' && store.active) return false;
-      if (filter === 'active' && !store.active) return false;
-      if (!term) return true;
-      return [store.name, store.slug, store.ownerEmail ?? ''].some((value) =>
-        value.toLowerCase().includes(term),
-      );
-    });
+    return (stores ?? [])
+      .filter((store) => {
+        if (filter === 'pending' && store.active) return false;
+        if (filter === 'active' && !store.active) return false;
+        if (!term) return true;
+        return [store.name, store.slug, store.ownerEmail ?? ''].some((value) =>
+          value.toLowerCase().includes(term),
+        );
+      })
+      // Lo que espera una decisión va primero: es la razón de ser de la pantalla.
+      .sort((a, b) => Number(a.active) - Number(b.active));
   }, [stores, filter, query]);
 
   if (admin.status !== 'authenticated') {
@@ -216,23 +221,82 @@ export default function AdminStoresPage() {
       )}
 
       {!stores && !error && (
-        <p role="status" className="mt-8 text-body text-tertiary">
-          {t('adminStores.loading')}
-        </p>
+        <div aria-busy="true" aria-live="polite" className="mt-5 space-y-2">
+          <span className="sr-only">{t('adminStores.loading')}</span>
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              aria-hidden="true"
+              className="rounded-2xl border border-border bg-surface p-4"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-2">
+                  <div className="h-5 w-40 animate-pulse rounded bg-surface-raised" />
+                  <div className="h-3 w-56 animate-pulse rounded bg-surface-raised" />
+                  <div className="h-3 w-32 animate-pulse rounded bg-surface-raised" />
+                </div>
+                <div className="h-11 w-28 animate-pulse rounded-xl bg-surface-raised" />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {stores && (
         <>
-          <p className="mt-5 text-sm text-tertiary">
+          {/* Resumen de la bandeja: resuelve en un vistazo qué requiere acción. */}
+          <section
+            aria-label={t('adminStores.status')}
+            className="mt-5 grid grid-cols-3 gap-2 sm:max-w-md"
+          >
+            {[
+              {
+                label: t('adminStores.filterPending'),
+                value: stores.filter((store) => !store.active).length,
+                tone: stores.some((store) => !store.active) ? 'text-warning' : 'text-primary',
+              },
+              {
+                label: t('adminStores.filterActive'),
+                value: stores.filter((store) => store.active).length,
+                tone: 'text-primary',
+              },
+              {
+                label: t('adminStores.filterAll'),
+                value: stores.length,
+                tone: 'text-primary',
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="relative overflow-hidden rounded-2xl border border-border bg-surface p-3"
+              >
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-brand/30 to-transparent"
+                />
+                <span className={`block font-mono text-2xl font-semibold tabular-nums ${item.tone}`}>
+                  {item.value}
+                </span>
+                <span className="mt-0.5 block text-xs leading-snug text-secondary">
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </section>
+
+          <p className="mt-4 text-sm text-tertiary">
             {filtered.length === 1
               ? t('adminStores.countOne')
               : t('adminStores.count', { count: filtered.length })}
           </p>
 
           {filtered.length === 0 ? (
-            <p className="mt-2 rounded-2xl border border-border bg-surface p-6 text-center text-[15px] text-secondary">
-              {stores.length === 0 ? t('adminStores.emptyAll') : t('adminStores.empty')}
-            </p>
+            <EmptyState
+              compact
+              icon={Store}
+              title={stores.length === 0 ? t('adminStores.emptyAll') : t('adminStores.empty')}
+              className="mt-2"
+            />
           ) : (
             <ul className="mt-2 space-y-2">
               {filtered.map((store) => {
@@ -240,7 +304,9 @@ export default function AdminStoresPage() {
                 return (
                   <li
                     key={store.id}
-                    className="rounded-2xl border border-border bg-surface p-4"
+                    className={`rounded-2xl border bg-surface p-4 ${
+                      store.active ? 'border-border' : 'border-warning/40'
+                    }`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
