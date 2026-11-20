@@ -23,8 +23,8 @@
 
 import Link from 'next/link';
 import { motion } from 'motion/react';
-import { ArrowUpRight, MapPin, MessageCircle, Search, Store } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpRight, MapPin, MessageCircle, Search, Store, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { toast } from 'sonner';
 import {
   DEFAULT_RADIUS_KM,
@@ -39,6 +39,8 @@ import {
   type DiscoveryResponse,
 } from '@/lib/discovery';
 import { nearestLocationLabel } from '@/lib/locations';
+import { normalizeSearchText } from '@/lib/catalog';
+import { splitHighlight } from '@/lib/search-suggest';
 import { useCartStore, type CartConflict } from '@/lib/cartStore';
 import type { Product } from '@/lib/products';
 import { flyToCart } from '@/lib/fly-to-cart';
@@ -98,6 +100,8 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
   const [results, setResults] = useState<DiscoveryResponse>(initial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestionOpen, setSuggestionOpen] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [geoStatus, setGeoStatus] = useState<'idle' | 'asking' | 'denied' | 'unavailable'>('idle');
   const [sort, setSort] = useState<SortMode>('best');
   const [preview, setPreview] = useState<DiscoveryProduct | null>(null);
@@ -303,6 +307,60 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
     return list;
   }, [results.products, sort]);
 
+  /**
+   * Sugerencias de lo que el servidor ya devolvió para ESTA consulta.
+   *
+   * No se pide nada extra: la respuesta del buscador (una sola petición, con
+   * debounce) trae productos y tiendas. Se compara el `q` que respondió el
+   * servidor con lo que hay en el campo para no enseñar sugerencias viejas
+   * mientras llega la respuesta nueva.
+   */
+  const suggestions = useMemo(() => {
+    const raw = q.trim();
+    if (raw.length < 2) return [];
+    if (normalizeSearchText(results.metadata.q ?? '') !== normalizeSearchText(raw)) return [];
+
+    const items: Array<{ label: string; hint: string }> = [];
+    const seen = new Set<string>();
+    const push = (label: string, hint: string) => {
+      const key = label.toLocaleLowerCase('es');
+      if (!label || seen.has(key) || items.length >= 6) return;
+      seen.add(key);
+      items.push({ label, hint });
+    };
+    for (const product of results.products) push(product.name, product.storeName);
+    for (const store of results.stores) {
+      push(store.name, store.category ?? t('search.merchantFallback'));
+    }
+    return items;
+  }, [q, results, t]);
+
+  const showSuggestions = suggestionOpen && suggestions.length > 0;
+
+  const chooseSuggestion = (label: string) => {
+    setQ(label);
+    setSuggestionOpen(false);
+    setActiveSuggestion(-1);
+    void runSearch(label, location, radiusKm);
+  };
+
+  const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSuggestion((current) => (current + 1) % suggestions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSuggestion((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+    } else if (event.key === 'Enter' && activeSuggestion >= 0) {
+      event.preventDefault();
+      chooseSuggestion(suggestions[activeSuggestion].label);
+    } else if (event.key === 'Escape') {
+      setSuggestionOpen(false);
+      setActiveSuggestion(-1);
+    }
+  };
+
   const previewInCart = preview
     ? cartItems
         .filter(
@@ -335,7 +393,15 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
           <label htmlFor="discovery-q" className="sr-only">
             {t('search.label')}
           </label>
-          <div className="relative flex-1">
+          <div
+            className="relative flex-1"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setSuggestionOpen(false);
+                setActiveSuggestion(-1);
+              }
+            }}
+          >
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-tertiary"
@@ -344,12 +410,81 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             <input
               id="discovery-q"
               value={q}
-              onChange={(event) => setQ(event.target.value)}
+              onChange={(event) => {
+                setQ(event.target.value);
+                setActiveSuggestion(-1);
+              }}
+              onFocus={() => setSuggestionOpen(true)}
+              onKeyDown={onSearchKeyDown}
               maxLength={80}
               autoComplete="off"
+              enterKeyHint="search"
+              spellCheck={false}
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-controls="discovery-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                activeSuggestion >= 0 ? `discovery-suggestion-${activeSuggestion}` : undefined
+              }
               placeholder={t('search.placeholder')}
-              className="h-14 w-full rounded-xl border border-border-strong bg-background pl-12 pr-4 text-base placeholder:text-muted focus:border-brand"
+              className={`h-14 w-full rounded-xl border border-border-strong bg-background pl-12 text-base placeholder:text-muted focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
+                q ? 'pr-12' : 'pr-4'
+              }`}
             />
+            {q && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQ('');
+                  setActiveSuggestion(-1);
+                  document.getElementById('discovery-q')?.focus();
+                }}
+                aria-label={t('search.clearInput')}
+                className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-tertiary transition-colors hover:bg-surface-raised hover:text-primary"
+              >
+                <X aria-hidden="true" className="h-4 w-4" />
+              </button>
+            )}
+            {showSuggestions && (
+              <ul
+                id="discovery-suggestions"
+                role="listbox"
+                aria-label={t('search.suggestions')}
+                className="absolute inset-x-0 top-[calc(100%+0.4rem)] z-40 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-xl"
+              >
+                {suggestions.map((suggestion, index) => (
+                  <li key={`${suggestion.label}:${index}`}>
+                    <button
+                      type="button"
+                      role="option"
+                      id={`discovery-suggestion-${index}`}
+                      aria-selected={index === activeSuggestion}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => chooseSuggestion(suggestion.label)}
+                      className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                        index === activeSuggestion ? 'bg-surface-raised' : 'hover:bg-surface-raised'
+                      }`}
+                    >
+                      <span className="min-w-0 truncate text-primary">
+                        {splitHighlight(suggestion.label, q).map((part, partIndex) =>
+                          part.match ? (
+                            <span key={partIndex} className="font-semibold text-brand">
+                              {part.text}
+                            </span>
+                          ) : (
+                            <span key={partIndex}>{part.text}</span>
+                          ),
+                        )}
+                      </span>
+                      <span className="shrink-0 truncate text-xs text-tertiary">
+                        {suggestion.hint}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <button
             type="submit"

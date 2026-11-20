@@ -9,7 +9,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Package, Search } from 'lucide-react';
+import { Package, Search, X } from 'lucide-react';
 import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
@@ -194,15 +194,29 @@ export default async function StorePage({ params, searchParams }: PageProps) {
             {categoryFilter && (
               <input type="hidden" name="category" value={categoryFilter} />
             )}
-            <input
-              id="store-search"
-              type="search"
-              name="q"
-              defaultValue={queryText}
-              placeholder={t('store.searchPlaceholder', { store: store.name })}
-              maxLength={80}
-              className="h-12 min-w-0 flex-1 rounded-xl border border-border-strong bg-surface px-3 text-body"
-            />
+            <div className="relative min-w-0 flex-1">
+              <input
+                id="store-search"
+                type="text"
+                name="q"
+                defaultValue={queryText}
+                placeholder={t('store.searchPlaceholder', { store: store.name })}
+                maxLength={80}
+                autoComplete="off"
+                enterKeyHint="search"
+                spellCheck={false}
+                className="h-12 w-full rounded-xl border border-border-strong bg-surface px-3 pr-11 text-body focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              />
+              {queryText && (
+                <Link
+                  href={buildHref({ category: categoryFilter })}
+                  aria-label={t('search.clearInput')}
+                  className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-tertiary transition-colors hover:bg-surface-raised hover:text-primary"
+                >
+                  <X aria-hidden="true" className="h-4 w-4" />
+                </Link>
+              )}
+            </div>
             <button
               type="submit"
               className="h-12 rounded-xl bg-brand px-4 text-base font-semibold text-background transition-opacity hover:opacity-90"
