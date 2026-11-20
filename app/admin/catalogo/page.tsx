@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Package } from 'lucide-react';
 import { useI18n } from '@/components/i18n/I18nProvider';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
@@ -287,29 +289,36 @@ export default function MasterCatalogPage() {
         </div>
       </div>
 
-      {error && <p className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
 
       <form onSubmit={create} className="mt-5 rounded-2xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold">{t('catalog.newProduct')}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="text-xs text-tertiary">
             {t('catalog.canonicalName')}
-            <input value={name} onChange={(event) => setName(event.target.value)} required className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
+            <input value={name} onChange={(event) => setName(event.target.value)} required className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
           </label>
           <label className="text-xs text-tertiary">
             {t('catalog.brand')}
-            <input value={brand} onChange={(event) => setBrand(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
+            <input value={brand} onChange={(event) => setBrand(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
           </label>
           <label className="text-xs text-tertiary">
             {t('catalog.category')}
-            <input value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
+            <input value={category} onChange={(event) => setCategory(event.target.value)} className="mt-1 h-11 w-full rounded-xl border border-border-strong bg-background px-3 text-sm" />
           </label>
           <label className="text-xs text-tertiary sm:col-span-2">
             {t('catalog.baseDescription')}
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} className="mt-1 w-full rounded-xl border border-border-strong bg-background px-3 py-2 text-sm" />
           </label>
         </div>
-        <button type="submit" disabled={busy} className="mt-3 h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-50">
+        <button type="submit" disabled={busy} className="mt-3 h-11 rounded-xl bg-brand px-4 text-sm font-semibold text-background disabled:opacity-50">
           {t('catalog.createMaster')}
         </button>
       </form>
@@ -319,13 +328,13 @@ export default function MasterCatalogPage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t('catalog.searchPlaceholder')}
-          className="h-10 min-w-40 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
+          className="h-11 min-w-40 flex-1 rounded-xl border border-border-strong bg-background px-3 text-sm"
         />
         <select
           value={filterCategory}
           onChange={(event) => setFilterCategory(event.target.value)}
           aria-label={t('catalog.filterCategory')}
-          className="h-10 rounded-xl border border-border-strong bg-background px-2 text-xs"
+          className="h-11 rounded-xl border border-border-strong bg-background px-2 text-sm"
         >
           <option value="">{t('catalog.allCategories')}</option>
           {facets.categories.map((value) => (
@@ -336,7 +345,7 @@ export default function MasterCatalogPage() {
           value={filterBrand}
           onChange={(event) => setFilterBrand(event.target.value)}
           aria-label={t('catalog.filterBrand')}
-          className="h-10 rounded-xl border border-border-strong bg-background px-2 text-xs"
+          className="h-11 rounded-xl border border-border-strong bg-background px-2 text-sm"
         >
           <option value="">{t('catalog.allBrands')}</option>
           {facets.brands.map((value) => (
@@ -347,15 +356,33 @@ export default function MasterCatalogPage() {
           <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
           {t('catalog.showArchived')}
         </label>
-        <button type="button" onClick={() => void load()} disabled={busy} className="h-10 rounded-xl border border-border-strong px-3 text-sm">
+        <button type="button" onClick={() => void load()} disabled={busy} className="h-11 rounded-xl border border-border-strong px-3 text-sm">
           {t('catalog.search')}
         </button>
-        <span className="text-xs text-muted tabular-nums">{products.length}</span>
+        <span className="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-xs font-medium text-secondary tabular-nums">
+          {t(products.length === 1 ? 'catalog.countOne' : 'catalog.count', { count: products.length })}
+        </span>
       </div>
 
-      <ul className="divide-y divide-border">
+      <ul className="divide-y divide-border" aria-busy={busy}>
+        {products.length === 0 && (
+          <li className="py-3">
+            {busy ? (
+              <div aria-hidden="true" className="flex items-center gap-3">
+                <div className="h-12 w-12 animate-pulse rounded-lg bg-surface-raised" />
+                <div className="space-y-2">
+                  <div className="h-4 w-48 animate-pulse rounded bg-surface-raised" />
+                  <div className="h-3 w-32 animate-pulse rounded bg-surface-raised" />
+                </div>
+              </div>
+            ) : (
+              <EmptyState compact icon={Package} title={t('catalog.empty')} />
+            )}
+          </li>
+        )}
         {products.map((product) => (
-          <li key={product.id} className="flex items-start gap-3 py-3">
+          <li key={product.id} className="py-3">
+            <div className="flex items-start gap-3">
             {product.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element -- imagen del catálogo maestro
               <img src={product.imageUrl} alt="" className="h-12 w-12 rounded-lg border border-border object-cover" />
@@ -374,19 +401,21 @@ export default function MasterCatalogPage() {
                 )}
               </div>
               <div className="truncate text-[13px] text-tertiary">
-                {[product.brand, product.category].filter(Boolean).join(' · ') || 'Sin marca'}
+                {[product.brand, product.category].filter(Boolean).join(' · ') || t('catalog.noBrand')}
               </div>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-1">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               <button
                 type="button"
                 onClick={() => (editingId === product.id ? setEditingId(null) : startEdit(product))}
-                className="text-xs text-secondary hover:text-primary"
+                aria-expanded={editingId === product.id}
+                aria-controls={`master-edit-${product.id}`}
+                className="min-h-10 rounded-xl border border-border-strong px-3 text-sm text-secondary hover:bg-surface-raised hover:text-primary"
               >
-                {editingId === product.id ? 'Cerrar' : 'Editar'}
+                {editingId === product.id ? t('catalog.closeEditor') : t('catalog.edit')}
               </button>
-              <label className="cursor-pointer text-xs text-secondary hover:text-primary">
-                Imagen
+              <label className="inline-flex min-h-10 cursor-pointer items-center rounded-xl border border-border px-3 text-sm text-secondary hover:bg-surface-raised hover:text-primary">
+                {t('catalog.image')}
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
@@ -399,14 +428,22 @@ export default function MasterCatalogPage() {
                 />
               </label>
               {!product.archivedAt && (
-                <button type="button" onClick={() => void archive(product)} className="text-xs text-destructive/80 hover:text-destructive">
+                <button
+                  type="button"
+                  onClick={() => void archive(product)}
+                  className="min-h-10 rounded-xl border border-destructive/40 px-3 text-sm text-destructive hover:bg-destructive/10"
+                >
                   {t('catalog.archive')}
                 </button>
               )}
             </div>
+            </div>
 
             {editingId === product.id && (
-              <div className="mt-2 w-full rounded-xl border border-border bg-surface p-3">
+              <div
+                id={`master-edit-${product.id}`}
+                className="mt-3 rounded-xl border border-border bg-surface-raised/40 p-3"
+              >
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="text-xs text-tertiary">
                     {t('catalog.canonicalName')}

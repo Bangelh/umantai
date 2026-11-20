@@ -61,6 +61,20 @@ function EditModal({ product, onClose }: EditModalProps) {
     fetchTree();
   }, []);
 
+  // El modal atrapa Escape y evita el scroll de fondo mientras está abierto.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+
   // Handle selecting a leaf in the tree
   const handleSelectSubcategory = (node: any, parent: any) => {
     setSelectedSubcategoryId(node.id);
@@ -127,70 +141,70 @@ function EditModal({ product, onClose }: EditModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center p-6">
-      <div className="bg-neutral-900 border border-white/20 rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-auto">
-        <div className="p-6 border-b border-white/10 flex justify-between items-center">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-labelledby="legacy-edit-title" className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl border border-border bg-surface">
+        <div className="p-6 border-b border-border flex justify-between items-center">
           <div>
-            <div className="text-xl font-semibold">{product.name}</div>
-            <div className="text-sm text-white/50">{product.slug}</div>
+            <div id="legacy-edit-title" className="text-xl font-semibold">{product.name}</div>
+            <div className="text-sm text-tertiary">{product.slug}</div>
           </div>
-          <button onClick={onClose} className="text-2xl text-white/60 hover:text-white">×</button>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-11 w-11 items-center justify-center rounded-full text-2xl text-tertiary hover:bg-surface-raised hover:text-primary">×</button>
         </div>
 
         <div className="p-6 space-y-6">
           {/* Product Name - Easy rename */}
           <div>
-            <label className="text-xs text-white/60 block mb-1.5">PRODUCT NAME</label>
+            <label className="text-xs text-tertiary block mb-1.5">PRODUCT NAME</label>
             <input 
               value={form.name} 
               onChange={(e) => setForm({ ...form, name: e.target.value })} 
-              className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-3 text-lg font-medium" 
+              className="w-full bg-background border border-border-strong rounded-xl px-4 py-3 text-lg font-medium" 
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs text-white/60 block mb-1.5">PRICE</label>
-              <input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" />
+              <label className="text-xs text-tertiary block mb-1.5">PRICE</label>
+              <input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" />
             </div>
             <div>
-              <label className="text-xs text-white/60 block mb-1.5">STOCK / UNITS</label>
-              <input type="number" value={form.inStock} onChange={(e) => setForm({ ...form, inStock: parseInt(e.target.value) || 0 })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" />
+              <label className="text-xs text-tertiary block mb-1.5">STOCK / UNITS</label>
+              <input type="number" value={form.inStock} onChange={(e) => setForm({ ...form, inStock: parseInt(e.target.value) || 0 })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" />
             </div>
             <div>
-              <label className="text-xs text-white/60 block mb-1.5">RATING</label>
-              <input type="number" step="0.1" value={form.rating} onChange={(e) => setForm({ ...form, rating: parseFloat(e.target.value) || 0 })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" />
+              <label className="text-xs text-tertiary block mb-1.5">RATING</label>
+              <input type="number" step="0.1" value={form.rating} onChange={(e) => setForm({ ...form, rating: parseFloat(e.target.value) || 0 })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" />
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-white/60 block mb-1.5">DESCRIPTION</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} className="w-full bg-neutral-950 border border-white/20 rounded-2xl px-4 py-3" />
+            <label className="text-xs text-tertiary block mb-1.5">DESCRIPTION</label>
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} className="w-full bg-background border border-border-strong rounded-2xl px-4 py-3" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-white/60 block mb-1.5">BRAND</label>
-              <input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" />
+              <label className="text-xs text-tertiary block mb-1.5">BRAND</label>
+              <input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" />
             </div>
             <div>
-              <label className="text-xs text-white/60 block mb-1.5">CATEGORY</label>
-              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" />
+              <label className="text-xs text-tertiary block mb-1.5">CATEGORY</label>
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" />
             </div>
           </div>
 
           {/* Full Tree Category Editor */}
           <div>
-            <label className="text-xs text-white/60 block mb-2">CATEGORY & SUBCATEGORY (Full Tree Editor)</label>
+            <label className="text-xs text-tertiary block mb-2">CATEGORY & SUBCATEGORY (Full Tree Editor)</label>
             
             {categoryTree ? (
-              <div className="bg-neutral-950 border border-white/20 rounded-2xl p-4 max-h-64 overflow-auto">
+              <div className="bg-background border border-border-strong rounded-2xl p-4 max-h-64 overflow-auto">
                 {/* Root */}
-                <div className="font-medium mb-2 text-white/70">{categoryTree.name}</div>
+                <div className="font-medium mb-2 text-secondary">{categoryTree.name}</div>
 
                 {categoryTree.children?.map((group: any) => (
                   <details key={group.id} className="mb-2" open>
-                    <summary className="cursor-pointer font-medium text-white/80 hover:text-white">
+                    <summary className="cursor-pointer font-medium text-secondary hover:text-primary">
                       {group.name}
                     </summary>
                     <div className="ml-6 mt-1 space-y-1">
@@ -200,8 +214,8 @@ function EditModal({ product, onClose }: EditModalProps) {
                           onClick={() => handleSelectSubcategory(sub, group)}
                           className={`cursor-pointer px-3 py-1.5 rounded-xl text-sm transition-colors ${
                             selectedSubcategoryId === sub.id 
-                              ? 'bg-white text-black' 
-                              : 'hover:bg-white/10'
+                              ? 'bg-brand text-background' 
+                              : 'hover:bg-surface-raised'
                           }`}
                         >
                           {sub.name}
@@ -219,36 +233,36 @@ function EditModal({ product, onClose }: EditModalProps) {
             )}
 
             {selectedCategoryPath && (
-              <div className="mt-2 text-xs text-emerald-400">
+              <div className="mt-2 text-xs text-success">
                 Seleccionado: {selectedCategoryPath}
               </div>
             )}
           </div>
 
           <div>
-            <label className="text-xs text-white/60 block mb-1.5">SUBCATEGORY (manual override)</label>
-            <input value={form.subcategory} onChange={(e) => setForm({ ...form, subcategory: e.target.value })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" placeholder="Ej. Paltas" />
+            <label className="text-xs text-tertiary block mb-1.5">SUBCATEGORY (manual override)</label>
+            <input value={form.subcategory} onChange={(e) => setForm({ ...form, subcategory: e.target.value })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" placeholder="Ej. Paltas" />
           </div>
 
           <div>
-            <label className="text-xs text-white/60 block mb-1.5">IMAGES (comma separated)</label>
-            <input value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} className="w-full bg-neutral-950 border border-white/20 rounded-xl px-4 py-2.5" placeholder="/images/products/xxx.jpg" />
+            <label className="text-xs text-tertiary block mb-1.5">IMAGES (comma separated)</label>
+            <input value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} className="w-full bg-background border border-border-strong rounded-xl px-4 py-2.5" placeholder="/images/products/xxx.jpg" />
           </div>
 
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.bestseller} onChange={(e) => setForm({ ...form, bestseller: e.target.checked })} className="accent-white" />
+              <input type="checkbox" checked={form.bestseller} onChange={(e) => setForm({ ...form, bestseller: e.target.checked })} className="filter-checkbox" />
               <span className="text-sm">Bestseller</span>
             </label>
             <div>
-              <label className="text-xs text-white/60 block mb-1">REVIEW COUNT</label>
-              <input type="number" value={form.reviewCount} onChange={(e) => setForm({ ...form, reviewCount: parseInt(e.target.value) || 0 })} className="w-32 bg-neutral-950 border border-white/20 rounded-xl px-4 py-2" />
+              <label className="text-xs text-tertiary block mb-1">REVIEW COUNT</label>
+              <input type="number" value={form.reviewCount} onChange={(e) => setForm({ ...form, reviewCount: parseInt(e.target.value) || 0 })} className="w-32 bg-background border border-border-strong rounded-xl px-4 py-2" />
             </div>
           </div>
         </div>
 
-        <div className="p-6 border-t border-white/10 flex justify-between">
-          <button onClick={() => { resetProduct(product.slug); onClose(); }} className="px-4 py-2 text-sm text-red-400 hover:text-red-300">Reset this product</button>
+        <div className="p-6 border-t border-border flex justify-between">
+          <button onClick={() => { resetProduct(product.slug); onClose(); }} className="px-4 py-2 text-sm text-destructive hover:text-destructive">Reset this product</button>
           <div className="flex gap-3">
             <button onClick={onClose} className="h-11 rounded-xl border border-border-strong px-6">Cancelar</button>
             <button onClick={handleSave} className="h-11 rounded-xl bg-brand px-8 font-medium text-background">Guardar cambios</button>
@@ -307,7 +321,7 @@ function BulkStockEditor({ baseProducts, overrides, updateProduct }: any) {
         <button onClick={clearSelection} className="h-11 rounded-xl border border-border-strong px-4 text-sm">Limpiar selección</button>
       </div>
 
-      <div className="flex items-center gap-3 mb-4 bg-neutral-900 p-3 rounded-2xl">
+      <div className="flex items-center gap-3 mb-4 bg-surface p-3 rounded-2xl">
         <input
           type="number"
           value={bulkValue}
@@ -326,7 +340,7 @@ function BulkStockEditor({ baseProducts, overrides, updateProduct }: any) {
         <span className="text-sm text-tertiary">Seleccionados: {selected.length}</span>
       </div>
 
-      <div className="max-h-[500px] overflow-auto border border-white/10 rounded-2xl">
+      <div className="max-h-[500px] overflow-auto border border-border rounded-2xl">
         {filteredProducts.map((p: any) => {
           const currentStock = overrides[p.slug]?.inStock ?? p.inStock;
           const isSelected = selected.includes(p.slug);
@@ -335,18 +349,18 @@ function BulkStockEditor({ baseProducts, overrides, updateProduct }: any) {
             <div 
               key={p.slug} 
               onClick={() => toggleSelect(p.slug)}
-              className={`flex items-center justify-between px-4 py-3 border-b border-white/10 cursor-pointer ${isSelected ? 'bg-white/10' : 'hover:bg-white/5'}`}
+              className={`flex items-center justify-between px-4 py-3 border-b border-border cursor-pointer ${isSelected ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
             >
               <div className="flex items-center gap-3">
                 <input 
                   type="checkbox" 
                   checked={isSelected} 
                   onChange={() => {}} 
-                  className="accent-white" 
+                  className="filter-checkbox" 
                 />
                 <span>{p.name}</span>
               </div>
-              <span className={currentStock === 0 ? "text-red-400" : "text-white/70"}>{currentStock} units</span>
+              <span className={currentStock === 0 ? "text-destructive" : "text-secondary"}>{currentStock} units</span>
             </div>
           );
         })}
@@ -515,7 +529,7 @@ function CategoriesManager() {
   const renderNode = (node: any, index?: number, parentId?: number) => (
     <div 
       key={node.id} 
-      className="ml-4 border-l border-white/10 pl-4 py-1"
+      className="ml-4 border-l border-border pl-4 py-1"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", JSON.stringify({ id: node.id, parent_id: parentId }));
@@ -539,18 +553,18 @@ function CategoriesManager() {
                 if (e.key === 'Enter') saveRenameCategory(node.id);
                 if (e.key === 'Escape') cancelRename();
               }}
-              className="flex-1 bg-neutral-800 border border-white/30 rounded px-2 py-1 text-sm"
+              className="flex-1 bg-surface-raised border border-border-strong rounded px-2 py-1 text-sm"
               autoFocus
             />
             <button 
               onClick={() => saveRenameCategory(node.id)} 
-              className="text-xs px-3 py-1 bg-emerald-600 rounded text-white"
+              className="text-xs px-3 py-1 bg-success rounded text-white"
             >
               Save
             </button>
             <button 
               onClick={cancelRename} 
-              className="text-xs px-3 py-1 border border-white/20 rounded"
+              className="text-xs px-3 py-1 border border-border-strong rounded"
             >
               Cancel
             </button>
@@ -561,7 +575,7 @@ function CategoriesManager() {
             
             <button 
               onClick={() => startRenameCategory(node.id, node.name)}
-              className="text-xs px-2 py-0.5 opacity-60 hover:opacity-100 border border-white/20 rounded"
+              className="text-xs px-2 py-0.5 opacity-60 hover:opacity-100 border border-border-strong rounded"
             >
               Rename
             </button>
@@ -569,7 +583,7 @@ function CategoriesManager() {
             {node.isLeaf && (
               <button 
                 onClick={() => deleteCategory(node.id, node.name)}
-                className="text-xs px-2 py-0.5 text-red-400 opacity-60 hover:opacity-100"
+                className="text-xs px-2 py-0.5 text-destructive opacity-60 hover:opacity-100"
               >
                 Delete
               </button>
@@ -577,7 +591,7 @@ function CategoriesManager() {
 
             <button 
               onClick={() => addSubcategory(node.id)}
-              className="text-xs px-2 py-0.5 bg-white/10 rounded hover:bg-white/20"
+              className="text-xs px-2 py-0.5 bg-surface-raised rounded hover:bg-surface-raised"
             >
               + Add Sub
             </button>
@@ -596,7 +610,7 @@ function CategoriesManager() {
   if (loading) return <div className="p-8 text-[15px] text-tertiary">Cargando categorías…</div>;
 
   return (
-    <div className="bg-neutral-900 border border-white/10 rounded-3xl p-8">
+    <div className="bg-surface border border-border rounded-3xl p-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <h2 className="text-2xl font-semibold">Categories Tree Editor</h2>
         
@@ -606,12 +620,12 @@ function CategoriesManager() {
             value={categorySearch}
             onChange={(e) => setCategorySearch(e.target.value)}
             placeholder="Buscar categorías…"
-            className="bg-neutral-950 border border-white/20 rounded-xl px-4 py-2 text-sm w-64"
+            className="bg-background border border-border-strong rounded-xl px-4 py-2 text-sm w-64"
           />
-          <button onClick={loadTree} className="text-sm px-4 py-2 border border-white/20 rounded-xl">Refresh</button>
+          <button onClick={loadTree} className="text-sm px-4 py-2 border border-border-strong rounded-xl">Refresh</button>
           <button 
             onClick={seedCategoriesFromStatic} 
-            className="text-sm px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 rounded-xl"
+            className="rounded-xl bg-success/90 px-4 py-2 text-sm font-medium text-background hover:bg-success"
             title="One-time: populate the categories table from the built-in Whole Foods list so rename/save works immediately"
           >
             Seed from static
@@ -621,12 +635,12 @@ function CategoriesManager() {
 
       <div className="space-y-4">
         {displayedTree.map((group: any) => (
-          <div key={group.id} className="border border-white/10 rounded-2xl p-4">
+          <div key={group.id} className="border border-border rounded-2xl p-4">
             <div className="font-semibold text-lg mb-3 flex items-center justify-between">
               <span>{group.name}</span>
               <button 
                 onClick={() => addSubcategory(group.id)}
-                className="text-sm px-4 py-1 bg-white/10 rounded-xl hover:bg-white/20"
+                className="text-sm px-4 py-1 bg-surface-raised rounded-xl hover:bg-surface-raised"
               >
                 + Add Subcategory
               </button>
@@ -641,7 +655,7 @@ function CategoriesManager() {
         )}
       </div>
 
-      <p className="mt-6 text-xs text-white/50">
+      <p className="mt-6 text-xs text-tertiary">
         Click <strong>Rename</strong> to edit names (persisted to DB + live in this tree after refresh). Use <strong>Seed from static</strong> first if tree is empty. <strong>+ Add Sub</strong> to create new items. Delete only works on leaf nodes.
       </p>
     </div>
@@ -727,7 +741,7 @@ function BrandsManager() {
 
       <div className="space-y-2">
         {brands.map(brand => (
-          <div key={brand.id} className="flex items-center gap-3 border border-white/10 rounded-2xl px-4 py-3">
+          <div key={brand.id} className="flex items-center gap-3 border border-border rounded-2xl px-4 py-3">
             {editingId === brand.id ? (
               <>
                 <input
