@@ -10,13 +10,14 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Package, Search } from 'lucide-react';
-import { BrandLogo } from '@/components/brand/BrandLogo';
 import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
 import { StoreCatalog } from './StoreCatalog';
+import { StoreFooter } from './StoreFooter';
 import { normalizeSearchText } from '@/lib/catalog';
-import { getStorefront } from '@/lib/stores.server';
+import { getStorefront, getStorePaymentInfoBySlug } from '@/lib/stores.server';
+import { isOnlinePaymentEnabled } from '@/lib/online-payments';
 import { validateStoreSlug } from '@/lib/tenancy';
 import { getTranslator } from '@/lib/i18n/server';
 import { whatsappUrl } from '@/lib/whatsapp';
@@ -64,6 +65,7 @@ export default async function StorePage({ params, searchParams }: PageProps) {
   if (!storefront) notFound();
 
   const { store } = storefront;
+  const payments = await getStorePaymentInfoBySlug(store.slug);
   const { q: rawQuery, category: rawCategory } = await searchParams;
   const queryText = (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery) ?? '';
   const query = normalizeSearchText(queryText);
@@ -75,6 +77,10 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         .filter((category): category is string => Boolean(category)),
     ),
   ].sort((a, b) => a.localeCompare(b, 'es'));
+  const categorySummary = categories.map((category) => ({
+    name: category,
+    count: allProducts.filter((product) => product.category === category).length,
+  }));
 
   const rawCategoryText = (
     (Array.isArray(rawCategory) ? rawCategory[0] : rawCategory) ?? ''
@@ -285,17 +291,12 @@ export default async function StorePage({ params, searchParams }: PageProps) {
         )}
       </section>
 
-      <footer className="mt-10 border-t border-border pt-5 text-sm text-tertiary">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span>{t('store.soldBy', { store: store.name })}</span>
-          <Link href="/vender" className="hover:text-primary">
-            {t('store.sellCta')}
-          </Link>
-        </div>
-        <div className="mt-4 opacity-60">
-          <BrandLogo size="sm" />
-        </div>
-      </footer>
+      <StoreFooter
+        store={store}
+        payments={payments}
+        categories={categorySummary}
+        cardPaymentsEnabled={isOnlinePaymentEnabled()}
+      />
     </main>
   );
 }
