@@ -9,7 +9,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Package, Search } from 'lucide-react';
+import { Clock, Package, Search } from 'lucide-react';
 import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
@@ -178,16 +178,25 @@ export default async function StorePage({ params, searchParams }: PageProps) {
       </SpotlightSurface>
       </div>
 
-      {store.whatsapp && (
-        <div className="mt-3">
-          <a
-            href={whatsappUrl(store.whatsapp, t('store.whatsappMessage', { store: store.name })) ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
-          >
-            {t('store.whatsapp')}
-          </a>
+      {(store.whatsapp || hours) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {store.whatsapp && (
+            <a
+              href={whatsappUrl(store.whatsapp, t('store.whatsappMessage', { store: store.name })) ?? '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 items-center rounded-xl border border-border-strong px-4 text-sm font-medium hover:bg-surface-raised"
+            >
+              {t('store.whatsapp')}
+            </a>
+          )}
+          {hours && (
+            <span className="inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-sm leading-snug text-secondary">
+              <Clock aria-hidden="true" className="h-4 w-4 shrink-0 text-tertiary" />
+              <span className="text-tertiary">{t('storeFooter.hours')}:</span>
+              <span className="font-medium text-primary">{hours}</span>
+            </span>
+          )}
         </div>
       )}
 
