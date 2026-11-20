@@ -85,6 +85,10 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
   const [departments, setDepartments] = useState<UbigeoDepartment[]>([]);
   const [provinces, setProvinces] = useState<UbigeoProvince[]>([]);
   const [districts, setDistricts] = useState<UbigeoDistrict[]>([]);
+  const [provinceError, setProvinceError] = useState(false);
+  const [districtError, setDistrictError] = useState(false);
+  /** Cambia para volver a pedir el nivel que falló. */
+  const [catalogRetry, setCatalogRetry] = useState(0);
 
   const [department, setDepartment] = useState(initial?.ubigeo ? initial.ubigeo.slice(0, 2) : '');
   const [province, setProvince] = useState(initial?.ubigeo ? initial.ubigeo.slice(0, 4) : '');
@@ -143,13 +147,18 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
     fetch(`${DEPARTMENTS_URL}?department=${department}`, { headers: { accept: 'application/json' } })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: { provinces?: UbigeoProvince[] } | null) => {
-        if (!cancelled) setProvinces(payload?.provinces ?? []);
+        if (cancelled) return;
+        setProvinces(payload?.provinces ?? []);
+        // Sin provincias no se puede seguir: se dice y se ofrece reintentar.
+        setProvinceError(!payload?.provinces);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setProvinceError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [department]);
+  }, [department, catalogRetry]);
 
   useEffect(() => {
     if (!province) return;
@@ -157,13 +166,17 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
     fetch(`${DEPARTMENTS_URL}?province=${province}`, { headers: { accept: 'application/json' } })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: { districts?: UbigeoDistrict[] } | null) => {
-        if (!cancelled) setDistricts(payload?.districts ?? []);
+        if (cancelled) return;
+        setDistricts(payload?.districts ?? []);
+        setDistrictError(!payload?.districts);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setDistrictError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [province]);
+  }, [province, catalogRetry]);
 
   // Sin pin propio, se muestra el centroide del distrito: es solo una vista
   // previa. El usuario lo confirma moviéndolo o guardando (queda 'map_pin').
@@ -449,6 +462,8 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   setProvince('');
                   setDistrict('');
                   setDistricts([]);
+                  setProvinceError(false);
+                  setDistrictError(false);
                   setMarker(null);
                   setSuggestion(null);
                   setFarConfirmed(false);
@@ -472,6 +487,7 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 onChange={(event) => {
                   setProvince(event.target.value);
                   setDistrict('');
+                  setDistrictError(false);
                   setMarker(null);
                   setSuggestion(null);
                   setFarConfirmed(false);
@@ -485,6 +501,22 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   </option>
                 ))}
               </select>
+              {provinceError && (
+                <p role="alert" className="mt-1 text-xs text-destructive">
+                  {t('location.catalogError')}{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProvinceError(false);
+                      setDistrictError(false);
+                      setCatalogRetry((count) => count + 1);
+                    }}
+                    className="underline underline-offset-2"
+                  >
+                    {t('location.retry')}
+                  </button>
+                </p>
+              )}
             </label>
 
             <label className="block">
@@ -506,6 +538,22 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                   </option>
                 ))}
               </select>
+              {districtError && (
+                <p role="alert" className="mt-1 text-xs text-destructive">
+                  {t('location.catalogError')}{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProvinceError(false);
+                      setDistrictError(false);
+                      setCatalogRetry((count) => count + 1);
+                    }}
+                    className="underline underline-offset-2"
+                  >
+                    {t('location.retry')}
+                  </button>
+                </p>
+              )}
             </label>
 
             <button
@@ -516,9 +564,15 @@ export function LocationPicker({ initial, submitLabel, onSubmit, onValueChange, 
                 setStep(2);
               }}
               className="btn-primary h-12 w-full text-base"
+              aria-describedby={canContinueStep1 ? undefined : 'location-step1-hint'}
             >
               {t('location.next')}
             </button>
+            {!canContinueStep1 && (
+              <p id="location-step1-hint" className="text-xs text-tertiary">
+                {t('location.step1Hint')}
+              </p>
+            )}
           </div>
         )}
 

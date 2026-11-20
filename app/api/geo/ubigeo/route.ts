@@ -17,14 +17,21 @@ import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const CACHE = 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400';
-const NO_STORE = 'no-store';
+/**
+ * Sin caché compartida.
+ *
+ * Netlify cachea esta ruta por path e ignora el query string: una respuesta de
+ * departamentos se sirvió también para `?department=13`, así que el select de
+ * provincias llegaba vacío. Son tres consultas indexadas que la UI pide solo al
+ * cambiar de nivel: no compensa cachearlas mal.
+ */
+const HEADERS = { 'cache-control': 'no-store' } as const;
 
 export async function GET(request: Request) {
   if (!isPlatformDbConfigured()) {
     return NextResponse.json(
       { ok: false, code: 'db_not_configured', error: 'Catálogo no disponible.' },
-      { status: 503, headers: { 'cache-control': NO_STORE } },
+      { status: 503, headers: HEADERS },
     );
   }
 
@@ -35,13 +42,13 @@ export async function GET(request: Request) {
   if (province && !/^[0-9]{4}$/.test(province)) {
     return NextResponse.json(
       { ok: false, code: 'invalid_province' },
-      { status: 400, headers: { 'cache-control': NO_STORE } },
+      { status: 400, headers: HEADERS },
     );
   }
   if (department && !/^[0-9]{2}$/.test(department)) {
     return NextResponse.json(
       { ok: false, code: 'invalid_department' },
-      { status: 400, headers: { 'cache-control': NO_STORE } },
+      { status: 400, headers: HEADERS },
     );
   }
 
@@ -49,23 +56,23 @@ export async function GET(request: Request) {
     if (province) {
       return NextResponse.json(
         { ok: true, level: 'districts', districts: await listDistricts(province) },
-        { headers: { 'cache-control': CACHE } },
+        { headers: HEADERS },
       );
     }
     if (department) {
       return NextResponse.json(
         { ok: true, level: 'provinces', provinces: await listProvinces(department) },
-        { headers: { 'cache-control': CACHE } },
+        { headers: HEADERS },
       );
     }
     return NextResponse.json(
       { ok: true, level: 'departments', departments: await listDepartments() },
-      { headers: { 'cache-control': CACHE } },
+      { headers: HEADERS },
     );
   } catch {
     return NextResponse.json(
       { ok: false, code: 'db_error', error: 'No pudimos cargar el catálogo.' },
-      { status: 503, headers: { 'cache-control': NO_STORE } },
+      { status: 503, headers: HEADERS },
     );
   }
 }
