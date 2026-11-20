@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { AdminAccessScreen } from '@/components/admin/AdminAccessScreen';
+import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { withAdminAuth } from '@/lib/adminAuth';
 import { usePlatformAdminSession } from '@/lib/usePlatformAdminSession';
@@ -354,9 +355,10 @@ export default function AdminHomePage() {
       ) : (
         <>
           {/* Cómo va el negocio */}
+          <SpotlightSurface className="mt-6 rounded-2xl border border-brand/40 bg-brand/5">
           <Link
             href="/admin/analytics"
-            className="mt-6 block rounded-2xl border border-brand/40 bg-brand/5 p-5 transition-colors hover:bg-brand/10"
+            className="block p-5 transition-colors hover:bg-brand/10"
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -382,6 +384,7 @@ export default function AdminHomePage() {
             </div>
             <p className="mt-3 text-xs text-tertiary">{t('adminHome.salesRule')}</p>
           </Link>
+          </SpotlightSurface>
 
           <Link
             href="/admin/planes"

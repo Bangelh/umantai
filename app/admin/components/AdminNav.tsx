@@ -57,7 +57,7 @@ export function AdminNav() {
         href={link.href}
         aria-current={active ? 'page' : undefined}
         className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full transition-colors ${
-          compact ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'
+          compact ? 'min-h-9 px-3 py-1.5 text-xs' : 'min-h-10 px-3.5 py-2 text-sm'
         } ${
           active
             ? 'bg-brand font-medium text-background'
@@ -71,15 +71,22 @@ export function AdminNav() {
   };
 
   return (
-    <nav aria-label={t('adminNav.aria')} className="-mx-1">
-      <ul className="flex items-center gap-1 overflow-x-auto px-1 py-1">
+    <nav
+      aria-label={t('adminNav.aria')}
+      className="relative rounded-2xl border border-border bg-surface/70 p-1.5 backdrop-blur"
+    >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent"
+      />
+      <ul className="flex items-center gap-1 overflow-x-auto px-0.5 py-0.5">
         {main.map((link) => (
           <li key={link.href}>{renderLink(link, false)}</li>
         ))}
       </ul>
 
       {tools.length > 0 && (
-        <details className="mt-1 px-1">
+        <details className="mt-1.5 px-0.5">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-tertiary hover:bg-surface-raised hover:text-primary">
             <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
             {t('adminNav.tools')}

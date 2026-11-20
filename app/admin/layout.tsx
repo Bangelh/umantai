@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AdminBackdrop } from './components/AdminBackdrop';
 
 /**
  * Todo /admin es privado: nunca se indexa, ni en staging ni en Producción.
@@ -11,5 +12,10 @@ export const metadata: Metadata = {
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <div className="relative isolate min-h-screen overflow-hidden">
+      <AdminBackdrop />
+      <div className="relative">{children}</div>
+    </div>
+  );
 }

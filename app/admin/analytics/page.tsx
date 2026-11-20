@@ -552,7 +552,11 @@ function Kpi({
 }) {
   const positive = typeof change === 'number' && change >= 0;
   return (
-    <div className="surface-card p-4 sm:p-5">
+    <div className="surface-card relative overflow-hidden p-4 sm:p-5">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-brand/40 to-transparent"
+      />
       <div className="text-xs uppercase tracking-wide text-tertiary">{label}</div>
       <div className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">{value}</div>
       <div className="mt-2 flex items-center gap-2 text-xs">
