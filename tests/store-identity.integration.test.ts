@@ -183,7 +183,7 @@ test('slug ocupado (case-insensitive) se rechaza sin tocar ninguna fila', async 
 });
 
 test('slug reservado se rechaza (admin, api, vender…)', async () => {
-  for (const reserved of ['admin', 'api', 'vender']) {
+  for (const reserved of ['admin', 'api', 'vender', 'umantai']) {
     await assertTenancyError(
       stores.updateStoreIdentity(owner.id, store.id, { name: 'Juan’s Store', slug: reserved }),
       'store_slug_reserved',

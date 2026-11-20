@@ -50,6 +50,17 @@ test('rechaza slug vacío, corto o inválido', () => {
   }
 });
 
+test('rechaza el nombre de la plataforma aunque el slug sea otro', () => {
+  for (const name of ['Umantai', 'UMANTAI', '  Umántai  ']) {
+    const result = validateStoreIdentity({ name, slug: 'mi-tienda' });
+    assert.equal(result.ok, false, `${name} no debería aceptarse`);
+    if (!result.ok) {
+      assert.equal(result.code, 'name_reserved');
+      assert.equal(result.field, 'name');
+    }
+  }
+});
+
 test('rechaza un slug reservado por la plataforma', () => {
   for (const slug of ['admin', 'api', 'vender', 'cuenta', 'UMANTAI']) {
     const result = validateStoreIdentity({ name: 'Tienda', slug });

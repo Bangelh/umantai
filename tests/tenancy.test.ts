@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   RESERVED_STORE_SLUGS,
   TenancyError,
+  isReservedStoreName,
   canManageStoreMembers,
   canOperateStore,
   normalizeStoreSlug,
@@ -26,12 +27,20 @@ test('slug válido: minúsculas, números y guiones', () => {
 });
 
 test('slug reservado se rechaza (admin, api, legal, products…)', () => {
-  for (const reserved of ['admin', 'api', 'login', 'legal', 'contacto', 'products', 'cart', 'cuenta', 'vender']) {
+  for (const reserved of ['admin', 'api', 'login', 'legal', 'contacto', 'products', 'cart', 'cuenta', 'vender', 'umantai']) {
     const result = validateStoreSlug(reserved);
     assert.equal(result.ok, false, `${reserved} debería estar reservado`);
     if (!result.ok) assert.equal(result.code, 'slug_reserved');
   }
   assert.ok(RESERVED_STORE_SLUGS.has('admin'));
+});
+
+test('el nombre de la plataforma no se puede usar como tienda', () => {
+  for (const name of ['umantai', 'UMANTAI', '  Umántai  ']) {
+    assert.equal(isReservedStoreName(name), true, `${name} debería estar reservado`);
+  }
+  assert.equal(isReservedStoreName('Umantai Store'), false);
+  assert.equal(isReservedStoreName('Juan’s Store'), false);
 });
 
 test('slug demasiado corto o inválido', () => {

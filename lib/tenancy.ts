@@ -36,6 +36,24 @@ export const RESERVED_STORE_SLUGS = new Set([
   'umantai',
 ]);
 
+/**
+ * Nombres comerciales que la plataforma se reserva aunque el slug sea otro.
+ * `umantai.com/umantai` es la marca del servicio, no una tienda.
+ */
+export const RESERVED_STORE_NAMES = new Set(['umantai']);
+
+/** `true` si el nombre es exactamente el de la plataforma (sin tildes/mayúsculas). */
+export function isReservedStoreName(input: unknown): boolean {
+  if (typeof input !== 'string') return false;
+  const normalized = input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  return RESERVED_STORE_NAMES.has(normalized);
+}
+
 export const STORE_SLUG_MIN = 3;
 export const STORE_SLUG_MAX = 60;
 

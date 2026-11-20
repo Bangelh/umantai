@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { LocationPicker, type StoreLocationValue } from '@/components/map/LocationPicker';
-import { normalizeStoreSlug, validateStoreSlug } from '@/lib/tenancy';
+import { isReservedStoreName, normalizeStoreSlug, validateStoreSlug } from '@/lib/tenancy';
 
 interface CreatedStore {
   id: string;
@@ -88,6 +88,7 @@ export function MerchantOnboardingForm() {
 
   const trimmedName = name.trim();
   const nameLengthOk = trimmedName.length >= 3 && trimmedName.length <= 80;
+  const nameReserved = isReservedStoreName(trimmedName);
   const slugValidation = useMemo(
     () => validateStoreSlug(normalizeStoreSlug(trimmedName)),
     [trimmedName],
@@ -96,9 +97,10 @@ export function MerchantOnboardingForm() {
   const yapeState = phoneState(yape);
   const plinState = phoneState(plin);
 
-  const canContinueStep1 = nameLengthOk && slugValidation.ok && phone !== 'invalid';
+  const canContinueStep1 = nameLengthOk && !nameReserved && slugValidation.ok && phone !== 'invalid';
   const missingStep1: string[] = [];
   if (!nameLengthOk) missingStep1.push(t('onboarding.missingName'));
+  else if (nameReserved) missingStep1.push(t('onboarding.nameReserved'));
   else if (!slugValidation.ok) missingStep1.push(t('onboarding.missingSlug'));
   if (phone === 'invalid') missingStep1.push(t('onboarding.missingPhone'));
 
@@ -263,19 +265,23 @@ export function MerchantOnboardingForm() {
               autoComplete="organization"
               enterKeyHint="next"
               placeholder={t('onboarding.namePlaceholder')}
-              aria-invalid={touched.name && !nameLengthOk}
+              aria-invalid={touched.name && (!nameLengthOk || nameReserved)}
               aria-describedby="store-name-help store-name-slug"
               className={`mt-1 h-12 w-full rounded-xl border bg-background px-3 text-base text-primary ${
-                touched.name && !nameLengthOk ? 'border-destructive' : 'border-border-strong'
+                touched.name && (!nameLengthOk || nameReserved) ? 'border-destructive' : 'border-border-strong'
               }`}
             />
             <p
               id="store-name-help"
               className={`mt-1 text-xs ${
-                touched.name && !nameLengthOk ? 'text-destructive' : 'text-tertiary'
+                touched.name && (!nameLengthOk || nameReserved) ? 'text-destructive' : 'text-tertiary'
               }`}
             >
-              {touched.name && !nameLengthOk ? t('onboarding.nameInvalid') : t('onboarding.nameRules')}
+              {touched.name && nameReserved
+                ? t('onboarding.nameReserved')
+                : touched.name && !nameLengthOk
+                  ? t('onboarding.nameInvalid')
+                  : t('onboarding.nameRules')}
             </p>
             {trimmedName.length >= 2 && (
               <p id="store-name-slug" className="mt-1 text-xs text-tertiary">

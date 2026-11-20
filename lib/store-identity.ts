@@ -17,7 +17,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { normalizeStoreSlug, validateStoreSlug } from './tenancy';
+import { isReservedStoreName, normalizeStoreSlug, validateStoreSlug } from './tenancy';
 
 /** Dominio público que se muestra en el panel (sin protocolo ni barra final). */
 export const PUBLIC_STORE_HOST = 'umantai.com';
@@ -32,7 +32,7 @@ export type StoreIdentityValidation =
   | { ok: true; value: { name: string; slug: string } }
   | {
       ok: false;
-      code: 'invalid_name' | 'slug_too_short' | 'slug_invalid' | 'slug_reserved';
+      code: 'invalid_name' | 'name_reserved' | 'slug_too_short' | 'slug_invalid' | 'slug_reserved';
       field: 'name' | 'slug';
       message: string;
     };
@@ -50,6 +50,15 @@ export function validateStoreIdentity(input: StoreIdentityInput): StoreIdentityV
       code: 'invalid_name',
       field: 'name',
       message: 'El nombre de la tienda debe tener entre 2 y 80 caracteres.',
+    };
+  }
+
+  if (isReservedStoreName(name)) {
+    return {
+      ok: false,
+      code: 'name_reserved',
+      field: 'name',
+      message: '"UMANTAI" es el nombre de la plataforma. Elige otro nombre comercial.',
     };
   }
 

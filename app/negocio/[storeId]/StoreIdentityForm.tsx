@@ -54,6 +54,8 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
     switch (code) {
       case 'invalid_name':
         return t('merchant.identityNameInvalid');
+      case 'name_reserved':
+        return t('onboarding.nameReserved');
       case 'slug_too_short':
         return t('merchant.identitySlugShort');
       case 'slug_reserved':

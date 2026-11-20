@@ -38,6 +38,7 @@ import {
 import {
   TenancyError,
   canOperateStore,
+  isReservedStoreName,
   normalizeStoreSlug,
   roleAtLeast,
   validateStoreSlug,
@@ -776,6 +777,12 @@ export async function createStoreForOwner(input: CreateStoreInput): Promise<Stor
   const name = (input.name ?? '').trim();
   if (name.length < 2 || name.length > 80) {
     throw new TenancyError('invalid_store_input', 'El nombre del negocio debe tener entre 2 y 80 caracteres.');
+  }
+  if (isReservedStoreName(name)) {
+    throw new TenancyError(
+      'invalid_store_input',
+      'UMANTAI es el nombre de la plataforma. Elige otro nombre comercial.',
+    );
   }
 
   const slugCheck = validateStoreSlug(input.slug || name);
