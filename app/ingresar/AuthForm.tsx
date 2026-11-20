@@ -79,6 +79,9 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
   if (!passwordOk) {
     missing.push(mode === 'login' ? t('auth.missingPasswordLogin') : t('auth.missingPassword'));
   }
+  // No mostrar "falta…" como error antes de que la persona interactúe: el botón
+  // ya está habilitado y al intentar enviar se marcan los campos.
+  const showMissing = (touched.name || touched.email || touched.password) && missing.length > 0;
 
   function switchMode(nextMode: Mode) {
     setMode(nextMode);
@@ -148,7 +151,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
           role="tab"
           aria-selected={mode === 'login'}
           onClick={() => switchMode('login')}
-          className={`h-9 flex-1 rounded-lg text-sm font-medium transition-colors ${
+          className={`h-11 flex-1 rounded-lg text-sm font-medium transition-colors ${
             mode === 'login' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
           }`}
         >
@@ -159,7 +162,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
           role="tab"
           aria-selected={mode === 'register'}
           onClick={() => switchMode('register')}
-          className={`h-9 flex-1 rounded-lg text-sm font-medium transition-colors ${
+          className={`h-11 flex-1 rounded-lg text-sm font-medium transition-colors ${
             mode === 'register' ? 'bg-brand text-background' : 'text-secondary hover:text-primary'
           }`}
         >
@@ -168,8 +171,8 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
       </div>
 
       {mode === 'register' && (
-        <div className="text-xs text-tertiary">
-          <label htmlFor="auth-name" className="block">
+        <div className="text-sm text-secondary">
+          <label htmlFor="auth-name" className="block font-medium">
             {t('auth.name')}
           </label>
           <input
@@ -181,17 +184,18 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
             }}
             onBlur={() => markTouched('name')}
             autoComplete="name"
+            placeholder={t('auth.namePlaceholder')}
             enterKeyHint="next"
             maxLength={80}
             aria-invalid={touched.name && !nameOk}
             aria-describedby="auth-name-hint"
-            className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-sm text-primary ${
+            className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-base text-primary focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
               touched.name && !nameOk ? 'border-destructive' : 'border-border-strong'
             }`}
           />
           <span
             id="auth-name-hint"
-            className={`mt-1 block text-[11px] ${
+            className={`mt-1 block text-xs ${
               touched.name && !nameOk ? 'text-destructive' : 'text-muted'
             }`}
           >
@@ -201,7 +205,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
       )}
 
       <div className="text-xs text-tertiary">
-        <label htmlFor="auth-email" className="block">
+        <label htmlFor="auth-email" className="block font-medium">
           {t('auth.email')}
         </label>
         <input
@@ -219,6 +223,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
           }}
           autoComplete="email"
           inputMode="email"
+          placeholder={t('auth.emailPlaceholder')}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -227,13 +232,13 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
           required
           aria-invalid={touched.email && !emailOk}
           aria-describedby="auth-email-hint"
-          className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-sm text-primary ${
+          className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-base text-primary focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
             touched.email && !emailOk ? 'border-destructive' : 'border-border-strong'
           }`}
         />
         <span
           id="auth-email-hint"
-          className={`mt-1 block text-[11px] ${
+          className={`mt-1 block text-xs ${
             touched.email && !emailOk ? 'text-destructive' : 'text-muted'
           }`}
         >
@@ -242,7 +247,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
       </div>
 
       <div className="text-xs text-tertiary">
-        <label htmlFor="auth-password" className="block">
+        <label htmlFor="auth-password" className="block font-medium">
           {t('auth.password')}
         </label>
         <input
@@ -255,20 +260,23 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
           }}
           onBlur={() => markTouched('password')}
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          placeholder={
+            mode === 'login' ? t('auth.passwordPlaceholder') : t('auth.passwordPlaceholderRegister')
+          }
           enterKeyHint={mode === 'login' ? 'go' : 'done'}
           minLength={mode === 'login' ? undefined : 8}
           maxLength={128}
           required
           aria-invalid={touched.password && !passwordOk}
           aria-describedby={mode === 'register' ? 'auth-password-hint' : undefined}
-          className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-sm text-primary ${
+          className={`mt-1 h-11 w-full rounded-xl border bg-background px-3 text-base text-primary focus:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
             touched.password && !passwordOk ? 'border-destructive' : 'border-border-strong'
           }`}
         />
         {mode === 'register' && (
           <span
             id="auth-password-hint"
-            className={`mt-1 block text-[11px] ${
+            className={`mt-1 block text-xs ${
               touched.password && !passwordOk ? 'text-destructive' : 'text-muted'
             }`}
           >
@@ -286,7 +294,7 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
       <button
         type="submit"
         disabled={submitting}
-        aria-describedby={missing.length > 0 ? 'auth-missing' : undefined}
+        aria-describedby={showMissing ? 'auth-missing' : undefined}
         className="h-11 w-full rounded-xl bg-brand text-sm font-semibold text-background disabled:opacity-50"
       >
         {submitting
@@ -296,8 +304,8 @@ export function AuthForm({ next, initialMode = 'login', fullReload = false }: Pr
             : t('auth.submitRegister')}
       </button>
 
-      {missing.length > 0 && (
-        <ul id="auth-missing" className="space-y-0.5 text-[11px] text-tertiary">
+      {showMissing && (
+        <ul id="auth-missing" aria-live="polite" className="space-y-0.5 text-xs text-secondary">
           {missing.map((item) => (
             <li key={item}>• {item}</li>
           ))}
