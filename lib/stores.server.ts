@@ -781,7 +781,7 @@ export async function createStoreForOwner(input: CreateStoreInput): Promise<Stor
   if (isReservedStoreName(name)) {
     throw new TenancyError(
       'invalid_store_input',
-      'UMANTAI es el nombre de la plataforma. Elige otro nombre comercial.',
+      'El nombre no puede contener UMANTAI, la marca de la plataforma. Elige otro nombre comercial.',
     );
   }
 

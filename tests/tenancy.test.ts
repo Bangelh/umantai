@@ -36,11 +36,18 @@ test('slug reservado se rechaza (admin, api, legal, products…)', () => {
 });
 
 test('el nombre de la plataforma no se puede usar como tienda', () => {
-  for (const name of ['umantai', 'UMANTAI', '  Umántai  ']) {
-    assert.equal(isReservedStoreName(name), true, `${name} debería estar reservado`);
+  for (const name of [
+    'umantai',
+    'UMANTAI',
+    '  Umántai  ',
+    'Umantai Store',
+    'Bodega UMANTAI',
+    'Comercial Umantai SAC',
+  ]) {
+    assert.equal(isReservedStoreName(name), true, `${name} debería estar bloqueado`);
   }
-  assert.equal(isReservedStoreName('Umantai Store'), false);
   assert.equal(isReservedStoreName('Juan’s Store'), false);
+  assert.equal(isReservedStoreName('Umanta'), false);
 });
 
 test('slug demasiado corto o inválido', () => {

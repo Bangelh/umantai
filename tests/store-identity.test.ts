@@ -51,7 +51,13 @@ test('rechaza slug vacío, corto o inválido', () => {
 });
 
 test('rechaza el nombre de la plataforma aunque el slug sea otro', () => {
-  for (const name of ['Umantai', 'UMANTAI', '  Umántai  ']) {
+  for (const name of [
+    'Umantai',
+    'UMANTAI',
+    '  Umántai  ',
+    'Umantai Store',
+    'Bodega UMANTAI',
+  ]) {
     const result = validateStoreIdentity({ name, slug: 'mi-tienda' });
     assert.equal(result.ok, false, `${name} no debería aceptarse`);
     if (!result.ok) {

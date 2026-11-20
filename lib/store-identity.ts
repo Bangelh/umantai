@@ -58,7 +58,8 @@ export function validateStoreIdentity(input: StoreIdentityInput): StoreIdentityV
       ok: false,
       code: 'name_reserved',
       field: 'name',
-      message: '"UMANTAI" es el nombre de la plataforma. Elige otro nombre comercial.',
+      message:
+        'El nombre no puede contener "UMANTAI", la marca de la plataforma. Elige otro nombre comercial.',
     };
   }
 

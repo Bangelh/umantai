@@ -42,7 +42,10 @@ export const RESERVED_STORE_SLUGS = new Set([
  */
 export const RESERVED_STORE_NAMES = new Set(['umantai']);
 
-/** `true` si el nombre es exactamente el de la plataforma (sin tildes/mayúsculas). */
+/**
+ * `true` si el nombre CONTIENE la marca de la plataforma (sin tildes/mayúsculas).
+ * Bloquea tanto "Umantai" como "Umantai Store" o "Bodega UMANTAI".
+ */
 export function isReservedStoreName(input: unknown): boolean {
   if (typeof input !== 'string') return false;
   const normalized = input
@@ -51,7 +54,7 @@ export function isReservedStoreName(input: unknown): boolean {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
-  return RESERVED_STORE_NAMES.has(normalized);
+  return [...RESERVED_STORE_NAMES].some((brand) => normalized.includes(brand));
 }
 
 export const STORE_SLUG_MIN = 3;
