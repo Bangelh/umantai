@@ -22,6 +22,7 @@
  */
 
 import Link from 'next/link';
+import { motion } from 'motion/react';
 import { ArrowUpRight, MapPin, MessageCircle, Search, Store } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -43,6 +44,8 @@ import type { Product } from '@/lib/products';
 import { flyToCart } from '@/lib/fly-to-cart';
 import { useI18n } from '@/components/i18n/I18nProvider';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Reveal } from '@/components/ui/Reveal';
+import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
 
 const GEO_STORAGE_KEY = 'umantai:geo';
 const DEBOUNCE_MS = 300;
@@ -320,11 +323,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
         aria-label={t('search.section')}
         className="scroll-mt-24 pt-5 sm:pt-6"
       >
-        <div className="surface-card relative overflow-hidden">
-          <div
-            aria-hidden="true"
-            className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand/50 to-transparent"
-          />
+        <SpotlightSurface className="surface-card">
           <form
             role="search"
             onSubmit={(event) => {
@@ -433,7 +432,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
               <p className="mt-2 text-xs text-warning">{t('geo.denied')}</p>
             )}
           </div>
-        </div>
+        </SpotlightSurface>
       </section>
 
       {/* Resultados */}
@@ -643,11 +642,12 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
           />
         ) : (
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {results.stores.map((store) => (
+            {results.stores.map((store, index) => (
               <li key={store.id} className="min-w-0">
+                <Reveal delay={index * 0.03} className="h-full">
                 <Link
                   href={`/${store.slug}`}
-                  className="flex h-full flex-col rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-raised"
+                  className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-border-strong hover:bg-surface-raised"
                 >
                   <span className="flex items-center gap-3">
                     <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-raised text-base font-semibold text-secondary">
@@ -685,9 +685,10 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                   )}
                   <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-secondary">
                     {t('home.previewVisitStore')}
-                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
                   </span>
                 </Link>
+                </Reveal>
               </li>
             ))}
           </ul>
@@ -703,10 +704,13 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
             if (event.target === event.currentTarget) setPreview(null);
           }}
         >
-          <div
+          <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby="home-preview-title"
+            initial={{ opacity: 0, y: 24, scale: 0.985 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-surface sm:max-w-lg sm:rounded-3xl"
           >
             <div className="relative">
@@ -852,7 +856,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
                 </Link>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 

@@ -11,6 +11,7 @@
 
 import type { Metadata } from 'next';
 import { DiscoveryHome } from '@/app/components/discovery/DiscoveryHome';
+import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import type { DiscoveryResponse } from '@/lib/discovery';
 import { DEFAULT_RADIUS_KM } from '@/lib/geo';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
@@ -88,15 +89,19 @@ export default async function HomePage() {
   return (
     <main className="min-h-screen">
       {/* El logo ya está en el header: repetirlo en grande acá dejaba dos marcas
-          compitiendo antes de la pregunta que el comprador tiene que responder. */}
-      <section className="mx-auto max-w-5xl px-4 pt-8 sm:px-6 sm:pt-12">
-        <div className="max-w-3xl">
-          <h1 className="text-balance text-[2rem] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-[3.25rem]">
-            {t('home.title')}
-          </h1>
-          <p className="mt-3 max-w-2xl text-pretty text-body-lg text-secondary">
-            {t('home.subtitle')}
-          </p>
+          compitiendo antes de la pregunta que el comprador tiene que responder.
+          La atmósfera (blobs difusos + retícula) es SVG/CSS, sin imagen externa. */}
+      <section className="relative isolate overflow-hidden">
+        <AuroraBackdrop />
+        <div className="relative mx-auto max-w-5xl px-4 pb-1 pt-10 sm:px-6 sm:pt-14">
+          <div className="max-w-3xl">
+            <h1 className="text-balance text-[2.3rem] font-semibold leading-[1.02] tracking-[-0.045em] sm:text-[3.75rem]">
+              {t('home.title')}
+            </h1>
+            <p className="mt-4 max-w-xl text-pretty text-body-lg text-secondary">
+              {t('home.subtitle')}
+            </p>
+          </div>
         </div>
       </section>
 
