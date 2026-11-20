@@ -1,8 +1,9 @@
-# Despliegue de staging en Netlify + Supabase
+# Despliegue en Netlify + Supabase
 
-Runbook del hosting de staging. **Producción no se toca desde acá.**
+Runbook del hosting. **Netlify publica la rama `main`.**
 
-- Rama de staging: `feat/railway-staging` → Netlify la publica como *branch deploy*.
+- Ramas del repo: `main` (lo que ve el público) y `dev` (trabajo diario). No hay otras.
+- Flujo: `dev` → pull request → `main` → deploy automático.
 - Los branch deploys y deploy previews **no consumen créditos**; solo producción (15 por deploy) y el tráfico.
 - Next 16 + Payload 3 corren nativos en el runtime de Next de Netlify. El adaptador se instala solo.
 
@@ -128,12 +129,14 @@ Cannot find module './webpack-runtime.js'
 Es un bug de rutas del empaquetador de edge functions, no del código. Por eso el sitio se conecta al repo y construye en Netlify:
 
 1. **Project configuration → Build & deploy → Link repository** → GitHub → `Bangelh/umantai`.
-2. Dejar la rama de producción del sitio en `feat/railway-staging` (es un sitio de staging: su "producción" es staging).
+2. Dejar la rama de producción del sitio en `main` (**Project configuration → Developer settings → Continuous deployment → Branches and deploy contexts**).
 3. Push y listo: Netlify ejecuta `npm run build` en Linux e incluye el handler del proxy.
 
 ```bash
-git push origin feat/railway-staging
+git push origin main
 ```
+
+`npx netlify-cli api updateSite` **no** cambia estos ajustes: responde 200 y deja `build_settings.repo_branch` y `custom_domain` como estaban. Con un personal access token, el `PATCH https://api.netlify.com/api/v1/sites/<site_id>` directo sí los aplica.
 
 Verificación:
 
@@ -148,19 +151,21 @@ Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), 
 
 `.github/workflows/deploy-staging.yml` construye en Ubuntu y despliega con la CLI. Solo necesita `NETLIFY_AUTH_TOKEN` como secreto del repo (Settings → Secrets and variables → Actions), creado en Netlify → User settings → Applications → New access token. Mientras el secreto no exista, el workflow avisa y termina en verde sin desplegar.
 
-## 6b. Estado del staging (2026-11-20)
+## 6b. Estado (2026-11-20)
 
 | Recurso | Valor |
 |---|---|
-| Sitio | `umantai-staging` · https://umantai-staging.netlify.app |
+| Sitio | `umantai-staging` (`66caef91-a2ff-4517-8d4f-ad9c0f011997`) · https://umantai-staging.netlify.app |
 | Proyecto Supabase | `gkxyacvciyudbmuztzjv` · São Paulo (`sa-east-1`) |
 | Pooler | `aws-1-sa-east-1.pooler.supabase.com` (6543 runtime · 5432 migraciones) |
 | Esquema | 26 migraciones SQL + `product_overrides`, `categories`, `brands` |
-| Datos | 5 tiendas · 18 productos publicados · 63 filas de stock · 1.892 distritos |
-| Deploy publicado | `6affe73a4b47df83e907a16a` · build `6affe73a4b47df83e907a168` · commit `fe5e493` |
+| Datos | 1 tienda base (`umantai`, inactiva, 0 productos) · 0 pedidos · 1.892 distritos |
+| Deploy publicado | `6affe73a4b47df83e907a16a` · commit `fe5e493` (último deploy de `feat/railway-staging`) |
 | Protección | SSO de Netlify desactivado: sin eso el sitio respondía 401 antes de llegar a la app |
 
-El DNS de `umantai.com` sigue apuntando a Railway: staging vive en el subdominio de Netlify hasta que se repunte.
+Limpieza del 2026-11-20: se borraron las 4 tiendas demo (`bodega-la-esquina`, `hilos-y-estilo`, `telas-del-sur`, `ferreteria-central`) junto con sus productos, inventario y movimientos, en una sola transacción y con respaldo previo en `backups/supabase-before-cleanup-20261120.json` (gitignored). Queda solo la tienda base `umantai` (`00000000-0000-0000-0000-000000000001`), que es el `DEFAULT_STORE_ID` de `lib/stores.server.ts` y el default de varias columnas: no se borra ni se renombra.
+
+`umantai.com` todavía tiene el apex apuntando a Railway (`153.52.255.14`); la zona DNS vive en Cloudflare (`cloe.ns.cloudflare.com`, `vern.ns.cloudflare.com`). Ver sección 8.
 
 ## 7. Cron
 
@@ -171,11 +176,13 @@ gh secret set STAGING_URL --body 'https://<branch-deploy>.netlify.app'
 gh secret set CRON_SECRET  --body "$(openssl rand -hex 32)"   # el MISMO valor que en Netlify
 ```
 
-## 8. Dominio (opcional, al final)
+## 8. Dominio `umantai.com`
 
-- Staging puede quedarse en `*.netlify.app`.
-- Para `umantai.com`: en el registrador, apuntar los nameservers a Netlify DNS (o CNAME `www`), y agregar el dominio en **Domain management**. Esto requiere acceso al registrador, que no está en este repo.
-- Al cambiar de dominio hay que actualizar `NEXT_PUBLIC_SITE_URL`, `BETTER_AUTH_URL` y la URL de webhook en el panel de Mercado Pago.
+1. Netlify → **Domain management → Add a domain** → `umantai.com`, y `www.umantai.com` como alias. La zona **no** se delega a Netlify DNS: los nameservers se quedan en Cloudflare.
+2. Cloudflare → DNS de `umantai.com`: borrar el `A` del apex `153.52.255.14` (Railway, responde 404) y crear `A @ → 75.2.60.5`. El `www` va como `CNAME → umantai-staging.netlify.app`.
+3. Esperar el certificado (Netlify lo emite solo) y cambiar `NEXT_PUBLIC_SITE_URL` y `BETTER_AUTH_URL` a `https://umantai.com`, luego redeployar.
+4. El proxy naranja de Cloudflare sobre `www` estorba la validación de Let's Encrypt: dejarlo en DNS only hasta que el certificado esté activo.
+5. Al pasar a producción real, `APP_ENV` del contexto production deja de ser `staging` (hoy `staging` = noindex y salvaguardas relajadas).
 
 ## 9. Riesgos conocidos
 
@@ -186,7 +193,7 @@ gh secret set CRON_SECRET  --body "$(openssl rand -hex 32)"   # el MISMO valor q
 | Supabase Free pausa tras 7 días sin actividad | Primer request tarda ~1 min o falla | El cron diario mantiene la base despierta |
 | 500 MB de base | Se llena con imágenes | `db` para staging y volumen bajo; migrar a `r2` (pide tarjeta) si crece |
 | Payload 3.85 + Next 16.2.6 | Funciona local; Netlify soporta Next 16 | No actualizar Next sin revisar el peer de `@payloadcms/next` |
-| `umantai.com` sigue apuntando a Railway | 404 en el dominio | Repuntar DNS al terminar la validación |
+| `umantai.com` sigue apuntando a Railway | 404 en el dominio | Repuntar el apex en Cloudflare (sección 8) |
 
 ## 10. Rollback
 
