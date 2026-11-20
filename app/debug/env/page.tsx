@@ -206,7 +206,7 @@ export default function DebugEnvPage() {
                       <div className="text-amber-400 text-xs mt-0.5">Resolved from NON_POOLING var name, but value contains pooler — not actually direct</div>
                     )}
                     {!debugInfo.database.isNonPooling && debugInfo.database.configured && !debugInfo.database.isPooled && (
-                      <div className="text-amber-400 text-xs mt-0.5">Using pooled connection — set POSTGRES_URL_NON_POOLING (direct) for better reliability</div>
+                      <div className="text-emerald-400 text-xs mt-0.5">✓ Conexión de runtime (no es el pooler de sesión)</div>
                     )}
                     {debugInfo.database.isPooled && (
                       <div className="mt-0.5">

@@ -37,9 +37,10 @@
  *
  *  CONEXIONES
  *
- *  El pool de `pg` es por proceso y por URL (máximo `PGPOOL_MAX`, default 10).
- *  En Railway el proceso es longevo; en Vercel cada instancia abre su pool, así
- *  que conviene mantener el máximo bajo. Neon no usa pool TCP.
+ *  El pool de `pg` es por proceso y por URL (máximo `PGPOOL_MAX`, default 1).
+ *  En Railway el proceso es longevo y puede subirlo; en Vercel/Netlify cada
+ *  instancia abre su pool y el pooler de transacción hace el resto. Neon no usa
+ *  pool TCP.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -155,7 +156,10 @@ class PgSqlQuery implements SqlQuery {
 
 function poolMax(): number {
   const parsed = Number(process.env.PGPOOL_MAX);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 10;
+  // En serverless cada instancia debe abrir UNA conexión y dejar que el pooler
+  // de transacción multiplexe. Antes el default era 10 por instancia y, con el
+  // pooler de sesión (tope 15), bastaban dos instancias para agotarlo.
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
   return Math.min(Math.max(Math.trunc(parsed), 1), 50);
 }
 

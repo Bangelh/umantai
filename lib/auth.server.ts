@@ -118,7 +118,7 @@ export function getAuthServer(): BetterAuthInstance {
   if (!cachedPool) {
     cachedPool = new Pool({
       connectionString: url,
-      max: Number(process.env.PGBETTER_AUTH_POOL_MAX ?? process.env.PGPOOL_MAX ?? 5),
+      max: Number(process.env.PGBETTER_AUTH_POOL_MAX ?? process.env.PGPOOL_MAX ?? 1),
       idleTimeoutMillis: 30_000,
     });
   }

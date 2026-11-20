@@ -1,4 +1,5 @@
 import { createSqlClient } from './db-driver.server';
+import { toRuntimeDatabaseUrl } from './db-url';
 import { getPrefixedEnv } from './env';
 
 // Type for product overrides stored in DB
@@ -9,22 +10,31 @@ export interface ProductOverrideRow {
 }
 
 /**
- * Returns the best available Postgres connection string.
- * Prefers the non-pooling URL for local development and serverless reliability.
- * This addresses the "pooled connection" warning on Vercel/Neon.
+ * Returns the Postgres connection string for RUNTIME.
+ *
+ * En serverless la cadena correcta es el pooler de Supabase en modo transacción
+ * (6543): el de sesión tiene un tope de `pool_size` clientes y, con un pool por
+ * instancia, terminaba respondiendo `EMAXCONNSESSION` y 500 en la vitrina.
+ * `toRuntimeDatabaseUrl` mueve una URL de sesión (5432) a transacción (6543) y
+ * deja intactas la directa y cualquier Postgres propio.
+ *
+ * Las migraciones y los seeds NO pasan por acá: leen `POSTGRES_URL_NON_POOLING`
+ * directamente, como indica DEPLOYMENT.md.
  */
 export function getDatabaseUrl(): string | undefined {
-  // Use prefixed env support (BANGELH_, UMANTAI_URL_, UMANTAI_) for Vercel integrations
-  // and always prefer the non-pooling direct connection.
-  const url =
-    getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+  const raw =
+    getPrefixedEnv('DATABASE_URL') ||
     getPrefixedEnv('POSTGRES_URL') ||
-    getPrefixedEnv('DATABASE_URL');
+    getPrefixedEnv('POSTGRES_URL_NON_POOLING');
+  if (!raw) return undefined;
 
-  // Extra safety: if the *value* in the preferred NON_POOLING slot is still pooled, warn loudly in dev.
-  // The UI (EnvironmentStatus + /debug/env) will also surface this clearly.
-  if (process.env.NODE_ENV === 'development' && url && /pooler|pooler\.supabase/i.test(url)) {
-    console.warn('⚠️ [db] Resolved database URL contains "pooler" (pooled). The NON_POOLING var (or its prefixed equivalent) must be set to Supabase "Direct connection" string, not the pooler one.');
+  const url = toRuntimeDatabaseUrl(raw);
+
+  // Solo queda sesión si la URL no era reconocible como pooler de Supabase.
+  if (process.env.NODE_ENV === 'development' && /pooler\.supabase\.com:5432/.test(url)) {
+    console.warn(
+      '⚠️ [db] La conexión sigue en el pooler de sesión (5432). Usa la cadena de transacción (6543).',
+    );
   }
 
   return url;

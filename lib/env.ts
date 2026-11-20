@@ -6,6 +6,7 @@
  */
 
 import { resolveRuntimeEnvironment } from './runtime-environment.server';
+import { toRuntimeDatabaseUrl } from './db-url';
 
 // Supported prefixes from Vercel Supabase/Postgres integrations
 // Current: BANGELH_* (Bangelh), UMANTAI_URL_* / UMANTAI_* (umantai vercel project e.g. umantai-dh4a-*-umantai.vercel.app)
@@ -99,11 +100,14 @@ export const envConfig = {
   database: {
     // Prefer non-pooling URL for reliability (especially in development)
     // Uses getPrefixedEnv so BANGELH_/UMANTAI_URL_* etc from Vercel integrations are picked up
-    url:
-      getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
-      getPrefixedEnv('POSTGRES_URL') ||
+    // Runtime: pooler de transacción (6543). La conexión directa queda para
+    // migraciones/seeds, que leen `POSTGRES_URL_NON_POOLING` por su cuenta.
+    url: toRuntimeDatabaseUrl(
       getPrefixedEnv('DATABASE_URL') ||
-      '',
+        getPrefixedEnv('POSTGRES_URL') ||
+        getPrefixedEnv('POSTGRES_URL_NON_POOLING') ||
+        '',
+    ),
     prismaUrl:
       getPrefixedEnv('POSTGRES_PRISMA_URL') ||
       getPrefixedEnv('POSTGRES_URL') ||
@@ -188,13 +192,12 @@ function validateEnvironment() {
     // Only warn in development to avoid noisy build logs on Vercel production deploys.
     // For production, ensure you set the non-pooled DIRECT connection string in Vercel env vars.
     const dbUrl = envConfig.database.url || '';
-    const isPooled = /pooler|pooler\.supabase/i.test(dbUrl);
-    if (process.env.NODE_ENV === 'development' && dbUrl && isPooled) {
-      console.warn('⚠️  Database URL appears to be a pooled connection (contains "pooler").');
-      console.warn('   For local development and Neon serverless driver reliability, use the DIRECT (non-pooled) connection string.');
-      console.warn('   Update POSTGRES_URL_NON_POOLING (and UMANTAI_URL_POSTGRES_URL_NON_POOLING if using prefixed) in .env.local');
-      console.warn('   Get it from Supabase Dashboard → Database → Connect → "Direct connection" (NOT the pooled one).');
-      console.warn('   Even if you set it under the NON_POOLING var name, the value must be the direct string.');
+    // El pooler de transacción (6543) es el modo correcto en runtime. Solo el de
+    // sesión (5432) agota conexiones con `EMAXCONNSESSION`.
+    const isSessionPooler = /pooler\.supabase\.com:5432/i.test(dbUrl);
+    if (process.env.NODE_ENV === 'development' && dbUrl && isSessionPooler) {
+      console.warn('⚠️  La conexión usa el pooler de SESIÓN (5432), limitado a `pool_size` clientes.');
+      console.warn('   Usa la cadena de transacción (6543) para runtime; la directa solo para migraciones.');
     }
     // El detalle de pooling se deriva de la URL en `getEnvDebugInfo`;
     // no se muta `envConfig` (es `as const` y no lo lee nadie).
@@ -247,15 +250,17 @@ function maskDatabaseUrl(raw: string): string {
 }
 
 function resolveDatabaseSource() {
+  // Mismo orden que `getDatabaseUrl()`: runtime primero (pooler de transacción).
   const candidates = [
-    { key: 'POSTGRES_URL_NON_POOLING' as const, val: getPrefixedEnv('POSTGRES_URL_NON_POOLING') },
-    { key: 'POSTGRES_URL' as const, val: getPrefixedEnv('POSTGRES_URL') },
     { key: 'DATABASE_URL' as const, val: getPrefixedEnv('DATABASE_URL') },
+    { key: 'POSTGRES_URL' as const, val: getPrefixedEnv('POSTGRES_URL') },
+    { key: 'POSTGRES_URL_NON_POOLING' as const, val: getPrefixedEnv('POSTGRES_URL_NON_POOLING') },
     { key: 'POSTGRES_PRISMA_URL' as const, val: getPrefixedEnv('POSTGRES_PRISMA_URL') },
   ];
   const found = candidates.find((c) => !!c.val);
   const url = found?.val || '';
-  const isPooledValue = /pooler|pooler\.supabase/i.test(url);
+  // `isPooled` = pooler de SESIÓN (el problemático). En 6543 es `false`.
+  const isPooledValue = /pooler\.supabase\.com:5432/i.test(url);
   const intendedNonPooling = found?.key === 'POSTGRES_URL_NON_POOLING';
   return {
     resolvedFrom: found ? found.key : ('none' as const),

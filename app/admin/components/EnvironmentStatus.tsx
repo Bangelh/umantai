@@ -45,9 +45,11 @@ export function EnvironmentStatus() {
 
   const supabaseConfigured = useServer ? serverStatus!.supabase.urlConfigured : !!clientEnv.supabase.url;
   const dbConfigured = useServer ? serverStatus!.database.configured : !!clientEnv.database.url;
-  const isPooled = useServer 
-    ? !!serverStatus!.database.isPooled 
-    : /pooler|pooler\.supabase/i.test(clientEnv.database.url || '');
+  // Solo el pooler de SESIÓN (5432) es un problema: el de transacción (6543) es
+  // el modo recomendado para runtime.
+  const isPooled = useServer
+    ? !!serverStatus!.database.isPooled
+    : /pooler\.supabase\.com:5432/i.test(clientEnv.database.url || '');
   // dbStatus is short label; the (from XXX) + ⚠️ are appended in JSX for the bad case.
   // Always base "is actually direct" on value (isPooled), not just var name.
   const effectiveNonPool = useServer
@@ -96,7 +98,7 @@ export function EnvironmentStatus() {
           <div className="text-[10px] text-white/40 mt-1">Run <code>vercel env pull</code> locally or set <code>POSTGRES_URL_NON_POOLING</code> (and <code>UMANTAI_URL_POSTGRES_URL_NON_POOLING</code>) in Vercel dashboard for the primary project.</div>
         )}
         {dbConfigured && isPooled && (
-          <div className="text-[9px] text-amber-400 mt-1">Use the DIRECT (non-pooled) connection string from Supabase → "Direct connection".</div>
+          <div className="text-[9px] text-amber-400 mt-1">Usa el pooler en modo transacción (6543) para runtime; la conexión directa (5432) solo para migraciones.</div>
         )}
       </div>
 
