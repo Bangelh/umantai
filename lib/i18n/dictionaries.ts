@@ -82,7 +82,7 @@ export const MESSAGES = {
     'auth.emailRules': 'Tu correo completo, con @ y dominio.',
     'auth.emailPlaceholder': 'tu@correo.com',
     'auth.missingName': 'Falta tu nombre.',
-    'auth.missingEmail': 'Falta un correo con @ y dominio.',
+    'auth.missingEmail': 'Escribe un correo con @ y dominio.',
     'auth.missingPassword': 'Falta la contraseña (mínimo 8 caracteres).',
     'auth.missingPasswordLogin': 'Escribe tu contraseña.',
     'auth.fixFields': 'Revisa los campos marcados.',
