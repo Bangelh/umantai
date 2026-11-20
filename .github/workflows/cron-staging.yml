@@ -1,0 +1,51 @@
+# .github/workflows/cron-staging.yml — dispara los crons de staging.
+#
+# Netlify cobra los scheduled functions y les da 30 s; GitHub Actions es gratis
+# para repos públicos y no consume créditos del sitio. Los endpoints exigen
+# `Authorization: Bearer <CRON_SECRET>` (ver app/api/cron/*).
+#
+# Secretos del repo necesarios:
+#   STAGING_URL  → https://<branch>--<site>.netlify.app (sin barra final)
+#   CRON_SECRET  → el mismo valor cargado en Netlify
+#
+# 08:00 UTC = 03:00 en Lima (America/Lima, UTC-5).
+
+name: staging-cron
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: staging-cron
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Liberar reservas vencidas
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "Faltan STAGING_URL o CRON_SECRET en los secretos del repo." >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$STAGING_URL/api/cron/expire-reservations"
+
+      - name: Facturación y gracia
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$STAGING_URL/api/cron/billing"

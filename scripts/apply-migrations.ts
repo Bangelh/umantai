@@ -41,7 +41,12 @@ async function main() {
   const dir = path.join(process.cwd(), 'db', 'migrations');
   const available = await readdir(dir);
   const files = requested.map((name) => {
-    const match = available.find((file) => file === name || file.startsWith(`${name}_`));
+    // Un prefijo (`001`) también coincide con `001_..._down.sql`, que ordena
+    // antes alfabéticamente: sin este filtro, provisionar una base nueva aplicaba
+    // el rollback. El nombre exacto sí puede apuntar a un `.down.sql`.
+    const match =
+      available.find((file) => file === name) ??
+      available.find((file) => file.startsWith(`${name}_`) && !file.endsWith('.down.sql'));
     if (!match) {
       throw new Error(`No existe una migración que empiece con "${name}".`);
     }

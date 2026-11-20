@@ -1,0 +1,35 @@
+# netlify.toml — UMANTAI en Netlify (Next.js 16 + Payload 3).
+#
+# El adaptador de Next se instala y actualiza solo (OpenNext de Netlify): no se
+# fija versión para no bloquear los cambios de Next 16.
+#
+# Publish: `.next` es lo que espera el runtime de Next en Netlify.
+# Node 22: Payload 3.92+ y Next 16 lo requieren; 20.9 es el mínimo de Next y
+# queda demasiado justo para `sharp` y el admin de Payload.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NPM_FLAGS = "--no-audit --no-fund"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Los branch deploys y deploy previews no consumen créditos. Staging vive en la
+# rama `feat/railway-staging`, así que ese es el destino de las pruebas.
+[context.branch-deploy]
+  command = "npm run build"
+
+# `APP_ENV=staging` es lo que impide que un deploy de rama se indexe y active
+# las salvaguardas de producción (robots, banners, secretos obligatorios).
+[context.branch-deploy.environment]
+  APP_ENV = "staging"
+
+[context.deploy-preview.environment]
+  APP_ENV = "staging"
+
+[dev]
+  command = "npm run dev"
+  targetPort = 3000
+  framework = "next"
