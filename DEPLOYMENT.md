@@ -73,7 +73,7 @@ npx netlify-cli sites:create --name umantai-staging
 npx netlify-cli link            # elegir el sitio recién creado
 ```
 
-`netlify.toml` ya define build (`npm run build`), publish (`.next`), Node 22 y `APP_ENV=staging` en branch deploys y previews. `APP_ENV=staging` es lo que evita que el staging se indexe y active las salvaguardas de producción.
+`netlify.toml` ya define build (`npm run build`), publish (`.next`), Node 22 y `APP_ENV=staging` en branch deploys y previews: así no se indexan ni activan las salvaguardas de producción. El contexto **production** —la rama `main`, que sirve `umantai.com`— lleva `APP_ENV=production` en las variables del sitio, que es lo que habilita indexación, cookies seguras y verificación de correo.
 
 Variables (una por una, o `--json` para cargar un archivo):
 
@@ -82,17 +82,17 @@ npx netlify-cli env:set DATABASE_URL 'postgresql://...:6543/postgres?pgbouncer=t
 npx netlify-cli env:set POSTGRES_URL_NON_POOLING 'postgresql://...:5432/postgres?sslmode=require'
 npx netlify-cli env:set PGPOOL_MAX 1
 npx netlify-cli env:set PGBETTER_AUTH_POOL_MAX 1
-npx netlify-cli env:set APP_ENV staging
-# La rama conectada (feat/railway-staging) se construye en el contexto *production*,
-# así que el valor tiene que existir en ese contexto o el guard de lib/env.ts falla el build.
-npx netlify-cli env:set APP_ENV staging --context production --force
+npx netlify-cli env:set APP_ENV staging --context deploy-preview --force
+# El deploy de la rama de producción (hoy `main`) usa el contexto *production*.
+# Netlify no hereda el APP_ENV de netlify.toml hacia ese contexto: se fija en el sitio.
+npx netlify-cli env:set APP_ENV production --context production --force
 npx netlify-cli env:set PAYLOAD_SECRET "$(openssl rand -hex 32)"
 npx netlify-cli env:set BETTER_AUTH_SECRET "$(openssl rand -hex 32)"
 npx netlify-cli env:set CRON_SECRET "$(openssl rand -hex 32)"
 # La URL exacta del branch deploy aparece en Deploys y en `npx netlify-cli status`.
 # Patrón: https://<rama-con-guiones>--<sitio>.netlify.app
-npx netlify-cli env:set NEXT_PUBLIC_SITE_URL 'https://umantai-staging.netlify.app'
-npx netlify-cli env:set BETTER_AUTH_URL 'https://umantai-staging.netlify.app'
+npx netlify-cli env:set NEXT_PUBLIC_SITE_URL 'https://umantai.com'
+npx netlify-cli env:set BETTER_AUTH_URL 'https://umantai.com'
 npx netlify-cli env:set MEDIA_DRIVER db
 ```
 
@@ -100,7 +100,7 @@ El inventario completo está en `.env.example`. Las claves de Mercado Pago y Res
 
 ## 5. Esquema y datos
 
-Con `POSTGRES_URL_NON_POOLING` apuntando a Supabase (puerto 5432) y `APP_ENV=staging`:
+Con `POSTGRES_URL_NON_POOLING` apuntando a Supabase (puerto 5432) y `APP_ENV=staging` en la máquina local (`apply-migrations.ts` se niega a correr con `production`):
 
 ```bash
 # 1. Tablas de la plataforma (27 migraciones idempotentes, en orden)
@@ -182,7 +182,7 @@ gh secret set CRON_SECRET  --body "$(openssl rand -hex 32)"   # el MISMO valor q
 2. Cloudflare → DNS de `umantai.com`: borrar el `A` del apex `153.52.255.14` (Railway, responde 404) y crear `A @ → 75.2.60.5`. El `www` va como `CNAME → umantai-staging.netlify.app`.
 3. Esperar el certificado (Netlify lo emite solo) y cambiar `NEXT_PUBLIC_SITE_URL` y `BETTER_AUTH_URL` a `https://umantai.com`, luego redeployar.
 4. El proxy naranja de Cloudflare sobre `www` estorba la validación de Let's Encrypt: dejarlo en DNS only hasta que el certificado esté activo.
-5. Al pasar a producción real, `APP_ENV` del contexto production deja de ser `staging` (hoy `staging` = noindex y salvaguardas relajadas).
+5. El contexto production ya lleva `APP_ENV=production`: `https://umantai.com` es indexable. Los branch deploys y deploy previews siguen en `staging` (noindex, sin salvaguardas de producción).
 
 ## 9. Riesgos conocidos
 

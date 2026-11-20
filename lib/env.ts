@@ -148,14 +148,24 @@ function validateEnvironment() {
   // el comportamiento histórico basado en VERCEL_ENV.
   const isProd = resolveRuntimeEnvironment().isProduction;
   const missing: string[] = [];
+  // Supabase ya NO es el motor de datos: la app corre sobre PostgreSQL (`pg`),
+  // el almacenamiento de imágenes es `MEDIA_DRIVER=db` y el único consumidor de
+  // `lib/supabase/*` es `/api/notes`, que devuelve 503 si falta configuración.
+  // Por eso estas variables se avisan, pero no impiden arrancar en Producción:
+  // un deploy productivo sin Supabase es válido (todas las tiendas viven en pg).
+  const missingOptional: string[] = [];
 
-  // Critical for most functionality
-  if (!envConfig.supabase.url) missing.push('NEXT_PUBLIC_SUPABASE_URL (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
-  if (!envConfig.supabase.anonKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
+  if (!envConfig.supabase.url) missingOptional.push('NEXT_PUBLIC_SUPABASE_URL (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
+  if (!envConfig.supabase.anonKey) missingOptional.push('NEXT_PUBLIC_SUPABASE_ANON_KEY (or BANGELH_/UMANTAI_URL_/NEXT_PUBLIC_UMANTAI_URL_ variants)');
+  if (!envConfig.supabase.serviceRoleKey) missingOptional.push('SUPABASE_SERVICE_ROLE_KEY (or BANGELH_/UMANTAI_URL_ variants)');
+
+  // La base sí es obligatoria: sin connection string no hay tienda.
   if (!envConfig.database.url) missing.push('POSTGRES_URL or POSTGRES_URL_NON_POOLING or DATABASE_URL (or BANGELH_/UMANTAI_URL_ prefixed variants) — prefer the DIRECT/non-pooled string for POSTGRES_URL_NON_POOLING');
 
-  // Critical for admin + notes features
-  if (!envConfig.supabase.serviceRoleKey) missing.push('SUPABASE_SERVICE_ROLE_KEY (or BANGELH_/UMANTAI_URL_ variants)');
+  if (missingOptional.length > 0) {
+    console.warn('⚠️  Supabase opcional no configurado (solo afecta a /api/notes):');
+    for (const item of missingOptional) console.warn('   - ' + item);
+  }
 
   if (missing.length > 0) {
     const message = `Missing critical environment variables:\n- ${missing.join('\n- ')}`;
