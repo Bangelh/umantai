@@ -68,7 +68,15 @@ test('rechaza el nombre de la plataforma aunque el slug sea otro', () => {
 });
 
 test('rechaza un slug reservado por la plataforma', () => {
-  for (const slug of ['admin', 'api', 'vender', 'cuenta', 'UMANTAI']) {
+  for (const slug of [
+    'admin',
+    'api',
+    'vender',
+    'cuenta',
+    'UMANTAI',
+    'umantai-store',
+    'tienda-umantai',
+  ]) {
     const result = validateStoreIdentity({ name: 'Tienda', slug });
     assert.equal(result.ok, false, `${slug} debería estar reservado`);
     if (!result.ok) assert.equal(result.code, 'slug_reserved');

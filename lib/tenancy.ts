@@ -131,11 +131,13 @@ export function validateStoreSlug(input: unknown): SlugValidation {
     };
   }
 
-  if (RESERVED_STORE_SLUGS.has(slug)) {
+  // Un slug no puede ser la marca ni contenerla: `umantai`, `umantai-store`,
+  // `tienda-umantai`. La base aplica la misma regla en el trigger.
+  if (RESERVED_STORE_SLUGS.has(slug) || isReservedStoreName(slug)) {
     return {
       ok: false,
       code: 'slug_reserved',
-      message: `"${slug}" es una ruta reservada de UMANTAI. Elige otro nombre.`,
+      message: `"${slug}" está reservado por UMANTAI. Elige otro nombre.`,
     };
   }
 

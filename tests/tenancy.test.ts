@@ -50,6 +50,15 @@ test('el nombre de la plataforma no se puede usar como tienda', () => {
   assert.equal(isReservedStoreName('Umanta'), false);
 });
 
+test('ningún slug que contenga la marca se acepta', () => {
+  for (const slug of ['umantai-store', 'tienda-umantai', 'UMANTAI-SHOP']) {
+    const result = validateStoreSlug(slug);
+    assert.equal(result.ok, false, `${slug} debería estar bloqueado`);
+    if (!result.ok) assert.equal(result.code, 'slug_reserved');
+  }
+  assert.equal(validateStoreSlug('umanta-store').ok, true);
+});
+
 test('slug demasiado corto o inválido', () => {
   assert.equal(validateStoreSlug('ab').ok, false);
   const invalid = validateStoreSlug('---');
