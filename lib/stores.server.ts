@@ -1258,6 +1258,24 @@ export function parseStorePayments(metadata: unknown): StorePayments {
   };
 }
 
+/** Máximo del horario público (texto libre) que escribe la tienda. */
+export const MAX_STORE_HOURS = 120;
+
+/**
+ * Horario de atención público de una tienda.
+ *
+ * Vive en `stores.metadata.hours` junto a los datos de pago. Texto libre y no
+ * una matriz de días: el negocio escribe turnos partidos, feriados o "solo con
+ * cita" sin que la app le imponga una estructura que no siempre encaja.
+ */
+export function parseStoreHours(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const raw = (metadata as Record<string, unknown>).hours;
+  if (typeof raw !== 'string') return null;
+  const hours = raw.trim().replace(/\s+/g, ' ');
+  return hours ? hours.slice(0, MAX_STORE_HOURS) : null;
+}
+
 export interface OrderStorePublicInfo {
   id: string;
   name: string;
@@ -1378,6 +1396,52 @@ export async function updateStoreContactPhone(
   const row = rows[0];
   if (!row) throw new Error('store_not_found');
   return toStore(row);
+}
+
+/** Horario público de una tienda activa (para el pie de la vitrina). */
+export async function getStoreHoursBySlug(slug: string): Promise<string | null> {
+  const sql = getPlatformSql();
+  if (!sql) return null;
+
+  const rows = (await sql`
+    SELECT metadata FROM stores
+     WHERE lower(slug) = lower(${normalizeStoreSlug(slug)})
+       AND active = TRUE
+     LIMIT 1
+  `) as Row[];
+  return rows[0] ? parseStoreHours(rows[0].metadata) : null;
+}
+
+/** Horario para el panel: exige membresía de la tienda. */
+export async function getStoreHoursForOwner(
+  userId: string,
+  storeId: string,
+): Promise<string | null> {
+  await requireStoreAccess(userId, storeId);
+  const sql = requirePlatformSql();
+  const rows = (await sql`
+    SELECT metadata FROM stores WHERE id = ${storeId}::uuid LIMIT 1
+  `) as Row[];
+  return rows[0] ? parseStoreHours(rows[0].metadata) : null;
+}
+
+/** Guarda el horario sin tocar los demás datos de `metadata` (pagos, etc.). */
+export async function updateStoreHours(
+  userId: string,
+  storeId: string,
+  hours: string | null,
+): Promise<string | null> {
+  await requireStoreAccess(userId, storeId, 'admin');
+  const sql = requirePlatformSql();
+  const clean = hours?.trim().replace(/\s+/g, ' ').slice(0, MAX_STORE_HOURS) || null;
+
+  await sql`
+    UPDATE stores
+       SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('hours', ${clean}::text),
+           updated_at = NOW()
+     WHERE id = ${storeId}::uuid
+  `;
+  return clean;
 }
 
 /**

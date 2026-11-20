@@ -43,6 +43,7 @@ import {
   readStorePaymentsInput,
   requireStoreAccess,
   updateStoreContactPhone,
+  updateStoreHours,
   updateStoreIdentity,
   updateStorePayments,
 } from '@/lib/stores.server';
@@ -57,6 +58,7 @@ interface PatchBody {
   slug?: unknown;
   contactPhone?: unknown;
   payments?: unknown;
+  hours?: unknown;
 }
 
 
@@ -92,8 +94,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   const hasIdentity = body.name !== undefined || body.slug !== undefined;
   const hasContact = body.contactPhone !== undefined;
   const hasPayments = body.payments !== undefined;
+  const hasHours = body.hours !== undefined;
 
-  if (!hasLocation && !hasIdentity && !hasContact && !hasPayments) {
+  if (!hasLocation && !hasIdentity && !hasContact && !hasPayments && !hasHours) {
     return NextResponse.json(
       { error: 'No hay nada que actualizar.', code: 'invalid_store_input' },
       { status: 400 },
@@ -103,7 +106,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (
     (hasLocation && hasIdentity) ||
     (hasContact && (hasLocation || hasIdentity)) ||
-    (hasPayments && (hasLocation || hasIdentity || hasContact))
+    (hasPayments && (hasLocation || hasIdentity || hasContact)) ||
+    (hasHours && (hasLocation || hasIdentity || hasContact || hasPayments))
   ) {
     return NextResponse.json(
       {
@@ -177,6 +181,35 @@ export async function PATCH(request: Request, context: RouteContext) {
           whatsapp: store.whatsapp,
         },
       });
+    } catch (error) {
+      return platformErrorResponse(error);
+    }
+  }
+
+  if (hasHours) {
+    const raw = body.hours;
+    if (raw !== null && typeof raw !== 'string') {
+      return NextResponse.json(
+        { error: 'El horario debe ser texto.', code: 'invalid_hours' },
+        { status: 400 },
+      );
+    }
+    const rawHours = typeof raw === 'string' ? raw.trim() : '';
+    if (rawHours.length > 120) {
+      return NextResponse.json(
+        { error: 'El horario no puede pasar de 120 caracteres.', code: 'invalid_hours' },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const saved = await updateStoreHours(user.id, storeId, rawHours || null);
+      logEvent('store_hours_updated', {
+        storeId,
+        userId: user.id,
+        hasHours: saved !== null,
+      });
+      return NextResponse.json({ hours: saved });
     } catch (error) {
       return platformErrorResponse(error);
     }

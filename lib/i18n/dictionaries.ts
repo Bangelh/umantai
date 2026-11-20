@@ -152,6 +152,17 @@ export const MESSAGES = {
     'storeFooter.legalLink': 'Ver datos legales',
     'storeFooter.openCategories': 'Ver categorías ({count})',
     'storeFooter.categoriesHint': 'Filtra el catálogo sin volver arriba.',
+    'storeFooter.hours': 'Horario de atención',
+
+    'merchant.hoursHeading': 'Horario de atención',
+    'merchant.hoursBody':
+      'Se muestra en el pie de tu tienda, junto al WhatsApp. Saber cuándo respondes ayuda a que el comprador confíe.',
+    'merchant.hoursLabel': 'Horarios',
+    'merchant.hoursPlaceholder': 'Lun a vie 9:00–19:00 · Sáb 9:00–13:00',
+    'merchant.hoursSave': 'Guardar horario',
+    'merchant.hoursSaving': 'Guardando…',
+    'merchant.hoursSaved': 'Horario guardado.',
+    'merchant.hoursInvalid': 'No pudimos guardar el horario (máx. 120 caracteres).',
 
     'billing.title': 'Plan y facturación',
     'billing.subtitle':
@@ -1863,6 +1874,17 @@ export const MESSAGES = {
     'storeFooter.legalLink': 'See legal details',
     'storeFooter.openCategories': 'View categories ({count})',
     'storeFooter.categoriesHint': 'Filter the catalog without scrolling back up.',
+    'storeFooter.hours': 'Opening hours',
+
+    'merchant.hoursHeading': 'Opening hours',
+    'merchant.hoursBody':
+      'Shown in your store footer, next to WhatsApp. Knowing when you reply helps buyers trust the store.',
+    'merchant.hoursLabel': 'Hours',
+    'merchant.hoursPlaceholder': 'Mon–Fri 9:00–19:00 · Sat 9:00–13:00',
+    'merchant.hoursSave': 'Save hours',
+    'merchant.hoursSaving': 'Saving…',
+    'merchant.hoursSaved': 'Hours saved.',
+    'merchant.hoursInvalid': 'We could not save the hours (max. 120 characters).',
 
     'billing.title': 'Plan and billing',
     'billing.subtitle': 'Recurring UMANTAI billing, separate from your customers’ order payments.',

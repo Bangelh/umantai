@@ -24,7 +24,14 @@
 import Link from 'next/link';
 import { motion } from 'motion/react';
 import { ArrowUpRight, MapPin, MessageCircle, Search, Store, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { toast } from 'sonner';
 import {
   DEFAULT_RADIUS_KM,
@@ -344,7 +351,7 @@ export function DiscoveryHome({ initial, businessWhatsAppUrl }: Props) {
     void runSearch(label, location, radiusKm);
   };
 
-  const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (!showSuggestions) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();

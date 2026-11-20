@@ -17,6 +17,7 @@ import { notFound, redirect } from 'next/navigation';
 import {
   Check,
   ChevronDown,
+  Clock,
   CreditCard,
   MapPin,
   MessageCircle,
@@ -33,6 +34,7 @@ import { StoreBilling } from './StoreBilling';
 import { StoreIdentityForm } from './StoreIdentityForm';
 import { StoreLogoButton } from './StoreLogoButton';
 import { StoreWhatsAppForm } from './StoreWhatsAppForm';
+import { StoreHoursForm } from './StoreHoursForm';
 import { StorePaymentsForm } from './StorePaymentsForm';
 import { StoreLocationForm } from './StoreLocationForm';
 import { OrderStatusBadge } from '@/components/orders/OrderStatusBadge';
@@ -49,6 +51,7 @@ import { getTranslator } from '@/lib/i18n/server';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
 import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
 import {
+  getStoreHoursForOwner,
   getStorePaymentsForOwner,
   listStoreOrders,
   listStoreProducts,
@@ -143,11 +146,12 @@ export default async function MerchantStorePage({ params }: PageProps) {
   const status = resolveMerchantStoreStatus(store);
   const canEditIdentity = canEditStoreIdentity(store);
 
-  const [products, orders, billing, payments] = await Promise.all([
+  const [products, orders, billing, payments, hours] = await Promise.all([
     listStoreProducts(user.id, storeId),
     listStoreOrders(user.id, storeId, 30),
     getStoreBillingForUser(user.id, storeId).catch(() => null),
     getStorePaymentsForOwner(user.id, storeId).catch(() => null),
+    getStoreHoursForOwner(user.id, storeId).catch(() => null),
   ]);
 
   const rangeResult = resolveAnalyticsRange({ preset: '30d' });
@@ -585,6 +589,15 @@ export default async function MerchantStorePage({ params }: PageProps) {
             description={t('merchant.whatsappBody')}
           >
             <StoreWhatsAppForm storeId={storeId} initialPhone={store.whatsapp} />
+          </SettingsSection>
+
+          <SettingsSection
+            id="horario"
+            icon={Clock}
+            title={t('merchant.hoursHeading')}
+            description={t('merchant.hoursBody')}
+          >
+            <StoreHoursForm storeId={storeId} initialHours={hours} />
           </SettingsSection>
 
           {status.missing === 'location' && (

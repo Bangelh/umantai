@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ChevronDown, MapPin, MessageCircle, ShieldCheck } from 'lucide-react';
+import { ChevronDown, Clock, MapPin, MessageCircle, ShieldCheck } from 'lucide-react';
 
 import { BrandLogo } from '@/components/brand/BrandLogo';
 import { businessConfig } from '@/config/business';
@@ -11,6 +11,8 @@ interface Props {
   store: Store;
   payments: StorePayments | null;
   categories: Array<{ name: string; count: number }>;
+  /** Horario que escribió la tienda; `null` si todavía no lo cargó. */
+  hours: string | null;
   /** Solo se anuncia tarjeta si el cobro online está habilitado en el entorno. */
   cardPaymentsEnabled: boolean;
 }
@@ -29,7 +31,13 @@ interface Props {
  * datos legales del titular viven en `config/business.ts`; mientras sigan en
  * `null`, el bloque enlaza al aviso legal en lugar de imprimir un placeholder.
  */
-export async function StoreFooter({ store, payments, categories, cardPaymentsEnabled }: Props) {
+export async function StoreFooter({
+  store,
+  payments,
+  categories,
+  hours,
+  cardPaymentsEnabled,
+}: Props) {
   const { t } = await getTranslator();
 
   const whatsappHref = store.whatsapp
@@ -60,6 +68,15 @@ export async function StoreFooter({ store, payments, categories, cardPaymentsEna
             <p className="mt-2 flex items-start gap-1.5 text-xs text-tertiary">
               <MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>{location}</span>
+            </p>
+          )}
+          {hours && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-tertiary">
+              <Clock aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                <span className="sr-only">{t('storeFooter.hours')}: </span>
+                {hours}
+              </span>
             </p>
           )}
         </div>
