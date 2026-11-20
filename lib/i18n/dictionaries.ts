@@ -502,6 +502,9 @@ export const MESSAGES = {
     'merchant.identityHeading': 'Datos de la tienda',
     'merchant.identityName': 'Nombre de la tienda',
     'merchant.identityNameInvalid': 'El nombre debe tener entre 2 y 80 caracteres.',
+    'merchant.identityNameRules': 'Entre 2 y 80 caracteres. Es el nombre que verá el comprador.',
+    'merchant.identityFixFields': 'Corrige los campos marcados para guardar.',
+    'merchant.identityNoChanges': 'No hay cambios por guardar.',
     'merchant.identityPublicAddress': 'Dirección pública',
     'merchant.identityPublicHelp':
       'Esta será la dirección que tus clientes usarán para entrar a tu tienda.',
@@ -2215,6 +2218,9 @@ export const MESSAGES = {
     'merchant.identityHeading': 'Store details',
     'merchant.identityName': 'Store name',
     'merchant.identityNameInvalid': 'The name must be between 2 and 80 characters.',
+    'merchant.identityNameRules': 'Between 2 and 80 characters. This is the name buyers will see.',
+    'merchant.identityFixFields': 'Fix the marked fields to save.',
+    'merchant.identityNoChanges': 'There are no changes to save.',
     'merchant.identityPublicAddress': 'Public address',
     'merchant.identityPublicHelp':
       'This is the address your customers will use to reach your store.',

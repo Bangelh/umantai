@@ -14,7 +14,7 @@
  * El slug es solo la dirección pública: no describe ni cambia la ubicación.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -46,6 +46,10 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
   const [slug, setSlug] = useState(initialSlug);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [touched, setTouched] = useState<{ name: boolean; slug: boolean }>({
+    name: false,
+    slug: false,
+  });
 
   const previewUrl = publicStoreUrl(slug);
   const dirty = name.trim() !== initialName || normalizeStoreSlug(slug) !== initialSlug;
@@ -68,11 +72,23 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
     }
   };
 
+  // Se valida mientras se escribe; los errores se muestran solo en los campos
+  // que la persona ya tocó, no todos de golpe al guardar.
+  const validation = useMemo(() => validateStoreIdentity({ name, slug }), [name, slug]);
+  const nameError =
+    touched.name && !validation.ok && validation.field === 'name'
+      ? messageFor(validation.code)
+      : null;
+  const slugError =
+    touched.slug && !validation.ok && validation.field === 'slug'
+      ? messageFor(validation.code)
+      : null;
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
 
-    const validation = validateStoreIdentity({ name, slug });
+    setTouched({ name: true, slug: true });
     if (!validation.ok) {
       setError(messageFor(validation.code));
       return;
@@ -111,12 +127,32 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
         <input
           type="text"
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setError(null);
+            setTouched((current) => ({ ...current, name: true }));
+          }}
           maxLength={80}
           required
           autoComplete="organization"
-          className="field-input h-11 text-body"
+          aria-invalid={Boolean(nameError)}
+          aria-describedby={
+            nameError ? 'identity-name-help identity-name-error' : 'identity-name-help'
+          }
+          className={`field-input h-11 text-body ${nameError ? 'border-destructive' : ''}`}
         />
+        <span id="identity-name-help" className="mt-1 block text-xs text-muted">
+          {t('merchant.identityNameRules')}
+        </span>
+        {nameError && (
+          <span
+            id="identity-name-error"
+            role="alert"
+            className="mt-1 block text-xs text-destructive"
+          >
+            {nameError}
+          </span>
+        )}
       </label>
 
       <label className="block">
@@ -126,15 +162,35 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
           <input
             type="text"
             value={slug}
-            onChange={(event) => setSlug(event.target.value)}
+            onChange={(event) => {
+              setSlug(event.target.value);
+              setError(null);
+              setTouched((current) => ({ ...current, slug: true }));
+            }}
             maxLength={60}
             required
             spellCheck={false}
             autoCapitalize="none"
             autoComplete="off"
+            aria-invalid={Boolean(slugError)}
+            aria-describedby={
+              slugError ? 'identity-slug-help identity-slug-error' : 'identity-slug-help'
+            }
             className="h-full min-w-0 flex-1 bg-transparent font-mono text-body text-primary outline-none"
           />
         </div>
+        <span id="identity-slug-help" className="mt-1 block text-xs text-muted">
+          {t('merchant.identitySlugHint')}
+        </span>
+        {slugError && (
+          <span
+            id="identity-slug-error"
+            role="alert"
+            className="mt-1 block text-xs text-destructive"
+          >
+            {slugError}
+          </span>
+        )}
       </label>
 
       <div className="space-y-1">
@@ -160,9 +216,14 @@ export function StoreIdentityForm({ storeId, initialName, initialSlug }: Props) 
         </p>
       )}
 
+      {dirty && !validation.ok && (
+        <p className="text-xs text-destructive">{t('merchant.identityFixFields')}</p>
+      )}
+      {!dirty && <p className="text-xs text-muted">{t('merchant.identityNoChanges')}</p>}
+
       <button
         type="submit"
-        disabled={saving || !dirty}
+        disabled={saving || !dirty || !validation.ok}
         className="btn-primary w-full text-sm sm:w-auto"
       >
         {saving ? t('merchant.identitySaving') : t('merchant.identitySave')}
