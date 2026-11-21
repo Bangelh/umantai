@@ -697,6 +697,9 @@ export async function listStoresForUser(userId: string): Promise<StoreWithRole[]
   }));
 }
 
+const STORE_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Portero de aislamiento. Devuelve la tienda y el rol SOLO si el usuario es
  * miembro con el rol mínimo; si no, lanza. Ninguna función store-scoped debe
@@ -709,6 +712,12 @@ export async function requireStoreAccess(
 ): Promise<{ store: Store; role: StoreRole }> {
   if (!userId) {
     throw new TenancyError('not_authenticated', 'Necesitas iniciar sesión.');
+  }
+
+  // Un id que no es UUID no puede existir. Sin esta guarda Postgres responde
+  // 22P02 (invalid input syntax for type uuid) y la ruta lo traduce a un 500.
+  if (!STORE_ID_RE.test(storeId)) {
+    throw new TenancyError('store_not_found', 'Tienda no encontrada.');
   }
 
   const sql = requirePlatformSql();
