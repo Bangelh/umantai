@@ -2,7 +2,7 @@
 
 Runbook del hosting. **Netlify publica la rama `main`.**
 
-- Ramas del repo: `main` (lo que ve el público) y `dev` (trabajo diario). No hay otras.
+- Ramas del repo: `main` (lo que ve el público) y `dev` (trabajo diario). Para probar sin gastar créditos se usan ramas temporales con PR (sección 6a).
 - Flujo: `dev` → pull request → `main` → deploy automático.
 - Los branch deploys y deploy previews **no consumen créditos**; solo producción (15 por deploy) y el tráfico.
 - Next 16 + Payload 3 corren nativos en el runtime de Next de Netlify. El adaptador se instala solo.
@@ -150,6 +150,24 @@ Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), 
 ### Alternativa sin conectar el repo
 
 `.github/workflows/deploy-staging.yml` construye en Ubuntu y despliega con la CLI. Solo necesita `NETLIFY_AUTH_TOKEN` como secreto del repo (Settings → Secrets and variables → Actions), creado en Netlify → User settings → Applications → New access token. Mientras el secreto no exista, el workflow avisa y termina en verde sin desplegar.
+
+## 6a. Probar cambios sin gastar créditos (verificado 2026-11-21)
+
+Con los créditos en cero, un **Deploy Preview** se construye igual y no consume créditos. El 2026-11-21, con el saldo agotado, el PR #1 (`test/preview-sin-creditos`, commit `55cdddd`) publicó `https://deploy-preview-1--umantai-staging.netlify.app` en ~2 minutos.
+
+```bash
+git checkout -b test/<tema>
+git add -A && git commit -m "..."
+git push -u origin test/<tema>
+gh pr create --base main --head test/<tema> --title "Prueba: <tema>"
+```
+
+1. Netlify detecta el PR y construye el preview; producción no se toca.
+2. La URL sigue el patrón `https://deploy-preview-<n>--umantai-staging.netlify.app`, con el número de PR.
+3. El contexto `deploy-preview` lleva `APP_ENV=staging`: no indexa y no activa salvaguardas de producción.
+4. Al terminar, cerrar el PR. **No mergear solo para probar**: el merge dispara un deploy de producción de 15 créditos.
+
+Un push a una rama **sin PR** no construye nada: `build_settings.allowed_branches` solo contiene `main`, y `netlify api updateSite` responde 200 sin aplicarlo (requiere personal access token y `PATCH /sites/<site_id>`).
 
 ## 6b. Estado (2026-11-20)
 
