@@ -25,7 +25,7 @@ import {
   Store as StoreIcon,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { cache, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { AuroraBackdrop } from '@/components/ui/AuroraBackdrop';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SpotlightSurface } from '@/components/ui/SpotlightSurface';
@@ -49,42 +49,19 @@ import { getCurrentUser } from '@/lib/current-user.server';
 import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
 import { getTranslator } from '@/lib/i18n/server';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
+import { loadStoreAccess } from '@/lib/store-access.server';
 import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
 import {
   getStoreHoursForOwner,
   getStorePaymentsForOwner,
   listStoreOrders,
   listStoreProducts,
-  requireStoreAccess,
 } from '@/lib/stores.server';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * Compuerta memoizada por request: `generateMetadata` y la página la comparten,
- * así el chequeo de membresía cuesta una sola consulta.
- */
-const loadStoreAccess = cache(async (userId: string, storeId: string) => {
-  try {
-    return await requireStoreAccess(userId, storeId);
-  } catch {
-    return null;
-  }
-});
-
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getTranslator();
-  const user = await getCurrentUser();
-
-  // Con sesión, el 404 se decide acá: la metadata se resuelve antes de abrir el
-  // stream. Si se lanzara desde la página (después de su primer `await` y con
-  // `loading.tsx` presente) la respuesta ya viajó como 200 y solo quedaría el
-  // `<meta name="robots" content="noindex">`.
-  if (user) {
-    const { storeId } = await params;
-    if (!(await loadStoreAccess(user.id, storeId))) notFound();
-  }
-
   return { title: t('merchant.dashboard'), robots: { index: false, follow: false } };
 }
 
