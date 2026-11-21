@@ -71,6 +71,17 @@
   --um-shadow-card: 0 1px 0 rgb(0 0 0 / 0.03), 0 12px 32px -24px rgb(0 0 0 / 0.18);
 }
 
+/* Escala fija de radios: foco 6, control 12, tarjeta 16, superficie 24, pill.
+   No depende del tema, así que vive fuera de los bloques de color: claro y
+   oscuro no pueden desincronizarse. */
+:root {
+  --um-radius-focus: 6px;
+  --um-radius-control: 12px;
+  --um-radius-card: 16px;
+  --um-radius-surface: 24px;
+  --um-radius-pill: 9999px;
+}
+
 /*
  * Estados: se declaran como capas para que `bg-success/10` y `border-success/40`
  * funcionen igual en ambos temas (Tailwind mezcla el color con transparencia).
@@ -225,7 +236,17 @@ body {
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--um-brand);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--um-radius-focus);
+}
+
+/* Una sola familia (Lucide) y un solo grosor en la interfaz. El kiosco
+   conserva 2 px porque se usa a distancia y con luz reflejada. */
+:where(svg.lucide) {
+  stroke-width: 1.75;
+}
+
+[data-kiosk] :where(svg.lucide) {
+  stroke-width: 2;
 }
 
 ::selection {
@@ -254,7 +275,7 @@ body {
 .surface-card {
   background: var(--um-surface);
   border: 1px solid var(--um-border);
-  border-radius: 1.5rem;
+  border-radius: var(--um-radius-surface);
   box-shadow: var(--um-shadow-card);
 }
 
@@ -265,7 +286,7 @@ body {
   gap: 0.5rem;
   height: 2.75rem;
   padding: 0 1.5rem;
-  border-radius: 9999px;
+  border-radius: var(--um-radius-pill);
   background: var(--um-brand);
   color: var(--um-background);
   font-weight: 600;
@@ -288,7 +309,7 @@ body {
   gap: 0.5rem;
   height: 2.75rem;
   padding: 0 1.5rem;
-  border-radius: 9999px;
+  border-radius: var(--um-radius-pill);
   border: 1px solid var(--um-border-strong);
   color: var(--um-primary);
   transition: background-color 0.15s ease;
@@ -310,7 +331,7 @@ body {
 
 .field-input {
   width: 100%;
-  border-radius: 0.75rem;
+  border-radius: var(--um-radius-control);
   border: 1px solid var(--um-border-strong);
   background: var(--um-background);
   padding: 0.65rem 0.9rem;

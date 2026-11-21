@@ -25,14 +25,16 @@ export function HeaderNav() {
   ];
 
   return (
-    <div className="hidden items-center gap-5 md:flex">
+    <div className="hidden items-center gap-1 md:flex">
       {links.map((link) => (
         <Link
           key={link.href}
           href={link.href}
           aria-current={link.active ? 'page' : undefined}
-          className={`text-sm transition-colors ${
-            link.active ? 'font-semibold text-primary' : 'text-secondary hover:text-primary'
+          className={`rounded-full px-3 py-1.5 text-sm transition-colors ${
+            link.active
+              ? 'bg-surface-raised font-semibold text-primary'
+              : 'text-secondary hover:bg-surface-raised/60 hover:text-primary'
           }`}
         >
           {link.label}

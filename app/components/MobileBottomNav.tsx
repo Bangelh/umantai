@@ -52,7 +52,7 @@ export function MobileBottomNav() {
                 aria-current={active ? 'page' : undefined}
                 className={`flex min-h-12 flex-col items-center justify-center flex-1 gap-0.5 py-1 text-[11px] transition-colors ${active ? "text-primary font-semibold" : "text-tertiary hover:text-secondary"}`}
               >
-                <div className="relative">
+                <div className={`relative rounded-full px-3 py-1 transition-colors ${active ? 'bg-surface-raised' : ''}`}>
                   <Icon className="h-6 w-6" aria-hidden="true" />
                   {hydrated && count > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-brand text-[9px] font-medium text-background flex items-center justify-center tabular-nums">
