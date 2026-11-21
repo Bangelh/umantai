@@ -163,30 +163,33 @@ function poolMax(): number {
   return Math.min(Math.max(Math.trunc(parsed), 1), 50);
 }
 
-interface CachedPool {
-  url: string;
-  pool: Pool;
+/**
+ * Pools por URL. NUNCA se cierra el pool de otra URL al cambiar de cadena.
+ *
+ * Antes había un solo slot: si un módulo resolvía la cadena de runtime (6543) y
+ * otro la de migraciones (5432), cada llamada cerraba el pool del anterior y
+ * dejaba clientes cacheados apuntando a un pool terminado. Producción lo
+ * mostró como "Cannot use a pool after calling end on the pool": el health
+ * respondía 503 y el panel 500 con la base perfectamente sana.
+ */
+const poolsByUrl = new Map<string, Pool>();
+
+/** `pg` marca `ending` al llamar a `end()`; ese pool ya no acepta consultas. */
+function isEndedPool(pool: Pool): boolean {
+  return (pool as { ending?: boolean }).ending === true;
 }
 
-let cachedPool: CachedPool | null = null;
+function isEndedPoolError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('after calling end on the pool');
+}
 
-function getPool(url: string): Pool {
-  if (cachedPool?.url === url) return cachedPool.pool;
-
-  // Cambió la URL (tests, rotación): cerrar el pool anterior sin bloquear.
-  if (cachedPool) {
-    const previous = cachedPool.pool;
-    cachedPool = null;
-    void previous.end().catch(() => undefined);
-  }
-
+function createPool(url: string): Pool {
   const pool = new Pool({
     connectionString: url,
     max: poolMax(),
     application_name: 'umantai',
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,
-    allowExitOnIdle: true,
   });
 
   // Un cliente idle que muere no debe tumbar el proceso.
@@ -194,7 +197,15 @@ function getPool(url: string): Pool {
     console.error('[db] idle pg client error:', error.message);
   });
 
-  cachedPool = { url, pool };
+  return pool;
+}
+
+function getPool(url: string): Pool {
+  const existing = poolsByUrl.get(url);
+  if (existing && !isEndedPool(existing)) return existing;
+
+  const pool = createPool(url);
+  poolsByUrl.set(url, pool);
   return pool;
 }
 
@@ -232,17 +243,23 @@ async function runPgTransaction(
 }
 
 function createPgClient(url: string): SqlClient {
-  const pool = getPool(url);
+  const runQuery = async (text: string, values: readonly unknown[]): Promise<Row[]> => {
+    try {
+      return (await getPool(url).query(text, [...values])).rows as Row[];
+    } catch (error) {
+      if (!isEndedPoolError(error)) throw error;
+      // Otro camino cerró el pool: se descarta y se reintenta una sola vez.
+      poolsByUrl.delete(url);
+      return (await getPool(url).query(text, [...values])).rows as Row[];
+    }
+  };
 
   const tag = ((strings: TemplateStringsArray, ...values: unknown[]) => {
     const { text, values: params } = buildSqlText(strings, values);
-    return new PgSqlQuery(text, params, async (queryText, queryValues) => {
-      const result = await pool.query(queryText, [...queryValues]);
-      return result.rows as Row[];
-    });
+    return new PgSqlQuery(text, params, runQuery);
   }) as unknown as SqlClient;
 
-  tag.transaction = (queries, options) => runPgTransaction(pool, queries, options);
+  tag.transaction = (queries, options) => runPgTransaction(getPool(url), queries, options);
   return tag;
 }
 
@@ -279,10 +296,9 @@ export function createSqlClient(url: string, explicitDriver?: string | null): Sq
   return driver === 'neon' ? createNeonClient(url) : createPgClient(url);
 }
 
-/** Cierra el pool de `pg` (tests, scripts y apagado ordenado). */
+/** Cierra todos los pools de `pg` (tests, scripts y apagado ordenado). */
 export async function closeDbPools(): Promise<void> {
-  if (!cachedPool) return;
-  const { pool } = cachedPool;
-  cachedPool = null;
-  await pool.end().catch(() => undefined);
+  const pools = [...poolsByUrl.values()];
+  poolsByUrl.clear();
+  await Promise.all(pools.map((pool) => pool.end().catch(() => undefined)));
 }

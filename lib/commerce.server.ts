@@ -27,8 +27,8 @@
  *   · La idempotencia del checkout la garantiza el índice único de `orders.idempotency_key`.
  */
 
+import { getDatabaseUrl } from './db';
 import { createSqlClient, type SqlClient } from './db-driver.server';
-import { envConfig } from './env';
 import {
   buildVariantKey,
   computeLineTotal,
@@ -83,9 +83,16 @@ type NeonQuery = SqlClient;
 
 let cachedSql: NeonQuery | null = null;
 
-/** Cadena de conexión efectiva (respeta los prefijos de Vercel vía `envConfig`). */
+/**
+ * Cadena de conexión efectiva en runtime.
+ *
+ * Debe ser la misma que usa el resto de la app (`getDatabaseUrl`: pooler de
+ * transacción, 6543). Leer acá la cadena de migraciones (5432) creaba un segundo
+ * pool en el mismo proceso y el driver cerraba el de los demás módulos, con el
+ * error "Cannot use a pool after calling end on the pool".
+ */
 function resolveDatabaseUrl(): string | undefined {
-  return envConfig.database.nonPoolingUrl || envConfig.database.url || undefined;
+  return getDatabaseUrl();
 }
 
 /** ¿Hay base de datos configurada? (para que la ruta devuelva 503 en vez de explotar). */

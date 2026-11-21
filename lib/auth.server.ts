@@ -144,9 +144,12 @@ export function getAuthServer(): BetterAuthInstance {
 
   if (cachedAuth && cachedUrl === url) return cachedAuth;
 
-  if (cachedPool && cachedUrl !== url) {
-    void cachedPool.end().catch(() => undefined);
+  // Un pool ya cerrado (rotación de URL o cierre previo) no se puede reutilizar:
+  // se descarta y se crea uno nuevo.
+  if (cachedPool && (cachedUrl !== url || (cachedPool as { ending?: boolean }).ending)) {
+    const previous = cachedPool;
     cachedPool = null;
+    void previous.end().catch(() => undefined);
   }
 
   if (!cachedPool) {
