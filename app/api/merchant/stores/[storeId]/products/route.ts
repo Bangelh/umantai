@@ -14,7 +14,7 @@ import { CatalogError, type CatalogVariantInput } from '@/lib/catalog';
 import { platformErrorResponse, readJsonBody } from '@/lib/platform-api.server';
 import { isPlatformDbConfigured } from '@/lib/platform-db.server';
 import { createStoreProductCatalog } from '@/lib/store-catalog.server';
-import { listStoreProducts } from '@/lib/stores.server';
+import { listStoreProducts, requireStoreAccess } from '@/lib/stores.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -93,6 +93,16 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Necesitas iniciar sesión.', code: 'not_authenticated' }, { status: 401 });
   }
 
+  // El acceso se valida ANTES de leer el body: una tienda ajena o inexistente
+  // responde 404/403 aunque el JSON venga mal, y no se procesa contenido de
+  // quien no pertenece a la tienda.
+  const { storeId } = await context.params;
+  try {
+    await requireStoreAccess(user.id, storeId);
+  } catch (error) {
+    return platformErrorResponse(error);
+  }
+
   const body = await readJsonBody<CreateProductBody>(request);
   if (!body) {
     return NextResponse.json({ error: 'JSON inválido.', code: 'invalid_json' }, { status: 400 });
@@ -105,8 +115,6 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 400 },
     );
   }
-
-  const { storeId } = await context.params;
 
   try {
     const variants = parseVariants(body.variants);

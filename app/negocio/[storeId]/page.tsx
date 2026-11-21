@@ -49,13 +49,13 @@ import { getCurrentUser } from '@/lib/current-user.server';
 import { formatDate as formatDateLocale, formatMoney, unitsToCents } from '@/lib/format';
 import { getTranslator } from '@/lib/i18n/server';
 import { getAnalyticsSummary } from '@/lib/analytics.server';
+import { loadStoreAccess } from '@/lib/store-access.server';
 import { getStoreBillingForUser } from '@/lib/billing/subscriptions.server';
 import {
   getStoreHoursForOwner,
   getStorePaymentsForOwner,
   listStoreOrders,
   listStoreProducts,
-  requireStoreAccess,
 } from '@/lib/stores.server';
 
 export const dynamic = 'force-dynamic';
@@ -136,12 +136,9 @@ export default async function MerchantStorePage({ params }: PageProps) {
   const { storeId } = await params;
   if (!user) redirect(`/ingresar?next=/negocio/${storeId}`);
 
-  let store;
-  try {
-    ({ store } = await requireStoreAccess(user.id, storeId));
-  } catch {
-    notFound();
-  }
+  const access = await loadStoreAccess(user.id, storeId);
+  if (!access) notFound();
+  const { store } = access;
 
   const status = resolveMerchantStoreStatus(store);
   const canEditIdentity = canEditStoreIdentity(store);

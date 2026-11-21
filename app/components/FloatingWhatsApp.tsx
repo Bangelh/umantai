@@ -130,18 +130,20 @@ export function FloatingWhatsApp({
           href={salesUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="wa-float flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-all hover:scale-105 hover:bg-[#20bd5a] active:scale-95"
-          aria-label="Contact us via WhatsApp"
+          className="wa-float flex h-14 items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 shadow-xl transition-all hover:scale-105 hover:bg-[#20bd5a] active:scale-95"
+          aria-label="WhatsApp"
         >
           <WhatsAppIcon />
+          <span className="text-sm font-semibold text-white">WhatsApp</span>
         </a>
       ) : (
         <button
           onClick={toggleMenu}
-          className="wa-float flex h-[56px] w-[56px] items-center justify-center rounded-full bg-[#25D366] shadow-xl transition-all hover:scale-105 hover:bg-[#20bd5a] active:scale-95"
-          aria-label="Contact us via WhatsApp"
+          className="wa-float flex h-14 items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 shadow-xl transition-all hover:scale-105 hover:bg-[#20bd5a] active:scale-95"
+          aria-label="WhatsApp"
         >
           <WhatsAppIcon />
+          <span className="text-sm font-semibold text-white">WhatsApp</span>
         </button>
       )}
     </div>

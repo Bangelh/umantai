@@ -2,9 +2,9 @@
 
 Runbook del hosting. **Netlify publica la rama `main`.**
 
-- Ramas del repo: `main` (lo que ve el público) y `dev` (trabajo diario). No hay otras.
-- Flujo: `dev` → pull request → `main` → deploy automático.
-- Los branch deploys y deploy previews **no consumen créditos**; solo producción (15 por deploy) y el tráfico.
+- Ramas del repo: `main` (lo que ve el público) y `dev` (trabajo diario). Todo cambio se hace en `dev` y se prueba en el Deploy Preview de su PR antes de pasar a `main` (sección 6a).
+- Flujo: `dev` → pull request en borrador (preview gratis) → merge a `main` → deploy de producción.
+- Los Deploy Previews **no consumen créditos** (verificado); solo producción (15 por deploy) y el tráfico. No se usan branch deploys.
 - Next 16 + Payload 3 corren nativos en el runtime de Next de Netlify. El adaptador se instala solo.
 
 ## 1. Cuentas y CLIs
@@ -150,6 +150,24 @@ Luego, a mano: `/` (home), `/<tienda>` (vitrina), `/negocio/<storeId>` (panel), 
 ### Alternativa sin conectar el repo
 
 `.github/workflows/deploy-staging.yml` construye en Ubuntu y despliega con la CLI. Solo necesita `NETLIFY_AUTH_TOKEN` como secreto del repo (Settings → Secrets and variables → Actions), creado en Netlify → User settings → Applications → New access token. Mientras el secreto no exista, el workflow avisa y termina en verde sin desplegar.
+
+## 6a. Probar cambios sin gastar créditos (verificado 2026-11-21)
+
+Con los créditos en cero, un **Deploy Preview** se construye igual y no consume créditos. El 2026-11-21, con el saldo agotado, el PR de `dev` publicó `https://deploy-preview-2--umantai-staging.netlify.app` en ~2 minutos con el commit `21f0043`.
+
+```bash
+git checkout dev
+git add -A && git commit -m "..."
+git push origin dev               # reconstruye el preview del PR de dev
+gh pr create --base main --head dev --draft   # una sola vez; queda abierto en borrador
+```
+
+1. Cada push a `dev` reconstruye el preview del PR; producción no se toca.
+2. La URL sigue el patrón `https://deploy-preview-<n>--umantai-staging.netlify.app`, con el número de PR.
+3. El contexto `deploy-preview` lleva `APP_ENV=staging`: no indexa y no activa salvaguardas de producción.
+4. El PR queda **en borrador** hasta que los cambios estén probados. **No mergear solo para probar**: el merge dispara el deploy de producción de 15 créditos, y es justamente el paso de `dev` a `main`.
+
+Un push a una rama **sin PR** no construye nada: `build_settings.allowed_branches` solo contiene `main`, y `netlify api updateSite` responde 200 sin aplicarlo (requiere personal access token y `PATCH /sites/<site_id>`).
 
 ## 6b. Estado (2026-11-20)
 

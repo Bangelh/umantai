@@ -47,7 +47,11 @@ jobs:
       - name: Lint (changed files only)
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="$LINT_BASE_REF"
+            # El base histórico (LINT_BASE_REF) lintea 324 archivos en cada PR y
+            # falla siempre por deuda previa. Contra el merge-base se revisa
+            # exactamente lo que trae el PR.
+            BASE=$(git merge-base origin/main HEAD || true)
+            if [ -z "$BASE" ]; then BASE="$LINT_BASE_REF"; fi
           else
             BASE="${{ github.event.before }}"
             if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then

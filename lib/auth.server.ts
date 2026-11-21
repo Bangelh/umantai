@@ -87,8 +87,42 @@ function requireEmailVerification(): boolean {
   return isProductionRuntime();
 }
 
+/**
+ * Previews de Netlify.
+ *
+ * Cada PR se publica en `https://deploy-preview-<n>--<sitio>.netlify.app`, un
+ * origen distinto de las URLs públicas configuradas (`BETTER_AUTH_URL` apunta
+ * a `umantai.com` también en staging). El navegador siempre manda `Origin` en
+ * el POST, así que sin este origen Better Auth respondía 403 INVALID_ORIGIN y
+ * el login/registro no funcionaban en ningún preview.
+ *
+ * Solo se agrega fuera de Producción: el comodín nunca alcanza al dominio real.
+ */
+function previewOrigins(): string[] {
+  if (isProductionRuntime()) return [];
+  const origins = new Set<string>([
+    'https://deploy-preview-*--umantai-staging.netlify.app',
+    'https://umantai-staging.netlify.app',
+  ]);
+  // Si Netlify expone la URL del deploy en runtime, cubre también un sitio
+  // renombrado o un alias propio sin tocar el código.
+  for (const value of [process.env.DEPLOY_PRIME_URL, process.env.DEPLOY_URL]) {
+    const url = (value ?? '').trim().replace(/\/+$/, '');
+    if (url.startsWith('https://')) origins.add(url);
+  }
+  return [...origins];
+}
+
 function trustedOrigins(baseUrl: string): string[] {
-  const origins = new Set<string>([baseUrl, 'http://localhost:3000', 'http://127.0.0.1:3000']);
+  // Producción solo confía en su URL pública. Los orígenes locales y los
+  // previews se reservan para desarrollo/staging: incluirlos siempre ampliaba
+  // la superficie CSRF.
+  const origins = new Set<string>([baseUrl]);
+  if (!isProductionRuntime()) {
+    origins.add('http://localhost:3000');
+    origins.add('http://127.0.0.1:3000');
+    for (const origin of previewOrigins()) origins.add(origin);
+  }
   for (const value of [
     process.env.RAILWAY_PUBLIC_DOMAIN,
     process.env.NEXT_PUBLIC_SERVER_URL,
@@ -110,9 +144,12 @@ export function getAuthServer(): BetterAuthInstance {
 
   if (cachedAuth && cachedUrl === url) return cachedAuth;
 
-  if (cachedPool && cachedUrl !== url) {
-    void cachedPool.end().catch(() => undefined);
+  // Un pool ya cerrado (rotación de URL o cierre previo) no se puede reutilizar:
+  // se descarta y se crea uno nuevo.
+  if (cachedPool && (cachedUrl !== url || (cachedPool as { ending?: boolean }).ending)) {
+    const previous = cachedPool;
     cachedPool = null;
+    void previous.end().catch(() => undefined);
   }
 
   if (!cachedPool) {
