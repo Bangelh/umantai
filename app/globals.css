@@ -35,13 +35,6 @@
   --um-border-strong: #3a3a41;
   --um-brand: #ffffff;
 
-  /* Escala fija de radios: foco 6, control 12, tarjeta 16, superficie 24, pill. */
-  --um-radius-focus: 6px;
-  --um-radius-control: 12px;
-  --um-radius-card: 16px;
-  --um-radius-surface: 24px;
-  --um-radius-pill: 9999px;
-
   /* Estados */
   --um-success: #34d399;
   --um-warning: #fbbf24;
@@ -76,6 +69,17 @@
   --um-info: #1d4ed8;
 
   --um-shadow-card: 0 1px 0 rgb(0 0 0 / 0.03), 0 12px 32px -24px rgb(0 0 0 / 0.18);
+}
+
+/* Escala fija de radios: foco 6, control 12, tarjeta 16, superficie 24, pill.
+   No depende del tema, así que vive fuera de los bloques de color: claro y
+   oscuro no pueden desincronizarse. */
+:root {
+  --um-radius-focus: 6px;
+  --um-radius-control: 12px;
+  --um-radius-card: 16px;
+  --um-radius-surface: 24px;
+  --um-radius-pill: 9999px;
 }
 
 /*
