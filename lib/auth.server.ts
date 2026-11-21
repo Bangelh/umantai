@@ -88,7 +88,13 @@ function requireEmailVerification(): boolean {
 }
 
 function trustedOrigins(baseUrl: string): string[] {
-  const origins = new Set<string>([baseUrl, 'http://localhost:3000', 'http://127.0.0.1:3000']);
+  // Producción solo confía en su URL pública. Los orígenes locales se reservan
+  // para desarrollo/staging: incluirlos siempre ampliaba la superficie CSRF.
+  const origins = new Set<string>([baseUrl]);
+  if (!isProductionRuntime()) {
+    origins.add('http://localhost:3000');
+    origins.add('http://127.0.0.1:3000');
+  }
   for (const value of [
     process.env.RAILWAY_PUBLIC_DOMAIN,
     process.env.NEXT_PUBLIC_SERVER_URL,

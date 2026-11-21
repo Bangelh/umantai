@@ -64,7 +64,7 @@ export function ThemeToggle({ initialTheme = 'system' }: { initialTheme?: Theme 
       title={`${t('theme.label')}: ${currentLabel}`}
     >
       <Icon aria-hidden="true" className="h-4 w-4" />
-      <span className="hidden sm:inline">{currentLabel}</span>
+      <span className="whitespace-nowrap">{currentLabel}</span>
     </button>
   );
 }
